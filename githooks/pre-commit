@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# pre-commit: staged Swift files must be formatted and lint-clean.
+
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+hook_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+
+# An optional machine-local check, not tracked (see .gitignore). Runs first and on every commit,
+# whatever is staged, from the directory the hooks live in — so a linked worktree finds it too.
+if [ -x "$hook_dir/pre-commit.local" ]; then
+  "$hook_dir/pre-commit.local"
+fi
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.swift$' || true)
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+command -v swiftformat >/dev/null 2>&1 || { echo "SwiftFormat not installed — run: brew install swiftformat"; exit 1; }
+command -v swiftlint   >/dev/null 2>&1 || { echo "SwiftLint not installed — run: brew install swiftlint"; exit 1; }
+
+echo "==== SwiftFormat ===="
+# shellcheck disable=SC2086
+swiftformat $staged --lint
+
+echo "==== SwiftLint ===="
+# --force-exclude honours the config's `excluded:` for files named on the command line, so a staged
+# fixture the config excludes is skipped rather than linted. SwiftLint exits non-zero when that
+# leaves nothing to lint; that is a pass, not a failure.
+# shellcheck disable=SC2086
+if ! output=$(swiftlint lint --strict --force-exclude $staged 2>&1); then
+  if ! printf '%s\n' "$output" | grep -q 'No lintable files found'; then
+    printf '%s\n' "$output"
+    echo "Lint violations found. Fix them before committing."
+    exit 1
+  fi
+fi
+if [ -n "$output" ]; then
+  printf '%s\n' "$output"
+fi

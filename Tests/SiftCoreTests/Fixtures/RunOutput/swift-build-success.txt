@@ -1,0 +1,21 @@
+Building for debugging...
+[0/2] Write sources
+[1/2] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling Widget Gadget.swift
+/Users/dev/Widget/Sources/Widget/Gadget.swift:5:13: warning: initialization of variable 'scratch' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+3 |     public init(name: String) { self.name = name }
+4 |     public func shouted() -> String {
+5 |         var scratch = name
+  |             `- warning: initialization of variable 'scratch' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+6 |         return name.uppercased()
+7 |     }
+[4/5] Compiling Widget Widget.swift
+/Users/dev/Widget/Sources/Widget/Widget.swift:6:13: warning: initialization of immutable value 'spare' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+ 4 |     public func doubled() -> Int { size * 2 }
+ 5 |     public func unused() -> Int {
+ 6 |         let spare = 3
+   |             `- warning: initialization of immutable value 'spare' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+ 7 |         return size
+ 8 |     }
+[5/5] Emitting module Widget
+Build complete! (0.36s)

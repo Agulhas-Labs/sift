@@ -1,0 +1,5 @@
+Building for debugging...
+[Planning deferred tasks]
+[1 / 5]
+Build complete! (0.44 secs)
+[1/1] Testing GadgetTests.LegacyTests/testGamma

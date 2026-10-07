@@ -1,0 +1,15 @@
+Building for debugging...
+[Planning deferred tasks]
+[18 / 26]
+[23 / 31] Pallet
+/Users/dev/Pallet/Sources/Pallet/Pallet.swift:4:13: [1;33mwarning: [1;39minitialization of immutable value 'spare' was never used; consider replacing with assignment to '_' or removing it[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m2 |[0;0m     public init() {}
+[0;36m3 |[0;0m     public func count() -> Int {
+[0;36m4 |[0;0m         let spare = 0
+  [0;36m|[0;0m             `- [1;33mwarning: [1;39minitialization of immutable value 'spare' was never used; consider replacing with assignment to '_' or removing it[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m5 |[0;0m         return 1
+[0;36m6 |[0;0m     }
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[29 / 31] Pallet
+Build complete! (1.31 secs)

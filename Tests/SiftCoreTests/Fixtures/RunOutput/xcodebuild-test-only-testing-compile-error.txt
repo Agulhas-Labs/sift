@@ -1,0 +1,449 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme Widget -destination platform=macOS -derivedDataPath /Users/dev/dd test "-only-testing:WidgetTests/WidgetTests/doublingWorks()"
+
+Resolve Package Graph
+2000-01-01 12:00:00.476 xcodebuild[71890:15765928] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  Widget: /Users/dev/Widget
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:DriverKit, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64e.x1, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64_32, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (3 targets)
+    Target 'Widget-product' in project 'Widget'
+        ➜ Explicit dependency on target 'Widget' in project 'Widget'
+    Target 'WidgetTests-product' in project 'Widget'
+        ➜ Explicit dependency on target 'Widget' in project 'Widget'
+    Target 'Widget' in project 'Widget' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+Build description signature: 70449a05eccf18e4f5de8b982007b6f0
+Build description path: /Users/dev/dd/Build/Intermediates.noindex/XCBuildData/70449a05eccf18e4f5de8b982007b6f0.xcbuilddata
+CreateBuildDirectory /Users/dev/dd/SDKExplicitPrecompiledModules
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/SDKExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/dev/dd/ModuleCache.noindex
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/ModuleCache.noindex
+
+CreateBuildDirectory /Users/dev/dd/CompilationCache.noindex
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/CompilationCache.noindex
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk /Users/dev/dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache
+    cd /Users/dev/Widget/.swiftpm/xcode
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -o /Users/dev/dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache
+
+CreateBuildDirectory /Users/dev/dd/Build/Intermediates.noindex
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/Build/Intermediates.noindex
+
+CreateBuildDirectory /Users/dev/dd/Build/Products
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/Build/Products
+
+CreateBuildDirectory /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/dev/dd/Build/Intermediates.noindex/PrecompiledHeaders
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/Build/Intermediates.noindex/PrecompiledHeaders
+
+CreateBuildDirectory /Users/dev/dd/Build/Intermediates.noindex/ExplicitPrecompiledModules
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/dev/dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug
+
+CreateBuildDirectory /Users/dev/dd/Build/Products/Debug
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/Build/Products/Debug
+
+CreateBuildDirectory /Users/dev/dd/Build/Products/Debug/PackageFrameworks
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-create-build-directory /Users/dev/dd/Build/Products/Debug/PackageFrameworks
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/WidgetTests.DependencyMetadataFileList (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/WidgetTests.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.DependencyStaticMetadataFileList (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/empty-WidgetTests.plist (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/empty-WidgetTests.plist
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.modulemap (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.modulemap
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.DependencyMetadataFileList (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/WidgetTests.DependencyStaticMetadataFileList (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/WidgetTests.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.LinkFileList (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.LinkFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.SwiftConstValuesFileList (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.SwiftFileList (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.SwiftFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests_const_extract_protocols.json (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests_const_extract_protocols.json
+
+MkDir /Users/dev/dd/Build/Products/Debug/WidgetTests.xctest/Contents/MacOS (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    /bin/mkdir -p /Users/dev/dd/Build/Products/Debug/WidgetTests.xctest/Contents/MacOS
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests-OutputFileMap.json (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftConstValuesFileList (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget_const_extract_protocols.json (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftFileList (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.LinkFileList (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.LinkFileList
+
+WriteAuxiliaryFile /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-OutputFileMap.json (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    write-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-OutputFileMap.json
+
+MkDir /Users/dev/dd/Build/Products/Debug/WidgetTests.xctest/Contents (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    /bin/mkdir -p /Users/dev/dd/Build/Products/Debug/WidgetTests.xctest/Contents
+
+MkDir /Users/dev/dd/Build/Products/Debug/WidgetTests.xctest (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    /bin/mkdir -p /Users/dev/dd/Build/Products/Debug/WidgetTests.xctest
+
+Copy /Users/dev/dd/Build/Intermediates.noindex/GeneratedModuleMaps/Widget.modulemap /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.modulemap (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.modulemap /Users/dev/dd/Build/Intermediates.noindex/GeneratedModuleMaps
+
+SwiftDriver Widget normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -parse-as-library -module-name Widget -Onone @/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dev/dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/dev/dd/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/dev/dd/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/dd/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -output-file-map /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/dd/ModuleCache.noindex -sdk-module-cache-path /Users/dev/dd/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/dev/dd/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -package-name widget -emit-const-values -const-gather-protocols-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget_const_extract_protocols.json -Xcc -I/Users/dev/dd/Build/Products/Debug/include -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-Swift.h -working-directory /Users/dev/Widget/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/SwiftShims-A8ZDKK6YUVOHB6QQZZ06STXA4.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_SwiftConcurrencyShims-9X6D0GRW3Z3RDUN97AREVIO4.pcm
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ Widget (in target 'Widget' from project 'Widget')
+
+SwiftCompile normal arm64 (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ Widget.swift /Users/dev/Widget/Sources/Widget/Widget.swift (in target 'Widget' from project 'Widget')
+
+SwiftCompile normal arm64 /Users/dev/Widget/Sources/Widget/Widget.swift (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-SwiftPerFileCompile Widget.swift
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for Widget (in target 'Widget' from project 'Widget')
+
+SwiftDriver\ Compilation\ Requirements Widget normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -parse-as-library -module-name Widget -Onone @/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dev/dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/dev/dd/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/dev/dd/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/dd/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -output-file-map /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/dd/ModuleCache.noindex -sdk-module-cache-path /Users/dev/dd/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/dev/dd/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -package-name widget -emit-const-values -const-gather-protocols-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget_const_extract_protocols.json -Xcc -I/Users/dev/dd/Build/Products/Debug/include -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-Swift.h -working-directory /Users/dev/Widget/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftMergeGeneratedHeaders /Users/dev/dd/Build/Intermediates.noindex/GeneratedModuleMaps/Widget-Swift.h /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-Swift.h (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-swiftHeaderTool -arch arm64 /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-Swift.h -o /Users/dev/dd/Build/Intermediates.noindex/GeneratedModuleMaps/Widget-Swift.h
+
+Copy /Users/dev/dd/Build/Products/Debug/Widget.swiftmodule/arm64-apple-macos.swiftmodule /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftmodule (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftmodule /Users/dev/dd/Build/Products/Debug/Widget.swiftmodule/arm64-apple-macos.swiftmodule
+
+Copy /Users/dev/dd/Build/Products/Debug/Widget.swiftmodule/arm64-apple-macos.swiftdoc /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftdoc (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftdoc /Users/dev/dd/Build/Products/Debug/Widget.swiftmodule/arm64-apple-macos.swiftdoc
+
+Copy /Users/dev/dd/Build/Products/Debug/Widget.swiftmodule/arm64-apple-macos.abi.json /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.abi.json (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.abi.json /Users/dev/dd/Build/Products/Debug/Widget.swiftmodule/arm64-apple-macos.abi.json
+
+Copy /Users/dev/dd/Build/Products/Debug/Widget.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftsourceinfo (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftsourceinfo /Users/dev/dd/Build/Products/Debug/Widget.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo
+
+SwiftDriver WidgetTests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -parse-as-library -module-name WidgetTests -Onone @/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dev/dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/dev/dd/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/dev/dd/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/dd/Build/Products/Debug/PackageFrameworks -F /Users/dev/dd/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -output-file-map /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/dd/ModuleCache.noindex -sdk-module-cache-path /Users/dev/dd/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/dev/dd/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -package-name widget -emit-const-values -const-gather-protocols-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests_const_extract_protocols.json -Xcc -I/Users/dev/dd/Build/Products/Debug/include -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -working-directory /Users/dev/Widget/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftDriverJobDiscovery normal arm64 Compiling Widget.swift (in target 'Widget' from project 'Widget')
+
+SwiftDriver\ Compilation Widget normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -parse-as-library -module-name Widget -Onone @/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dev/dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/dev/dd/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/dev/dd/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/dd/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -output-file-map /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/dd/ModuleCache.noindex -sdk-module-cache-path /Users/dev/dd/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/dev/dd/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -package-name widget -emit-const-values -const-gather-protocols-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget_const_extract_protocols.json -Xcc -I/Users/dev/dd/Build/Products/Debug/include -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget-Swift.h -working-directory /Users/dev/Widget/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/dev/dd/Build/Products/Debug/Widget.o normal (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-macos14.0 -r -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -O0 -Xlinker -no_warn_duplicate_libraries -F/Users/dev/dd/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -F/Users/dev/dd/Build/Products/Debug -iframework /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -filelist /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.LinkFileList -nostdlib -Xlinker -object_path_lto -Xlinker /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget_lto.o -Xlinker -no_deduplicate -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.swiftmodule -o /Users/dev/dd/Build/Products/Debug/Widget.o
+
+ExtractAppIntentsMetadata (in target 'Widget' from project 'Widget')
+    cd /Users/dev/Widget
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Widget --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk --xcode-version 27A266a --platform-family macOS --deployment-target 14.0 --bundle-identifier widget.Widget --output /Users/dev/dd/Build/Products/Debug/Widget.appintents --target-triple arm64-apple-macos14.0 --binary-file /Users/dev/dd/Build/Products/Debug/Widget.o --dependency-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget_dependency_info.dat --stringsdata-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftFileList --metadata-file-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.DependencyMetadataFileList --static-metadata-file-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Widget.DependencyStaticMetadataFileList --swift-const-vals-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/Widget-t.build/Objects-normal/arm64/Widget.SwiftConstValuesFileList --force --compile-time-extraction --deployment-aware-processing --no-app-shortcuts-localization
+2000-01-01 12:00:01.937 appintentsmetadataprocessor[72075:15766694] Starting appintentsmetadataprocessor export
+2000-01-01 12:00:01.975 appintentsmetadataprocessor[72075:15766694] Extracted no relevant App Intents symbols, skipping writing output
+
+ProcessInfoPlistFile /Users/dev/dd/Build/Products/Debug/WidgetTests.xctest/Contents/Info.plist /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/empty-WidgetTests.plist (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-infoPlistUtility /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/empty-WidgetTests.plist -producttype com.apple.product-type.bundle.unit-test -expandbuildsettings -platform macosx -o /Users/dev/dd/Build/Products/Debug/WidgetTests.xctest/Contents/Info.plist
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/DeveloperToolsSupport-DGOVCS8XXF3SX88115J8I8SMR.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/ptrcheck-5LCLI8YJ62XCQACSPLG7HXAY1.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_stddef-A54YBC7AX5729H3S1ALB8RSQL.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_stdbool-CDDKVB9B48OEYVFQDJN541C54.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/ptrauth-EKQ145FX0IFL60PA9SZ0UUCOF.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_AvailabilityInternal-4UQ6HF2Z1Z7M7UR9GCPIALZUI.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_stdarg-1EJRM5QQ6DCVCJ6MEVSL9CQUP.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_float-F1CUILTNTLHECLXS4VGXYY8HA.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_DarwinFoundation1-2Z1UF1O15EISKNWO2R9XAWPH7.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_limits-F3TVUDXUQMRLJVUNFZGX7GUJZ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_DarwinFoundation2-4BBJ90G116DH8XW7JVM83CZJX.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_tgmath-9HDY9VRSNBOPBMKHTRF8ASMWL.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_stdint-2AV6HL2UJTWIRGCT3X5T737S4.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/string_h-6E6DEHMT6LZAZBMNC3LD95BH6.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/sys_types-EQCAHHO7AIQGCI8E9L2696EC6.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/libDER-A2MARKAIAIYDXMSS9DNUQVT7Q.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_intrinsics-6YTEHS0V84YUPNLS6HVFKJVC0.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_stdatomic-7VSYF6D3XGNG9M4CO0AQPVF19.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_DarwinFoundation3-3LSHZDDNA29IG7B8QYAZ6FZS6.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/_Builtin_inttypes-5PZE4E08M7C6575W48TA4VT5N.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/Darwin-2AZKKMCO3HYL4LOAI90WTRHBY.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/simd-CV8IWQ8VF8584MS0E277M1KYH.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CUPS-2LEYQXQW117OW3Q18UO2UZ8XI.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/launch-4X3JTKUDNI1CW95V79AYYNEB0.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/libkern-BLTVKFAN75STS0XPLLKF72I51.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/MachO-7RVZWBUVTFPOJCQYG5AFDE75D.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/Spatial-9BLDUVS9CETXT676K9W2UDSPF.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/ObjectiveC-D4YXY2TVV6P5UCQGGFO88CDES.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/os_object-6IJU489HRN6FTD2I0IKM932VA.pcm
+
+SwiftExplicitDependencyCompileModuleFromInterface arm64 /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/Testing-35JW6NLM4PP0P.swiftmodule
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/os_workgroup-78K5DAW6UMVVI3Q3PGE050YW6.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/Dispatch-5VG3XYCKH998UIXBUYJJ2BK8Q.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CoreFoundation-A93UJENWSDRZL77UBYROGS838.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/XPC-8TV1JU373IU4UK0831K3ELL8V.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/os-3PW1SJN9A7WU17DGGQ780A7Q3.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/Security-3AIFJ0VLIXUWMU40DWA7S1MTP.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/ColorSync-D2F0CBECN2TY4G3EV29CMG4CF.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/IOKit-3JH6QYGZJY928WK7OF3VVH3O3.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CFNetwork-AIARY00BG4EPC1TP3XIRE56TW.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CoreGraphics-C5UD0BX3FXV6797OSNE71048T.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/DiskArbitration-2CGPBHUE3JPJX2LAOBTMBDBXI.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CoreServices-AKYBX58CY1M05SYDUL3EFQM0M.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CoreText-5Y66NXT4APLTGVPM6K6P1AX5I.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/ImageIO-74ULA6ZDSVPT9MW9UN3J9FC3R.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/Foundation-5PP0VNAHBI3UH8DYOHK5G70QO.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/IOSurface-4YRTBAABJ2H9LUNCY8ZDRKLWG.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/Symbols-D6EUQNF7NTO2BCKLKVTDGFYH6.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/UniformTypeIdentifiers-2025F070RPSIZNK0LVKDUNVFM.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CoreData-1MMBK1U66UQ53FEEFWB3H95BX.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CoreTransferable-43GH6FHD6735J6ZAGTTMU2A3B.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/ApplicationServices-98WGJPP6960IQ516XNTGZXNNS.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/OSLog-6OH7EXDGP0KIRMMU3FC94CB8V.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/Accessibility-ASXZVPUSW8HA5F75CP3D7EIAD.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/DataDetection-6EXKT4RCMGR50NY6LEC7EB6T9.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/Metal-6O5QAL1J5X3NQCBGIUJMA4TDN.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/OpenGL-4M9QNN6ZOVINRQB0ZNTPTOWG8.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CoreVideo-6BAWB5XSWU4PDXBKEMR6L6Q00.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/CoreImage-AUQTQ3OZA75W50E7FRBMKRP68.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/QuartzCore-3F5D7864F8J6NKPF5FT7DPHF.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/SwiftUICore-82V7ATL29AVE2D0ESQNAU6N2F.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/SDKExplicitPrecompiledModules/AppKit-60FSGVSSIAUJB0LOSJRG3SSUJ.pcm
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCUIAutomation-6B4I5MCM5YVAU45QCJE774J4X.pcm
+
+SwiftExplicitDependencyCompileModuleFromInterface arm64 /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCUIAutomation-37BVLENJG9XWP.swiftmodule
+
+SwiftExplicitDependencyGeneratePcm arm64 /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCTest-S8O4CX1DY6IMZYFXWPBKVDNN.pcm
+
+SwiftExplicitDependencyCompileModuleFromInterface arm64 /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules/XCTest-9XG0JXR5BL3D.swiftmodule
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ WidgetTests (in target 'WidgetTests-product' from project 'Widget')
+
+SwiftCompile normal arm64 (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    
+
+SwiftCompile normal arm64 Compiling\ LegacyWidgetTests.swift /Users/dev/Widget/Tests/WidgetTests/LegacyWidgetTests.swift (in target 'WidgetTests-product' from project 'Widget')
+
+SwiftCompile normal arm64 /Users/dev/Widget/Tests/WidgetTests/LegacyWidgetTests.swift (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-SwiftPerFileCompile LegacyWidgetTests.swift
+
+SwiftCompile normal arm64 Compiling\ WidgetTests.swift /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift (in target 'WidgetTests-product' from project 'Widget')
+/Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift:10:33: error: value of type 'Widget' has no member 'tripled'
+ 8 | 
+ 9 |     @Test func sizeIsCarried() {
+10 |         #expect(Widget(size: 4).tripled() == 12)
+   |                                 `- error: value of type 'Widget' has no member 'tripled'
+11 |     }
+12 | }
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c /Users/dev/Widget/Tests/WidgetTests/LegacyWidgetTests.swift -primary-file /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift -emit-dependencies-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.d -emit-const-values-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftconstvalues -emit-reference-dependencies-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftdeps -serialize-diagnostics-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.dia -target arm64-apple-macos14.0 -disable-cross-import-overlay-search -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/AppKit.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreGraphics.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreImage.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreTransferable.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/Foundation.swiftoverlay -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libFoundationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#FoundationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libObservationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#ObservationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libPreviewsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#PreviewsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#SwiftUIMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib\#\#TestingMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests-dependencies-1.json -Xllvm -aarch64-use-tbi -enable-objc-interop -stack-check -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -I /Users/dev/dd/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/dd/Build/Products/Debug/PackageFrameworks -F /Users/dev/dd/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -module-cache-path /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -no-color-diagnostics -Xcc -fno-color-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=4 -profile-generate -profile-coverage-mapping -swift-version 6 -Onone -D SWIFT_PACKAGE -D DEBUG -D Xcode -serialize-debugging-options -enable-experimental-feature DebugDescriptionMacro -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/dev/dd/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/dev/Widget/.swiftpm/xcode -enable-anonymous-context-mangled-names -file-compilation-dir /Users/dev/Widget/.swiftpm/xcode -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/dev/dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -Xcc -I/Users/dev/dd/Build/Products/Debug/include -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name WidgetTests -package-name widget -const-gather-protocols-file /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests_const_extract_protocols.json -disable-clang-spi -clang-target arm64-apple-macos27.0 -target-sdk-version 27.0 -target-sdk-name macosx27.0 -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -parse-as-library -o /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.o -debug-module-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftmodule -index-unit-output-path /Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.o -index-store-path /Users/dev/dd/Index.noindex/DataStore -index-system-modules
+
+SwiftCompile normal arm64 /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-SwiftPerFileCompile WidgetTests.swift
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for WidgetTests (in target 'WidgetTests-product' from project 'Widget')
+
+SwiftDriver\ Compilation\ Requirements WidgetTests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget/.swiftpm/xcode
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -parse-as-library -module-name WidgetTests -Onone @/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dev/dd/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/dev/dd/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/dev/dd/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/dd/Build/Products/Debug/PackageFrameworks -F /Users/dev/dd/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -output-file-map /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/dd/ModuleCache.noindex -sdk-module-cache-path /Users/dev/dd/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/dev/dd/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -package-name widget -emit-const-values -const-gather-protocols-list /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests_const_extract_protocols.json -Xcc -I/Users/dev/dd/Build/Products/Debug/include -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources/arm64 -Xcc -I/Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -working-directory /Users/dev/Widget/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/dev/dd/Build/Products/Debug/WidgetTests.swiftmodule/arm64-apple-macos.abi.json /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.abi.json (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.abi.json /Users/dev/dd/Build/Products/Debug/WidgetTests.swiftmodule/arm64-apple-macos.abi.json
+
+Copy /Users/dev/dd/Build/Products/Debug/WidgetTests.swiftmodule/arm64-apple-macos.swiftdoc /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftdoc (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftdoc /Users/dev/dd/Build/Products/Debug/WidgetTests.swiftmodule/arm64-apple-macos.swiftdoc
+
+Copy /Users/dev/dd/Build/Products/Debug/WidgetTests.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftsourceinfo (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftsourceinfo /Users/dev/dd/Build/Products/Debug/WidgetTests.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo
+
+Copy /Users/dev/dd/Build/Products/Debug/WidgetTests.swiftmodule/arm64-apple-macos.swiftmodule /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftmodule (in target 'WidgetTests-product' from project 'Widget')
+    cd /Users/dev/Widget
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/dd/Build/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftmodule /Users/dev/dd/Build/Products/Debug/WidgetTests.swiftmodule/arm64-apple-macos.swiftmodule
+
+PruneExplicitPrecompiledModules /Users/dev/dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/dev/dd/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/dev/dd/SDKExplicitPrecompiledModules
+
+
+Test session results, code coverage, and logs:
+	/Users/dev/dd/Logs/Test/Test-Widget-2000.01.01_12-00-00-+0000.xcresult
+
+Testing failed:
+	Value of type 'Widget' has no member 'tripled'
+	Testing cancelled because the build failed.
+
+** TEST FAILED **
+
+
+The following build commands failed:
+	SwiftCompile normal arm64 Compiling\ WidgetTests.swift /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift (in target 'WidgetTests-product' from project 'Widget')
+	SwiftCompile normal arm64 /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift (in target 'WidgetTests-product' from project 'Widget')
+	Testing workspace Widget with scheme Widget
+(3 failures)

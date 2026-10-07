@@ -1,0 +1,35 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme Gadget-Package -destination platform=macOS -derivedDataPath ../dd -parallel-testing-enabled YES test-without-building "-only-testing:GadgetTests/Modern/aTrendIsRead"
+
+Resolve Package Graph
+2000-01-01 12:00:03.454 xcodebuild[3849:4988440] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  Gadget: /Users/dev/Gadget
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:DriverKit, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64e.x1, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64_32, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+2000-01-01 12:00:03.454 xcodebuild[3849:4988464]  DVTAssertions: Warning in IDEFrameworks/IDEFoundation/Execution/LaunchSystem/IDELaunchSession.m:395
+Details:  setRunnablePIDWithDiagnostics:logSection:andCompletionHandler: called without a completion handler - blocking until diagnostics setup completes. Callers should migrate to using a completion handler for better performance.
+Object:   <IDELaunchSession: 0x600000000000>
+Method:   -setRunnablePIDWithDiagnostics:logSection:andCompletionHandler:
+Thread:   <NSThread: 0x600000000000>{number = 7, name = (null)}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+2000-01-01 12:00:03.454 xcodebuild[3849:4988440] [MT] IDETestOperationsObserverDebug: 0.794 elapsed -- Testing started completed.
+2000-01-01 12:00:03.454 xcodebuild[3849:4988440] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2000-01-01 12:00:03.454 xcodebuild[3849:4988440] [MT] IDETestOperationsObserverDebug: 0.794 sec, +0.794 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/dev/Gadget/.build/dd/Logs/Test/Test-Gadget-Package-2000.01.01_12-00-00-+0000.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

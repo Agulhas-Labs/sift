@@ -1,0 +1,33 @@
+{
+  "errors" : [
+
+  ],
+  "values" : [
+    {
+      "disabledTests" : [
+
+      ],
+      "enabledTests" : [
+        {
+          "identifier" : "DemoLogicTests/DemoLogicTests/evenNumbersAreEven()"
+        },
+        {
+          "identifier" : "DemoUITests/ItemListUITests/testItemListAppears()"
+        },
+        {
+          "identifier" : "DemoUnitTests/CalculatorTests/testAddition()"
+        },
+        {
+          "identifier" : "DemoUnitTests/CalculatorTests/testSkipsWhenUnsupported()"
+        },
+        {
+          "identifier" : "DemoUnitTests/MathSuite/addsTwoNumbers()"
+        },
+        {
+          "identifier" : "DemoUnitTests/MathSuite/doublingIsEven(_:)"
+        }
+      ],
+      "testPlan" : "Default"
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -scheme Noted-Package -destination platform=macOS -derivedDataPath ./dd -resultBundlePath ./rb-serial.xcresult -parallel-testing-enabled NO
+
+Resolve Package Graph
+2000-01-01 12:00:00.550 xcodebuild[23173:6015273] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  Noted: /Users/dev/Noted
+
+Writing result bundle at path:
+	/Users/dev/Noted/rb-serial.xcresult
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:DriverKit, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64e.x1, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64_32, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+2000-01-01 12:00:00.671 xcodebuild[23173:6015298]  DVTAssertions: Warning in IDEFrameworks/IDEFoundation/Execution/LaunchSystem/IDELaunchSession.m:395
+Details:  setRunnablePIDWithDiagnostics:logSection:andCompletionHandler: called without a completion handler - blocking until diagnostics setup completes. Callers should migrate to using a completion handler for better performance.
+Object:   <IDELaunchSession: 0x600000000000>
+Method:   -setRunnablePIDWithDiagnostics:logSection:andCompletionHandler:
+Thread:   <NSThread: 0x600000000000>{number = 9, name = (null)}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+Test Suite 'All tests' started at 2000-01-01 12:00:00.752.
+Test Suite 'BetaTests.xctest' started at 2000-01-01 12:00:00.753.
+Test Suite 'LegacyTests' started at 2000-01-01 12:00:00.753.
+Test Case '-[BetaTests.LegacyTests testLegacyAnswer]' started.
+/Users/dev/Noted/Tests/BetaTests/LegacyTests.swift:6: error: -[BetaTests.LegacyTests testLegacyAnswer] : XCTAssertEqual failed: ("nope") is not equal to ("ok")
+Test Case '-[BetaTests.LegacyTests testLegacyAnswer]' failed (0.524 seconds).
+Test Suite 'LegacyTests' failed at 2000-01-01 12:00:01.277.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.524 (0.524) seconds
+Test Suite 'BetaTests.xctest' failed at 2000-01-01 12:00:01.277.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.524 (0.525) seconds
+Test Suite 'All tests' failed at 2000-01-01 12:00:01.277.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.524 (0.525) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test printsAnAnswerInItsNote() started.
+✘ Test printsAnAnswerInItsNote() recorded an issue at BetaTests.swift:6:5: Expectation failed: Noted.answer == "ok"
+↳ the answer read:
+    nope
+    still nope
+↳ Noted.answer == "ok" → false
+↳   Noted.answer → "nope"
+✘ Test printsAnAnswerInItsNote() failed after 0.001 seconds with 1 issue.
+✘ Test run with 1 test in 0 suites failed after 0.001 seconds with 1 issue.
+Resolve Package Graph
+
+2000-01-01 12:00:01.563 xcodebuild[23173:6015296]  DVTAssertions: Warning in IDEFrameworks/IDEFoundation/Execution/LaunchSystem/IDELaunchSession.m:395
+Details:  setRunnablePIDWithDiagnostics:logSection:andCompletionHandler: called without a completion handler - blocking until diagnostics setup completes. Callers should migrate to using a completion handler for better performance.
+Object:   <IDELaunchSession: 0x600000000000>
+Method:   -setRunnablePIDWithDiagnostics:logSection:andCompletionHandler:
+Thread:   <NSThread: 0x600000000000>{number = 4, name = (null)}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+Test Suite 'All tests' started at 2000-01-01 12:00:01.681.
+Test Suite 'AlphaTests.xctest' started at 2000-01-01 12:00:01.682.
+Test Suite 'LegacyTests' started at 2000-01-01 12:00:01.682.
+Test Case '-[AlphaTests.LegacyTests testLegacyAnswer]' started.
+/Users/dev/Noted/Tests/AlphaTests/LegacyTests.swift:6: error: -[AlphaTests.LegacyTests testLegacyAnswer] : XCTAssertEqual failed: ("nope") is not equal to ("ok")
+Test Case '-[AlphaTests.LegacyTests testLegacyAnswer]' failed (0.530 seconds).
+Test Suite 'LegacyTests' failed at 2000-01-01 12:00:02.212.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.530 (0.531) seconds
+Test Suite 'AlphaTests.xctest' failed at 2000-01-01 12:00:02.213.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.530 (0.531) seconds
+Test Suite 'All tests' failed at 2000-01-01 12:00:02.213.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.530 (0.532) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test quotesACount() started.
+✘ Test quotesACount() recorded an issue at AlphaTests.swift:6:5: Expectation failed: Noted.answer == "ok"
+↳ head
+    Executed 3 tests, with 2 failures (0 unexpected) in 0.100 (0.100) seconds
+  tail
+↳ Noted.answer == "ok" → false
+↳   Noted.answer → "nope"
+✘ Test quotesACount() failed after 0.001 seconds with 1 issue.
+◇ Test quotesAnEnding() started.
+✘ Test quotesAnEnding() recorded an issue at AlphaTests.swift:11:5: Expectation failed: Noted.answer == "ok"
+↳ head
+    Test ghost() failed after 0.001 seconds with 1 issue.
+    Test phantom() passed after 0.001 seconds.
+  tail
+↳ Noted.answer == "ok" → false
+↳   Noted.answer → "nope"
+✘ Test quotesAnEnding() failed after 0.001 seconds with 1 issue.
+◇ Test anOrdinaryPass() started.
+✔ Test anOrdinaryPass() passed after 0.001 seconds.
+✘ Test run with 3 tests in 0 suites failed after 0.001 seconds with 2 issues.
+Resolve Package Graph
+
+2000-01-01 12:00:06.150 xcodebuild[23173:6015273] [MT] IDETestOperationsObserverDebug: 5.515 elapsed -- Testing started completed.
+2000-01-01 12:00:06.150 xcodebuild[23173:6015273] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2000-01-01 12:00:06.150 xcodebuild[23173:6015273] [MT] IDETestOperationsObserverDebug: 5.515 sec, +5.515 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/dev/Noted/rb-serial.xcresult
+
+Failing tests:
+	LegacyTests.testLegacyAnswer()
+	printsAnAnswerInItsNote()
+	LegacyTests.testLegacyAnswer()
+	quotesACount()
+	quotesAnEnding()
+
+** TEST EXECUTE FAILED **
+
+Resolve Package Graph
+Testing started

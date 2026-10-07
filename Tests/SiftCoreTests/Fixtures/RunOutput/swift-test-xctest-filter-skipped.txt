@@ -1,0 +1,14 @@
+Building for debugging...
+Build complete! (0.16 secs)
+Test Suite 'Selected tests' started at 2000-01-01 12:00:00.920.
+Test Suite 'GadgetTests.xctest' started at 2000-01-01 12:00:00.920.
+Test Suite 'XT' started at 2000-01-01 12:00:00.920.
+Test Case '-[GadgetTests.XT testSkipsOutright]' started.
+/Users/dev/Gadget/Tests/GadgetTests/T.swift:4: -[GadgetTests.XT testSkipsOutright] : Test skipped - not here
+Test Case '-[GadgetTests.XT testSkipsOutright]' skipped (0.001 seconds).
+Test Suite 'XT' passed at 2000-01-01 12:00:00.921.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'GadgetTests.xctest' passed at 2000-01-01 12:00:00.921.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'Selected tests' passed at 2000-01-01 12:00:00.921.
+	 Executed 1 test, with 1 test skipped and 0 failures (0 unexpected) in 0.001 (0.002) seconds

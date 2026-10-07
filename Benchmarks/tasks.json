@@ -1,0 +1,100 @@
+{
+  "corpus": {
+    "repository": "this repository",
+    "commit": "27d3aca3",
+    "note": "The corpus is sift's own source at a pinned commit, materialised with git archive into a fresh one-commit repository per run. Task names must stay declared in the live tree, or the example-name gate fails on this file."
+  },
+  "answer_rule": "End your reply with exactly one line that starts with ANSWER: and holds only the answer in the form the task asks for.",
+  "tasks": [
+    {
+      "id": "def-adds-no-prompt",
+      "kind": "find definition",
+      "prompt": "Where is the method addsNoPrompt(legs:mode:) declared? Give the repository-relative file path and the line its declaration starts on, as path:line.",
+      "check": { "type": "answer_all", "patterns": ["Sources/SiftMCP/WrappedRunPermission\\.swift", ":86\\b"],
+                 "reference_answer": "Sources/SiftMCP/WrappedRunPermission.swift:86",
+                 "wrong_answer": "Sources/SiftMCP/WrappedRunPermission.swift:85",
+        "pinned_lines": [{"file": "Sources/SiftMCP/WrappedRunPermission.swift", "line": 86, "contains": "addsNoPrompt(legs"}] }
+    },
+    {
+      "id": "refs-token-estimate",
+      "kind": "find references",
+      "prompt": "List every file under Sources/ that refers to the type TokenEstimate, other than the file that declares it. Give file names only, comma-separated.",
+      "check": {
+        "type": "answer_set",
+        "expected": ["AnswerThenRead.swift", "DiffRenderer.swift", "InPlaceAnswer.swift", "ReportPage.swift", "TranscriptAudit.swift", "UsageReport.swift", "UsageScan.swift"],
+        "ignore": ["TokenEstimate.swift"]
+      }
+    },
+    {
+      "id": "callers-claude-settings",
+      "kind": "find callers",
+      "prompt": "List every file under Sources/ that calls the static function claudeSettings(environment:) declared on SiftPaths, other than the file that declares it. Give file names only, comma-separated.",
+      "check": {
+        "type": "answer_set",
+        "expected": ["AgentDetection.swift", "ClaudeInstallStep.swift", "DoctorClaude.swift", "InstallDryRun.swift", "InstallHookCommand.swift", "SiftUninstall.swift", "UninstallHookCommand.swift"],
+        "ignore": ["SiftPaths.swift", "RegisteredHooks.swift"]
+      }
+    },
+    {
+      "id": "type-wrapped-run-permission",
+      "kind": "understand a type",
+      "prompt": "What stored properties does the type WrappedRunPermission declare? Give their names only, comma-separated.",
+      "check": { "type": "answer_set", "expected": ["allowed", "vetoed"], "ignore": [] }
+    },
+    {
+      "id": "behaviour-no-prompt-modes",
+      "kind": "understand behaviour",
+      "prompt": "In which Claude Code permission modes does WrappedRunPermission treat a wrapped build as adding no permission prompt without consulting any allow rule? Give the mode names exactly as the code spells them, comma-separated.",
+      "check": { "type": "answer_set", "expected": ["auto", "bypassPermissions"], "ignore": [] }
+    },
+    {
+      "id": "string-rerun-costs-nothing",
+      "kind": "trace UI string",
+      "prompt": "Which function produces the text 'The identical re-run costs nothing.'? Give the function's name and the file it is in, as file: function.",
+      "check": { "type": "answer_all", "patterns": ["InPlaceAnswer\\.swift", "closingLine"],
+                 "reference_answer": "InPlaceAnswer.swift: closingLine",
+                 "wrong_answer": "InPlaceAnswer.swift: liveHeaderLine" }
+    },
+    {
+      "id": "string-nothing-stored",
+      "kind": "trace UI string",
+      "prompt": "Which function builds the answer header line that ends 'nothing stored to go stale'? Give the function's name and the file it is in, as file: function.",
+      "check": { "type": "answer_all", "patterns": ["Freshness\\.swift", "liveHeaderLine"],
+                 "reference_answer": "Freshness.swift: liveHeaderLine",
+                 "wrong_answer": "Freshness.swift: closingLine" }
+    },
+    {
+      "id": "fix-token-estimate-thousands",
+      "kind": "locate and fix",
+      "prompt": "Token counts between 1,000 and 9,999 are printed ten times too large: 4,500 tokens comes out as ~45.0k tokens instead of ~4.5k tokens. Find the bug in Sources/ and fix it. Do not change any test. When you are done, say what you changed.",
+      "inject": {
+        "file": "Sources/SiftCore/TokenEstimate.swift",
+        "find": "Double(count) / 1000)",
+        "replace": "Double(count) / 100)"
+      },
+      "check": { "type": "tests", "filter": "TokenEstimateTests", "unchanged": ["Tests"], "controls": { "clean": "pass", "injected": "fail", "verified_at": "27d3aca3" } }
+    },
+    {
+      "id": "fix-allow-rule-bare-command",
+      "kind": "locate and fix",
+      "prompt": "A Bash allow rule written as a command followed by a space and a star (for example 'swift test *') should also cover the bare command ('swift test'), as Claude Code's own matcher does, but sift no longer treats the bare command as covered. Find the bug in Sources/ and fix it. Do not change any test. When you are done, say what you changed.",
+      "inject": {
+        "file": "Sources/SiftMCP/WrappedRunPermission.swift",
+        "find": "command == String(pattern.dropLast(2))",
+        "replace": "command == String(pattern.dropLast(1))"
+      },
+      "check": { "type": "tests", "filter": "aTrailingWildcardAlsoMatchesTheBareCommand", "unchanged": ["Tests"], "controls": { "clean": "pass", "injected": "fail", "verified_at": "27d3aca3" } }
+    },
+    {
+      "id": "report-shell-word-failures",
+      "kind": "run tests and report",
+      "prompt": "Someone changed how a shell word is quoted. Run the tests that cover shell word quoting and report every failing test function by name. Do not change any file.",
+      "inject": {
+        "file": "Sources/SiftCore/ShellWord.swift",
+        "find": "#\"'\\''\"#.unicodeScalars",
+        "replace": "#\"\\'\"#.unicodeScalars"
+      },
+      "check": { "type": "answer_set", "expected": ["aPlainQuoteIsClosedEscapedAndReopened", "aQuoteAfterAPrependCharacterIsEscaped", "aQuoteBeforeACombiningMarkIsEscaped"], "filter": "ShellWord", "unchanged": ["Sources", "Tests"], "controls": { "clean": "pass", "injected": "fail", "verified_at": "27d3aca3" } }
+    }
+  ]
+}

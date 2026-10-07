@@ -1,0 +1,18 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project Gizmo.xcodeproj -scheme Gizmo -destination platform=macOS -derivedDataPath /Users/dev/Gizmo/DerivedData build
+
+Resolve Package Graph
+
+Fetching from https://example.com/sift-fixture-org/DepotKit
+skipping cache due to an error: Failed to clone repository https://example.com/sift-fixture-org/DepotKit:
+    Cloning into bare repository '/Users/dev/Library/Caches/org.swift.swiftpm/repositories/DepotKit-e5357a9c'...
+    fatal: repository 'https://example.com/sift-fixture-org/DepotKit/' not found
+Fetching from https://example.com/sift-fixture-org/DepotKit
+skipping cache due to an error: Failed to clone repository https://example.com/sift-fixture-org/DepotKit:
+    Cloning into bare repository '/Users/dev/Library/Caches/org.swift.swiftpm/repositories/DepotKit-e5357a9c'...
+    fatal: repository 'https://example.com/sift-fixture-org/DepotKit/' not found
+2000-01-01 12:00:00.257 xcodebuild[65610:31540279] Writing error result bundle to /var/folders/00/0000000000000000000000000000gn/T/ResultBundle_2000-01-01_12-00-0000.xcresult
+xcodebuild: error: Could not resolve package dependencies:
+  Failed to clone repository https://example.com/sift-fixture-org/DepotKit:
+    Cloning into bare repository '/Users/dev/Gizmo/DerivedData/SourcePackages/repositories/DepotKit-e5357a9c'...
+    fatal: repository 'https://example.com/sift-fixture-org/DepotKit/' not found

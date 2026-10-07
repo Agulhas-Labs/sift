@@ -1,0 +1,29 @@
+Building for debugging...
+Build complete! (1.16 secs)
+Test Suite 'Selected tests' started at 2000-01-01 12:00:00.346.
+Test Suite 'GadgetTests.xctest' started at 2000-01-01 12:00:00.346.
+Test Suite 'XT' started at 2000-01-01 12:00:00.346.
+Test Case '-[GadgetTests.XT testOne]' started.
+Test Case '-[GadgetTests.XT testOne]' passed (0.000 seconds).
+Test Case '-[GadgetTests.XT testSkipsOutright]' started.
+/Users/dev/Gadget/Tests/GadgetTests/T.swift:4: -[GadgetTests.XT testSkipsOutright] : Test skipped - not here
+Test Case '-[GadgetTests.XT testSkipsOutright]' skipped (0.000 seconds).
+Test Suite 'XT' passed at 2000-01-01 12:00:00.347.
+	 Executed 2 tests, with 1 test skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'GadgetTests.xctest' passed at 2000-01-01 12:00:00.347.
+	 Executed 2 tests, with 1 test skipped and 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'Selected tests' passed at 2000-01-01 12:00:00.347.
+	 Executed 2 tests, with 1 test skipped and 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'Selected tests' started at 2000-01-01 12:00:00.405.
+Test Suite 'BetaTests.xctest' started at 2000-01-01 12:00:00.406.
+Test Suite 'XT2' started at 2000-01-01 12:00:00.406.
+Test Case '-[BetaTests.XT2 testTwo]' started.
+Test Case '-[BetaTests.XT2 testTwo]' passed (0.000 seconds).
+Test Case '-[BetaTests.XT2 testOne]' started.
+Test Case '-[BetaTests.XT2 testOne]' passed (0.000 seconds).
+Test Suite 'XT2' passed at 2000-01-01 12:00:00.406.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'BetaTests.xctest' passed at 2000-01-01 12:00:00.406.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'Selected tests' passed at 2000-01-01 12:00:00.406.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds

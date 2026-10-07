@@ -1,0 +1,68 @@
+{
+  "common": {
+    "conversation_id": "668320d2-2fd8-4888-b33c-2a466fec86e7",
+    "generation_id": "490b90b7-a2ce-4c2c-bb76-cb77b125df2f",
+    "model": "claude-opus-4-7-thinking-max",
+    "model_id": "claude-opus-4-7",
+    "model_params": [{ "id": "thinking", "value": "true" }],
+    "cursor_version": "2.1.0",
+    "workspace_roots": ["/Users/someone/project"],
+    "user_email": null,
+    "transcript_path": null
+  },
+  "events": {
+    "sessionStart": {
+      "hook_event_name": "sessionStart",
+      "session_id": "668320d2-2fd8-4888-b33c-2a466fec86e7",
+      "is_background_agent": false,
+      "composer_mode": "agent"
+    },
+    "subagentStart": {
+      "hook_event_name": "subagentStart",
+      "subagent_id": "abc-123",
+      "subagent_type": "generalPurpose",
+      "task": "Explore the authentication flow",
+      "parent_conversation_id": "conv-456",
+      "tool_call_id": "tc-789",
+      "subagent_model": "claude-sonnet-4-20250514",
+      "is_parallel_worker": false,
+      "git_branch": "feature/auth"
+    },
+    "preToolUse": {
+      "hook_event_name": "preToolUse",
+      "tool_name": "Shell",
+      "tool_input": { "command": "swift build", "working_directory": "/Users/someone/project" },
+      "tool_use_id": "abc123",
+      "cwd": "/Users/someone/project",
+      "agent_message": "Building the package..."
+    },
+    "postToolUse": {
+      "hook_event_name": "postToolUse",
+      "tool_name": "Write",
+      "tool_input": { "file_path": "/Users/someone/project/Sources/App/Broken.swift" },
+      "tool_output": "{\"success\":true}",
+      "tool_use_id": "abc124",
+      "cwd": "/Users/someone/project",
+      "duration": 5432
+    },
+    "stop": {
+      "hook_event_name": "stop",
+      "status": "completed",
+      "loop_count": 0
+    },
+    "subagentStop": {
+      "hook_event_name": "subagentStop",
+      "subagent_type": "generalPurpose",
+      "status": "completed",
+      "task": "Explore the authentication flow",
+      "description": "Exploring auth flow",
+      "summary": "Read the login path.",
+      "duration_ms": 45000,
+      "message_count": 12,
+      "tool_call_count": 8,
+      "loop_count": 0,
+      "modified_files": ["Sources/App/Depot.swift"],
+      "agent_transcript_path": "/Users/someone/.cursor/transcripts/subagent.txt"
+    }
+  }
+}

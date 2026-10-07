@@ -1,0 +1,12 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme Widget -destination platform=macOS -derivedDataPath /Users/dev/dd test -only-testing:WidgetTests
+
+ProcessProductPackaging
+
+error: Build input file cannot be found: '/Users/dev/Widget/Tests/WidgetTests/Gone.swift' (in target 'WidgetTests-product' from project 'Widget')
+
+Testing cancelled because the build failed.
+
+** TEST FAILED **
+
+Testing started

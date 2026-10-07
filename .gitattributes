@@ -1,0 +1,9 @@
+# Parallel agents all append their entry at the same anchor in the changelog, so every
+# concurrent branch collides there and the resolution is always the same one: keep both
+# entries. `union` is git's built-in driver for exactly that, and it costs a session the
+# hand-resolution each time it is missing — four of them in one round of six branches.
+#
+# It is right here because entries are appended whole and independently. A merge where two
+# sides genuinely rewrite the *same* paragraph will keep both versions rather than conflict,
+# which is visible in review; nothing else in the tree gets this treatment for that reason.
+CHANGELOG.md merge=union

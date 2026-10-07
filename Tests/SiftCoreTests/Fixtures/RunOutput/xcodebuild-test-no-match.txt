@@ -1,0 +1,78 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme Gadget-Package -destination platform=macOS -derivedDataPath .build-dd test "-only-testing:GadgetTests/Modern/aTrendIsRead"
+
+Resolve Package Graph
+2000-01-01 12:00:00.840 xcodebuild[2858:23709394] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  Gadget: /Users/dev/Gadget
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:DriverKit, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64_32, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64e.x1, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (2 targets)
+    Target 'GadgetTests-product' in project 'Gadget'
+        ➜ Explicit dependency on target 'Gadget' in project 'Gadget'
+    Target 'Gadget' in project 'Gadget' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk /Users/dev/Gadget/.build-dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache
+    cd /Users/dev/Gadget/.swiftpm/xcode
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -o /Users/dev/Gadget/.build-dd/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache
+
+PruneExplicitPrecompiledModules /Users/dev/Gadget/.build-dd/SDKExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/dev/Gadget/.build-dd/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/dev/Gadget/.build-dd/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+2000-01-01 12:00:01.445 xcodebuild[2858:23709477]  DVTAssertions: Warning in IDEFrameworks/IDEFoundation/Execution/LaunchSystem/IDELaunchSession.m:395
+Details:  setRunnablePIDWithDiagnostics:logSection:andCompletionHandler: called without a completion handler - blocking until diagnostics setup completes. Callers should migrate to using a completion handler for better performance.
+Object:   <IDELaunchSession: 0x600000000000>
+Method:   -setRunnablePIDWithDiagnostics:logSection:andCompletionHandler:
+Thread:   <NSThread: 0x600000000000>{number = 10, name = (null)}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+Test Suite 'Selected tests' started at 2000-01-01 12:00:01.685.
+Test Suite 'GadgetTests.xctest' started at 2000-01-01 12:00:01.686.
+Test Suite 'GadgetTests.xctest' passed at 2000-01-01 12:00:01.686.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'Selected tests' passed at 2000-01-01 12:00:01.686.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "Modern" started.
+✔ Suite "Modern" passed after 0.001 seconds.
+✔ Test run with 0 tests in 1 suite passed after 0.001 seconds.
+2000-01-01 12:00:02.024 xcodebuild[2858:23709394] [MT] IDETestOperationsObserverDebug: 0.611 elapsed -- Testing started completed.
+2000-01-01 12:00:02.024 xcodebuild[2858:23709394] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2000-01-01 12:00:02.024 xcodebuild[2858:23709394] [MT] IDETestOperationsObserverDebug: 0.611 sec, +0.611 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/dev/Gadget/.build-dd/Logs/Test/Test-Gadget-Package-2000.01.01_12-00-00-+0000.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started

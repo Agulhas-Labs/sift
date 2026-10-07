@@ -1,0 +1,23 @@
+Building for debugging...
+[Planning deferred tasks]
+[1 / 5]
+Build complete! (0.78 secs)
+error: Process '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/libexec/swift/pm/swiftpm-testing-helper --test-bundle-path /Users/dev/Pallet/.build/out/Products/Debug/PalletTests.xctest/Contents/MacOS/PalletTests --filter topples --filter testStacks --event-stream-version 0 --event-stream-output-path /Users/dev/Pallet/st.jsonl /Users/dev/Pallet/.build/out/Products/Debug/PalletTests.xctest/Contents/MacOS/PalletTests --testing-library swift-testing' exited with unexpected signal code 5
+Test Suite 'Selected tests' started at 2000-01-01 12:00:00.363.
+Test Suite 'PalletTests.xctest' started at 2000-01-01 12:00:00.364.
+Test Suite 'PalletTests' started at 2000-01-01 12:00:00.364.
+Test Case '-[PalletTests.PalletTests testStacks]' started.
+Test Case '-[PalletTests.PalletTests testStacks]' passed (0.000 seconds).
+Test Suite 'PalletTests' passed at 2000-01-01 12:00:00.365.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'PalletTests.xctest' passed at 2000-01-01 12:00:00.365.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+Test Suite 'Selected tests' passed at 2000-01-01 12:00:00.365.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.002) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test topples() started.
+PalletTests/Stacking.swift:4: Fatal error: Unexpectedly found nil while unwrapping an Optional value
+Note: Some test targets reported failures:
+  - PalletTests (Swift Testing)

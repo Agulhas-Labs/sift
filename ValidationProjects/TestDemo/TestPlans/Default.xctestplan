@@ -1,0 +1,45 @@
+{
+  "configurations" : [
+    {
+      "id" : "9C6C1D9F-8B0E-4F1E-9B0A-000000000001",
+      "name" : "Test Scheme Configuration",
+      "options" : {
+        "codeCoverage" : false
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:TestDemo.xcodeproj",
+        "identifier" : "30E159EF2CB40FA2B292CE42",
+        "name" : "DemoUnitTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:TestDemo.xcodeproj",
+        "identifier" : "03397CF99FCE55C4B1EAEA5B",
+        "name" : "DemoLogicTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:TestDemo.xcodeproj",
+        "identifier" : "5F519BD6D84CEF669E3B3856",
+        "name" : "Demo Spaced Tests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:TestDemo.xcodeproj",
+        "identifier" : "0550498C3AFC405FE3702598",
+        "name" : "DemoUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

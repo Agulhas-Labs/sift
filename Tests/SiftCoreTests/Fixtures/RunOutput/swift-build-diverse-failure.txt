@@ -1,0 +1,146 @@
+Building for debugging...
+[0/2] Write sources
+[1/2] Write swift-version--58304C5D6DBC2206.txt
+[3/11] Compiling Motley E.swift
+/Users/dev/Motley/Sources/Motley/E.swift:1:36: error: cannot assign to value: 'y' is a 'let' constant
+1 | public func epsilon() { let y = 1; y = 2; _ = y }
+  |                         |          `- error: cannot assign to value: 'y' is a 'let' constant
+  |                         `- note: change 'let' to 'var' to make it mutable
+2 | 
+[4/11] Compiling Motley H.swift
+/Users/dev/Motley/Sources/Motley/H.swift:2:36: error: incorrect argument label in call (have 'b:', expected 'a:')
+1 | public func kappa(a: Int) -> Int { a }
+2 | public func lambda() -> Int { kappa(b: 1) }
+  |                                    `- error: incorrect argument label in call (have 'b:', expected 'a:')
+3 | 
+[5/11] Compiling Motley C.swift
+/Users/dev/Motley/Sources/Motley/C.swift:1:15: error: type 'Gamma' does not conform to protocol 'Comparable'
+1 | public struct Gamma: Comparable {}
+  |               |- error: type 'Gamma' does not conform to protocol 'Comparable'
+  |               |- note: automatic synthesis of 'Comparable' is not supported for struct declarations
+  |               `- note: add stubs for conformance
+2 | 
+
+Swift.FloatingPoint.<:2:20: note: candidate would match if 'Gamma' conformed to 'FloatingPoint'
+1 | protocol FloatingPoint {
+2 | public static func < (lhs: Self, rhs: Self) -> Bool}
+  |                    `- note: candidate would match if 'Gamma' conformed to 'FloatingPoint'
+3 | 
+
+Swift.BinaryInteger.<:2:20: note: candidate would match if 'Gamma' conformed to 'BinaryInteger'
+1 | protocol BinaryInteger {
+2 | public static func < <Other>(lhs: Self, rhs: Other) -> Bool where Other : BinaryInteger}
+  |                    `- note: candidate would match if 'Gamma' conformed to 'BinaryInteger'
+3 | 
+
+Swift._Pointer.<:2:20: note: candidate would match if 'Gamma' conformed to '_Pointer'
+1 | protocol _Pointer {
+2 | public static func < (lhs: Self, rhs: Self) -> Bool}
+  |                    `- note: candidate would match if 'Gamma' conformed to '_Pointer'
+3 | 
+
+Swift._Pointer.<:2:31: note: candidate would match if 'Gamma' conformed to '_Pointer'
+1 | protocol _Pointer {
+2 | @inlinable public static func < <Other>(lhs: Self, rhs: Other) -> Bool where Other : _Pointer}
+  |                               `- note: candidate would match if 'Gamma' conformed to '_Pointer'
+3 | 
+
+Swift.Strideable.<:2:31: note: candidate would match if 'Gamma' conformed to 'Strideable'
+1 | protocol Strideable {
+2 | @inlinable public static func < (x: Self, y: Self) -> Bool}
+  |                               `- note: candidate would match if 'Gamma' conformed to 'Strideable'
+3 | 
+
+Swift.StringProtocol.<:2:31: note: candidate would match if 'Gamma' conformed to 'StringProtocol'
+1 | protocol StringProtocol {
+2 | @inlinable public static func < <RHS>(lhs: Self, rhs: RHS) -> Bool where RHS : StringProtocol}
+  |                               `- note: candidate would match if 'Gamma' conformed to 'StringProtocol'
+3 | 
+
+Swift.Comparable.<:2:13: note: protocol requires function '<' with type '(Gamma, Gamma) -> Bool'
+1 | protocol Comparable {
+2 | static func < (lhs: Self, rhs: Self) -> Bool}
+  |             `- note: protocol requires function '<' with type '(Gamma, Gamma) -> Bool'
+3 | 
+[6/11] Compiling Motley G.swift
+/Users/dev/Motley/Sources/Motley/G.swift:2:35: error: cannot convert value of type 'String' to expected argument type '[Int]'
+1 | public func theta(_ values: [Int]) -> Int { values.reduce(0, +) }
+2 | public func iota() -> Int { theta("nope") }
+  |                                   `- error: cannot convert value of type 'String' to expected argument type '[Int]'
+3 | 
+[7/11] Compiling Motley F.swift
+/Users/dev/Motley/Sources/Motley/F.swift:2:21: error: errors thrown from here are not handled
+1 | public func zeta() throws {}
+2 | public func eta() { try zeta() }
+  |                     `- error: errors thrown from here are not handled
+3 | 
+error: emit-module command failed with exit code 1 (use -v to see invocation)
+[8/11] Emitting module Motley
+/Users/dev/Motley/Sources/Motley/A.swift:1:25: error: cannot convert value of type 'String' to specified type 'Int'
+1 | public let alpha: Int = "not a number"
+  |                         `- error: cannot convert value of type 'String' to specified type 'Int'
+2 | 
+
+/Users/dev/Motley/Sources/Motley/C.swift:1:15: error: type 'Gamma' does not conform to protocol 'Comparable'
+1 | public struct Gamma: Comparable {}
+  |               |- error: type 'Gamma' does not conform to protocol 'Comparable'
+  |               |- note: automatic synthesis of 'Comparable' is not supported for struct declarations
+  |               `- note: add stubs for conformance
+2 | 
+
+Swift.FloatingPoint.<:2:20: note: candidate would match if 'Gamma' conformed to 'FloatingPoint'
+1 | protocol FloatingPoint {
+2 | public static func < (lhs: Self, rhs: Self) -> Bool}
+  |                    `- note: candidate would match if 'Gamma' conformed to 'FloatingPoint'
+3 | 
+
+Swift.BinaryInteger.<:2:20: note: candidate would match if 'Gamma' conformed to 'BinaryInteger'
+1 | protocol BinaryInteger {
+2 | public static func < <Other>(lhs: Self, rhs: Other) -> Bool where Other : BinaryInteger}
+  |                    `- note: candidate would match if 'Gamma' conformed to 'BinaryInteger'
+3 | 
+
+Swift._Pointer.<:2:20: note: candidate would match if 'Gamma' conformed to '_Pointer'
+1 | protocol _Pointer {
+2 | public static func < (lhs: Self, rhs: Self) -> Bool}
+  |                    `- note: candidate would match if 'Gamma' conformed to '_Pointer'
+3 | 
+
+Swift._Pointer.<:2:31: note: candidate would match if 'Gamma' conformed to '_Pointer'
+1 | protocol _Pointer {
+2 | @inlinable public static func < <Other>(lhs: Self, rhs: Other) -> Bool where Other : _Pointer}
+  |                               `- note: candidate would match if 'Gamma' conformed to '_Pointer'
+3 | 
+
+Swift.Strideable.<:2:31: note: candidate would match if 'Gamma' conformed to 'Strideable'
+1 | protocol Strideable {
+2 | @inlinable public static func < (x: Self, y: Self) -> Bool}
+  |                               `- note: candidate would match if 'Gamma' conformed to 'Strideable'
+3 | 
+
+Swift.StringProtocol.<:2:31: note: candidate would match if 'Gamma' conformed to 'StringProtocol'
+1 | protocol StringProtocol {
+2 | @inlinable public static func < <RHS>(lhs: Self, rhs: RHS) -> Bool where RHS : StringProtocol}
+  |                               `- note: candidate would match if 'Gamma' conformed to 'StringProtocol'
+3 | 
+
+Swift.Comparable.<:2:13: note: protocol requires function '<' with type '(Gamma, Gamma) -> Bool'
+1 | protocol Comparable {
+2 | static func < (lhs: Self, rhs: Self) -> Bool}
+  |             `- note: protocol requires function '<' with type '(Gamma, Gamma) -> Bool'
+3 | 
+[9/11] Compiling Motley B.swift
+/Users/dev/Motley/Sources/Motley/B.swift:1:22: error: cannot find 'undefinedSymbol' in scope
+1 | public func beta() { undefinedSymbol() }
+  |                      `- error: cannot find 'undefinedSymbol' in scope
+2 | 
+[10/11] Compiling Motley A.swift
+/Users/dev/Motley/Sources/Motley/A.swift:1:25: error: cannot convert value of type 'String' to specified type 'Int'
+1 | public let alpha: Int = "not a number"
+  |                         `- error: cannot convert value of type 'String' to specified type 'Int'
+2 | 
+[11/11] Compiling Motley D.swift
+/Users/dev/Motley/Sources/Motley/D.swift:1:33: error: cannot convert return expression of type 'Int' to return type 'String'
+1 | public func delta() -> String { 42 }
+  |                                 `- error: cannot convert return expression of type 'Int' to return type 'String'
+2 | 

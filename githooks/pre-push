@@ -1,0 +1,220 @@
+#!/bin/sh
+#
+# pre-push: the test suite must pass before anything leaves this machine, and nothing in the working
+# tree may name the machine, its owner, or the other projects on it.
+
+set -e
+
+# git feeds this hook one line per pushed ref on stdin: "<local ref> <local sha> <remote ref> <remote
+# sha>". A ref being deleted carries an all-zero local sha (40 zeros for SHA-1, 64 for SHA-256) and no
+# commits — so a push that only deletes refs (`git push origin --delete <branch>`) has nothing for
+# either gate to check. Read it before anything else: it is consumed once, in full, right here.
+saw_ref=false
+all_deletions=true
+updates=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+    saw_ref=true
+    # A deletion's local sha is all zeros, and nothing else — a blank or short line leaves it empty,
+    # which `*[!0]*` never matches (there is no character in "" for `[!0]` to test), so an empty sha
+    # counted as a deletion without this case naming it explicitly.
+    case "$local_sha" in
+        "" | *[!0]*)
+            all_deletions=false
+            # Kept for the checkout-matches-push gate below, which needs every non-deletion ref's
+            # sha once the gates are about to run — stdin is a pipe, read once here and gone.
+            updates="$updates$local_ref $local_sha
+"
+            ;;
+    esac
+done
+
+# Only when every ref named is a deletion — a single update, or a deletion mixed with an update, still
+# publishes something and runs both gates below. Empty stdin (no refs read at all) is the conservative
+# case and also runs them.
+if [ "$saw_ref" = true ] && [ "$all_deletions" = true ]; then
+    echo "Nothing is being published — every ref is a deletion. Skipping swift test and the privacy gate."
+    exit 0
+fi
+
+# git opens its connection to the remote *before* it runs this hook, and holds it idle while the gates
+# below run — seconds where sift answers from its ledger, minutes where the suite runs here (bare, or with
+# SIFT_PRE_PUSH_RUN=1). If that connection closes meanwhile, a hook that passes is not enough: git writes
+# the push into a pipe nobody reads, dies of SIGPIPE, and exits 141 with not one line said, the remote
+# unmoved. Nothing in here can be what died — git runs its hooks with
+# SIGPIPE ignored, so no stage of any pipe below can be killed by it.
+#
+# So the processes git had started when this hook began — its transport: `ssh`, a remote helper, a local
+# `receive-pack` — are noted here and looked at again once both gates have passed. One that has exited is a
+# push that cannot land, and the hook says so rather than handing git a pass it will die acting on. Only
+# when the parent is git: run by hand or from a test, the parent's other children are nobody's transport.
+hook_started=$(date +%s)
+transport=""
+case "$(ps -o comm= -p "$PPID" 2>/dev/null || true)" in
+    git | */git)
+        transport="$(ps -A -o pid= -o ppid= -o stat= | awk -v parent="$PPID" -v self="$$" \
+            '$2 == parent && $1 != self && $3 !~ /^Z/ { print $1 }')"
+        ;;
+esac
+
+cd "$(git rev-parse --show-toplevel)"
+
+# git exports GIT_DIR, GIT_INDEX_FILE and friends into every hook, and a child process
+# inherits them. The suite shells out to `git` inside temporary repositories it creates,
+# so a leaked GIT_DIR points all of those commands at *this* repository instead: the run
+# fails on lock files it did not make, and — because `git commit` then commits against
+# the real gitdir — it lands "seed" commits on the branch being pushed and writes the
+# fixtures' `user.name` into the repository config. Resolve the toplevel first, then
+# hand `swift test` an environment with no repository in it.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR \
+  GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_QUARANTINE_PATH \
+  GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+
+# Both gates below run over this checkout's working tree, not over the commits named on stdin — so
+# they prove something only when the tree they run over *is* the commit being pushed. It happened
+# otherwise once: a push of a commit was refused on a red suite, an uncommitted fix followed in the
+# same worktree, and the retried push of that same commit ran the gates over the now-green working
+# tree and let it through, though the commit's own tree still failed. Refuse before either gate runs
+# rather than prove nothing about what leaves the machine.
+head_sha="$(git rev-parse HEAD)"
+head_short="$(printf '%s' "$head_sha" | cut -c1-8)"
+printf '%s' "$updates" | while IFS=' ' read -r local_ref local_sha; do
+    [ -z "$local_ref" ] && continue
+    # git hands this hook the *ref's own* object, and for an annotated tag that is the tag object, not
+    # the commit it names — `git push origin v1` and `--follow-tags` would else be refused however the
+    # checkout stands, since a tag's sha never equals HEAD's. Peel to the commit before comparing; a
+    # plain commit sha peels to itself, and an object this checkout does not hold peels to nothing,
+    # which still fails the comparison below rather than passing on an empty string.
+    local_commit="$(git rev-parse --verify --quiet "$local_sha^{commit}" || true)"
+    if [ "$local_commit" != "$head_sha" ]; then
+        local_short="$(printf '%s' "$local_sha" | cut -c1-8)"
+        echo "error: $local_ref pushes $local_short but this checkout is at $head_short: the gates run over the checkout, so they would prove nothing about what is pushed. Push from the worktree that has it checked out."
+        exit 1
+    fi
+done
+
+# The working tree must match HEAD too — tracked and untracked alike — or the gates below still run
+# over bytes that are not what is being pushed. `--untracked-files=all` lists every untracked file
+# individually rather than folding a directory into one line, so the count below is exact; ignored
+# files never appear in `git status` output at all, so `.build/` and `.sift/` never count against this.
+status="$(git status --porcelain --untracked-files=all)"
+if [ -n "$status" ]; then
+    # `grep -c` exits 1 when it counts zero lines — under `set -e` that would kill the hook mid-count
+    # rather than let it report "0 changed" or "0 untracked", so each count is allowed to fail quietly.
+    changed=$(printf '%s\n' "$status" | grep -vc '^??' || true)
+    untracked=$(printf '%s\n' "$status" | grep -c '^??' || true)
+    paths=$(printf '%s\n' "$status" | cut -c4- | head -n 3 | paste -sd, -)
+    echo "error: the working tree differs from HEAD ($changed changed, $untracked untracked): $paths. The suite runs over the working tree, so it would prove nothing about $head_short. Commit them (or set them aside) and push again."
+    exit 1
+fi
+
+# Through `sift run` where this machine has it: the suite prints some six thousand lines, every one of them
+# re-read by whichever agent pushed, and the wrapper answers with the failures and the tallies instead — the
+# exit code passed through exactly, the whole log kept under .sift/runs/ and named in the answer. A clone
+# with no sift installed runs the suite bare, as before. SIFT_PRE_PUSH_RAW=1 asks for the bare run.
+#
+# And where sift is installed, never inside the push unless asked. The verify loop this repo asks for ends
+# in `sift run -- swift test`, so the tree being pushed has, most of the time, just been proved over the same
+# bytes, and the hook only asks the ledger. When the ledger does not answer, the tree changed after the
+# run (a changelog line, a lint follow-up, a restored patch) or the run never happened, and running the
+# suite here is the wrong fix: git opened its connection to the remote before this hook started, and a
+# suite of eight to eleven minutes outlives it — three pushes in one day ran it to green and then died with
+# `connection closed by remote host`, every retry answering from the ledger in seconds. So an unproved tree
+# is refused at once, with the command that proves it and what `sift run --proved` said about why the
+# ledger did not answer. SIFT_PRE_PUSH_RUN=1 runs the suite inside the push instead, as it once did.
+#
+# `sift run --proved` answers from the ledger `sift run` writes: it runs nothing, prints the run it trusts
+# and when that run happened, and exits 0 only when this command has passed on this tree's *content* under
+# this toolchain within the hour, in whichever worktree of this repository that run happened: the ledger is
+# shared under the git common directory. Everything else splits into two exit codes, because they call for
+# different action here: exit 1 is a tree with no record of a passing run — a changed file, an untracked
+# file, a different toolchain, an aged record — which running the suite fixes, so the push is refused with
+# that advice. Exit 2 is a question the ledger could not even be put — switched off, no repository, no tree
+# key, no toolchain — which running the suite again cannot fix, so the suite runs inside the push instead,
+# as it does for the opt-in below. A red run records nothing at all.
+echo "==== swift test ===="
+#
+# The flag is looked for in `sift run`'s own help before it is used. A binary older than the ledger
+# takes everything after `run` as the command to wrap, so `--proved` would be handed to the wrapped
+# command — `/usr/bin/env: illegal option -- p`. Such a binary keeps no ledger either, so nothing it could
+# be asked would ever answer, and it runs the suite inside the push as every sift did before the ledger.
+if [ -z "${SIFT_PRE_PUSH_RAW:-}" ] && command -v sift >/dev/null 2>&1; then
+    if sift run --help 2>/dev/null | grep -q -- "--proved"; then
+        # Captured rather than streamed, so the refusal can lead and the ledger's explanation follow it.
+        # The assignment sits in its own `if`, not under `set -e` directly, so a nonzero exit is read
+        # rather than killing the hook; the `else` runs before anything else touches $?.
+        if proved_answer="$(sift run --proved -- swift test 2>&1)"; then
+            proved_status=0
+        else
+            proved_status=$?
+        fi
+        case "$proved_status" in
+            0)
+                printf '%s\n' "$proved_answer"
+                ;;
+            2)
+                printf '%s\n' "$proved_answer"
+                sift run -- swift test
+                ;;
+            *)
+                if [ -n "${SIFT_PRE_PUSH_RUN:-}" ]; then
+                    printf '%s\n' "$proved_answer"
+                    sift run -- swift test
+                else
+                    echo "no proved run for this tree — run  sift run -- swift test  then push again (the push answers from that run in seconds; or SIFT_PRE_PUSH_RUN=1 to run the suite in this push)"
+                    printf '%s\n' "$proved_answer"
+                    exit 1
+                fi
+                ;;
+        esac
+    else
+        sift run -- swift test
+    fi
+else
+    swift test
+fi
+
+# The suite above checks the generic terms and the builder's identity over the tracked tree; it cannot
+# check the *names* of the other projects on this machine, because those are discovered from the
+# checkout's neighbours and are deliberately not committed anywhere. This is the only check that knows
+# them, and outside this hook it runs only when someone cuts a bundle, over the bundle alone.
+#
+# It takes seconds over the tree, against minutes for the suite above, so it goes on every push rather
+# than on a memory of running it before publishing. The tree it reads is what git tracks plus what it neither
+# tracks nor ignores: a leak does not get to wait for a `git add`, and the suite above — which is
+# tracked-only — is not what would catch it if it did.
+#
+# Exit 2 is the gate saying it found no sibling projects to learn names from — a clone on a machine
+# that holds only this repository, where it would pass whatever it was given. That is a report about
+# the machine and not about the push, so it is said out loud and the push continues.
+#
+# That reading is only sound because the gate anchors its search to the *primary* checkout. Anchored
+# anywhere else — a linked worktree, whose neighbours are other worktrees, or a bare repository — the
+# search would come back empty and report the same 2 with the other projects sitting right beside it,
+# and this branch would let the push through. Anything the gate cannot anchor is a 1, which stops here
+# rather than being read as a fact about the machine.
+echo "==== privacy gate ===="
+set +e
+sh Distribution/verify-tree.sh
+gate=$?
+set -e
+if [ "$gate" -eq 2 ]; then
+    echo "  Skipped: nothing to compare against here. Publishing must be gated from the working checkout."
+elif [ "$gate" -ne 0 ]; then
+    exit "$gate"
+fi
+
+# The transport noted at the top, looked at again: gone, or a zombie git has not reaped yet, is closed.
+# A pid reused by some other process reads as open — the direction that says nothing it cannot prove.
+closed=false
+for pid in $transport; do
+    case "$(ps -o stat= -p "$pid" 2>/dev/null || true)" in
+        "" | Z*) closed=true ;;
+    esac
+done
+if [ "$closed" = true ]; then
+    echo "error: both gates passed, but the connection git opened to the remote closed while they ran"
+    echo "  ($(($(date +%s) - hook_started))s), so nothing was pushed. git will likely exit 141 (SIGPIPE) writing to it."
+    echo "  Push again. Where sift is installed the suite's green run is recorded, and the retry answers from it in seconds;"
+    echo "  proving the tree before pushing (sift run -- swift test), without SIFT_PRE_PUSH_RUN=1, keeps the suite out of the push."
+    exit 1
+fi

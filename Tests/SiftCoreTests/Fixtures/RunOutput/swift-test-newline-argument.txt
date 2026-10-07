@@ -1,0 +1,42 @@
+Building for debugging...
+[Planning deferred tasks]
+[27 / 50]
+[40 / 55] KettleTests-product
+[40 / 55] Kettle
+[45 / 56] KettleTests-product
+[54 / 76]
+[58 / 76]
+[59 / 76]
+[62 / 76]
+[70 / 76] KettleTests-product
+[72 / 76] KettleTests-product
+Build complete! (2.30 secs)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.796.
+Test Suite 'All tests' passed at 2000-01-01 12:00:00.797.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test boils() started.
+◇ Test steeps(leaf:) started.
+◇ Test case passing 1 argument leaf → "a
+b" to steeps(leaf:) started.
+◇ Test case passing 1 argument leaf → "c" to steeps(leaf:) started.
+✘ Test steeps(leaf:) recorded an issue with 1 argument leaf → "c" at KettleTests.swift:6:5: Expectation failed: leaf.isEmpty
+↳ leaf.isEmpty → false
+↳   leaf → "c"
+↳   isEmpty → false
+✘ Test boils() recorded an issue at KettleTests.swift:10:5: Expectation failed: boil() == 2
+↳ boil() == 2 → false
+↳   boil() → 1
+✘ Test steeps(leaf:) recorded an issue with 1 argument leaf → "a
+b" at KettleTests.swift:6:5: Expectation failed: leaf.isEmpty
+↳ leaf.isEmpty → false
+↳   leaf → "a
+    b"
+↳   isEmpty → false
+✘ Test boils() failed after 0.001 seconds with 1 issue.
+✘ Test steeps(leaf:) with 2 test cases failed after 0.001 seconds with 2 issues.
+✘ Test run with 2 tests in 0 suites failed after 0.001 seconds with 3 issues.
+Note: Some test targets reported failures:
+  - KettleTests (Swift Testing)

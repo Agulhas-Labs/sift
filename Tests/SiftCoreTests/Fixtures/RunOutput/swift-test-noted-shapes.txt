@@ -1,0 +1,72 @@
+Building for debugging...
+[Planning deferred tasks]
+[4 / 21]
+[6 / 15] AlphaTests-product
+[14 / 16] AlphaTests-product
+[21 / 30] BetaTests-product
+[29 / 31] BetaTests-product
+Build complete! (1.45 secs)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.129.
+Test Suite 'BetaTests.xctest' started at 2000-01-01 12:00:00.130.
+Test Suite 'LegacyTests' started at 2000-01-01 12:00:00.130.
+Test Case '-[BetaTests.LegacyTests testLegacyAnswer]' started.
+/Users/dev/Noted/Tests/BetaTests/LegacyTests.swift:6: error: -[BetaTests.LegacyTests testLegacyAnswer] : XCTAssertEqual failed: ("nope") is not equal to ("ok")
+Test Case '-[BetaTests.LegacyTests testLegacyAnswer]' failed (0.031 seconds).
+Test Suite 'LegacyTests' failed at 2000-01-01 12:00:00.161.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.031 (0.031) seconds
+Test Suite 'BetaTests.xctest' failed at 2000-01-01 12:00:00.161.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.031 (0.031) seconds
+Test Suite 'All tests' failed at 2000-01-01 12:00:00.161.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.031 (0.032) seconds
+Test Suite 'All tests' started at 2000-01-01 12:00:00.228.
+Test Suite 'AlphaTests.xctest' started at 2000-01-01 12:00:00.229.
+Test Suite 'LegacyTests' started at 2000-01-01 12:00:00.229.
+Test Case '-[AlphaTests.LegacyTests testLegacyAnswer]' started.
+/Users/dev/Noted/Tests/AlphaTests/LegacyTests.swift:6: error: -[AlphaTests.LegacyTests testLegacyAnswer] : XCTAssertEqual failed: ("nope") is not equal to ("ok")
+Test Case '-[AlphaTests.LegacyTests testLegacyAnswer]' failed (0.031 seconds).
+Test Suite 'LegacyTests' failed at 2000-01-01 12:00:00.260.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.031 (0.031) seconds
+Test Suite 'AlphaTests.xctest' failed at 2000-01-01 12:00:00.260.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.031 (0.031) seconds
+Test Suite 'All tests' failed at 2000-01-01 12:00:00.260.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.031 (0.032) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test printsAnAnswerInItsNote() started.
+✘ Test printsAnAnswerInItsNote() recorded an issue at BetaTests.swift:6:5: Expectation failed: Noted.answer == "ok"
+↳ the answer read:
+    nope
+    still nope
+↳ Noted.answer == "ok" → false
+↳   Noted.answer → "nope"
+✘ Test printsAnAnswerInItsNote() failed after 0.001 seconds with 1 issue.
+✘ Test run with 1 test in 0 suites failed after 0.001 seconds with 1 issue.
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test anOrdinaryPass() started.
+◇ Test quotesAnEnding() started.
+◇ Test quotesACount() started.
+✔ Test anOrdinaryPass() passed after 0.001 seconds.
+✘ Test quotesAnEnding() recorded an issue at AlphaTests.swift:11:5: Expectation failed: Noted.answer == "ok"
+↳ head
+    Test ghost() failed after 0.001 seconds with 1 issue.
+    Test phantom() passed after 0.001 seconds.
+  tail
+↳ Noted.answer == "ok" → false
+↳   Noted.answer → "nope"
+✘ Test quotesACount() recorded an issue at AlphaTests.swift:6:5: Expectation failed: Noted.answer == "ok"
+↳ head
+    Executed 3 tests, with 2 failures (0 unexpected) in 0.100 (0.100) seconds
+  tail
+↳ Noted.answer == "ok" → false
+↳   Noted.answer → "nope"
+✘ Test quotesAnEnding() failed after 0.001 seconds with 1 issue.
+✘ Test quotesACount() failed after 0.001 seconds with 1 issue.
+✘ Test run with 3 tests in 0 suites failed after 0.001 seconds with 2 issues.
+Note: Some test targets reported failures:
+  - BetaTests (XCTest)
+  - AlphaTests (XCTest)
+  - BetaTests (Swift Testing)
+  - AlphaTests (Swift Testing)

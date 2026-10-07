@@ -1,0 +1,52 @@
+{
+  "corpus": {
+    "label": "corpus-2",
+    "repository": "/path/to/private/repository",
+    "commit": "0000000",
+    "paths": ["App", "Package"],
+    "warm": null,
+    "index_build": ["/bin/sh", "-c", "xcodebuild -scheme <the scheme> -destination 'generic/platform=iOS Simulator' ARCHS=arm64 -derivedDataPath \"$BENCH_DERIVED_DATA\" build-for-testing"],
+    "add_files": {"build.log": "build-with-one-error.log"},
+    "note": "A private corpus's tasks file lives outside this repository and is passed with --tasks; only its generic ids reach a results table. warm null: the corpus is not built, so every check is answer-based or restored. index_build: built once for its index store only (null or absent for none), so arm B answers callers from the store."
+  },
+  "preamble": "Text put before every prompt, e.g. that the repository cannot be built here.",
+  "answer_rule": "End your reply with exactly one line that starts with ANSWER: and holds only the answer in the form the task asks for.",
+  "tasks": [
+    {
+      "id": "callers-cross-module",
+      "kind": "find callers",
+      "prompt": "List every file that calls <the function>, other than the file that declares it. Give file names only, comma-separated.",
+      "check": {"type": "answer_set", "expected": ["caller_one.swift", "caller_two_tests.swift"], "ignore": ["declaring_file.swift"]}
+    },
+    {
+      "id": "rename-sweep",
+      "kind": "rename sweep",
+      "prompt": "List every file whose text contains <the name> as a whole word. Give repository-relative paths, comma-separated.",
+      "check": {"type": "answer_set", "match": "path", "unchanged": ["App", "Package"],
+                "expected": ["Package/Sources/one.swift", "Package/Resources/strings.xcstrings"], "ignore": []}
+    },
+    {
+      "id": "string-trace",
+      "kind": "trace UI string",
+      "prompt": "Which function decides to show '<the sentence>'? Give file: function.",
+      "check": {"type": "answer_all", "patterns": ["producer_file\\.swift", "\\bfunction_name\\b"],
+                "reference_answer": "producer_file.swift: function_name", "wrong_answer": "strings_file.swift: other_name"}
+    },
+    {
+      "id": "fix-restored",
+      "kind": "locate and fix",
+      "prompt": "<The symptom>. Find the bug and fix it. Do not change any test.",
+      "inject": {"file": "Package/Sources/one.swift", "find": "a <= b ? .first : .second", "replace": "a <= b ? .second : .first"},
+      "check": {"type": "restored", "unchanged": ["Package/Tests"], "alternatives": ["a > b \\? \\.second : \\.first"]}
+    },
+    {
+      "id": "chain-1",
+      "kind": "chained long session",
+      "prompt": "(1) <first question> (2) <second question, needing the first> ... Answer all in order, separated by ' | '.",
+      "check": {"type": "answer_parts", "unchanged": ["App", "Package"],
+                "parts": [["\\bfirst_answer\\b"], ["(?i)\\bsecond\\b", "^(?!.*(?i:not_this))"]],
+                "reference_answer": "first_answer | second",
+                "wrong_answer": "first_answer | second, not_this"}
+    }
+  ]
+}

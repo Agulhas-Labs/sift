@@ -1,0 +1,63 @@
+{
+ "task": "callers-claude-settings",
+ "kind": "find callers",
+ "arm": "B",
+ "repeat": 1,
+ "position": 1,
+ "model": "claude-sonnet-5-5",
+ "effort": "medium",
+ "sift_version": "0.1.0",
+ "started_at": "2026-10-01T11:37:09.192802+00:00",
+ "wall_seconds": 7.7,
+ "exit_code": 0,
+ "timed_out": false,
+ "success": true,
+ "check_detail": "exact set",
+ "answer": "ClaudeInstallStep.swift, DoctorClaude.swift, InstallDryRun.swift, InstallHookCommand.swift, UninstallHookCommand.swift, AgentDetection.swift, SiftUninstall.swift",
+ "changed_files": [],
+ "controls": "n/a",
+ "valid": true,
+ "invalid_reasons": [],
+ "models": [
+  "claude-sonnet-5-5"
+ ],
+ "claude_code_version": "2.1.286",
+ "tokens": {
+  "uncached": 4,
+  "cache_read": 9726,
+  "cache_write": 10983,
+  "cache_write_5m": 0,
+  "cache_write_1h": 10983,
+  "cache_write_unsplit": 0,
+  "input_raw": 20713,
+  "input_weighted": 22942.6,
+  "output": 242
+ },
+ "cost_usd": 0.0483052,
+ "turns": 2,
+ "duration_ms": 6315,
+ "result_subtype": "success",
+ "is_error": false,
+ "sift_use": {
+  "servers": [
+   {
+    "name": "sift",
+    "status": "connected"
+   }
+  ],
+  "tools_listed": 4,
+  "mcp_calls": 1,
+  "bash_invocations": 0,
+  "hook_events": {
+   "SessionStart": 1,
+   "PreToolUse": 1,
+   "Stop": 1
+  }
+ },
+ "tool_calls": 1,
+ "final_reply": [
+  "Seven files under Sources/ call it, not counting SiftPaths.swift, which declares it. SiftPaths.swift line 100 is a getter inside that same file that also calls it.",
+  "",
+  "ANSWER: ClaudeInstallStep.swift, DoctorClaude.swift, InstallDryRun.swift, InstallHookCommand.swift, UninstallHookCommand.swift, AgentDetection.swift, SiftUninstall.swift"
+ ]
+}

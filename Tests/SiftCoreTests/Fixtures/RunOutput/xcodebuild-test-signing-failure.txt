@@ -1,0 +1,13 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -scheme Widget -destination platform=macOS -derivedDataPath /Users/dev/dd test -only-testing:WidgetTests
+
+CheckDependencies
+
+Signing for "WidgetTests" requires a development team. Select a development team in the Signing & Capabilities editor.
+error: Signing for "WidgetTests" requires a development team. Select a development team in the Signing & Capabilities editor. (in target 'WidgetTests-product' from project 'Widget')
+
+Testing cancelled because the build failed.
+
+** TEST FAILED **
+
+Testing started

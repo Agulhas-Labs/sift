@@ -1,0 +1,29 @@
+[0/1] Planning build
+Building for debugging...
+[0/4] Write sources
+[1/4] Write swift-version--58304C5D6DBC2206.txt
+[3/6] Emitting module MixedTests
+[4/6] Compiling MixedTests Modern.swift
+[4/6] Write Objects.LinkFileList
+[5/6] Linking MixedPackageTests
+Build complete! (0.48s)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.758.
+Test Suite 'MixedPackageTests.xctest' started at 2000-01-01 12:00:00.758.
+Test Suite 'LegacyTests' started at 2000-01-01 12:00:00.758.
+Test Case '-[MixedTests.LegacyTests testOldMath]' started.
+/Users/dev/Mixed/Tests/MixedTests/Legacy.swift:6: error: -[MixedTests.LegacyTests testOldMath] : XCTAssertEqual failed: ("6") is not equal to ("42")
+Test Case '-[MixedTests.LegacyTests testOldMath]' failed (0.032 seconds).
+Test Suite 'LegacyTests' failed at 2000-01-01 12:00:00.790.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.032 (0.032) seconds
+Test Suite 'MixedPackageTests.xctest' failed at 2000-01-01 12:00:00.790.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.032 (0.032) seconds
+Test Suite 'All tests' failed at 2000-01-01 12:00:00.790.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.032 (0.033) seconds
+􀟈  Test run started.
+􀄵  Testing Library Version: 1902
+􀄵  Target Platform: arm64e-apple-macos14.0
+􀟈  Suite ModernTests started.
+􀟈  Test doublingWorks() started.
+􁁛  Test doublingWorks() passed after 0.001 seconds.
+􁁛  Suite ModernTests passed after 0.001 seconds.
+􁁛  Test run with 1 test in 1 suite passed after 0.001 seconds.

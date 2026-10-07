@@ -1,0 +1,12 @@
+{
+  "name": "@agulhas-labs/sift",
+  "version": "@VERSION@",
+  "description": "Compressed, structurally accurate views of Swift code — a CLI and an MCP stdio server for AI-assisted development.",
+  "keywords": ["mcp", "modelcontextprotocol", "claude", "swift", "code-index", "ai"],
+  "homepage": "https://github.com/Agulhas-Labs/sift",
+  "license": "Apache-2.0",
+  "bin": { "sift": "bin/sift.js" },
+  "files": ["bin/sift.js", "LICENSE.txt", "README.md", "CHANGELOG.md"],
+  "optionalDependencies": { "@agulhas-labs/sift-darwin-arm64": "@VERSION@" },
+  "engines": { "node": ">=18" }
+}

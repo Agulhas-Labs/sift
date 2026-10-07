@@ -1,0 +1,14 @@
+--indent 4
+--ifdef no-indent
+--allman false
+--commas always
+--semicolons never
+--trimwhitespace always
+--modifierorder nonisolated,open,public,internal,fileprivate,private,private(set),fileprivate(set),internal(set),public(set),open(set),override,final,required,convenience,weak,unowned,lazy,dynamic,mutating,nonmutating,class,static
+--wraparguments before-first
+--wrapcollections before-first
+--swiftversion 6
+--header ignore
+
+# Off by project style: caseless namespaces are spelled `struct`, and doc comments are one paragraph per line.
+--disable enumNamespaces,wrapSingleLineComments

@@ -1,0 +1,59 @@
+Building for debugging...
+[0/6] Write sources
+[1/6] Write Widget-entitlement.plist
+[2/6] Write swift-version--58304C5D6DBC2206.txt
+[4/9] Compiling Widget Slow.swift
+0.54ms	/Users/dev/Widget/Sources/Widget/Slow.swift:2:17
+0.01ms	/Users/dev/Widget/Sources/Widget/Slow.swift:2:9	getter Widget.(file).Ledger.rates.getter@/Users/dev/Widget/Sources/Widget/Slow.swift:2:9
+0.01ms	/Users/dev/Widget/Sources/Widget/Slow.swift:2:9	setter Widget.(file).Ledger.rates.setter@/Users/dev/Widget/Sources/Widget/Slow.swift:2:9
+0.01ms	/Users/dev/Widget/Sources/Widget/Slow.swift:2:9	_modify accessor Widget.(file).Ledger.rates._modify accessor@/Users/dev/Widget/Sources/Widget/Slow.swift:2:9
+2.96ms	/Users/dev/Widget/Sources/Widget/Slow.swift:5:19
+0.02ms	/Users/dev/Widget/Sources/Widget/Slow.swift:6:16
+7.09ms	/Users/dev/Widget/Sources/Widget/Slow.swift:4:10	instance method Widget.(file).Ledger.total()@/Users/dev/Widget/Sources/Widget/Slow.swift:4:10
+0.27ms	/Users/dev/Widget/Sources/Widget/Slow.swift:10:29
+0.01ms	/Users/dev/Widget/Sources/Widget/Slow.swift:11:16
+0.35ms	/Users/dev/Widget/Sources/Widget/Slow.swift:9:10	instance method Widget.(file).Ledger.mixed()@/Users/dev/Widget/Sources/Widget/Slow.swift:9:10
+1.37ms	/Users/dev/Widget/Sources/Widget/Slow.swift:15:9
+1.61ms	/Users/dev/Widget/Sources/Widget/Slow.swift:14:10	instance method Widget.(file).Ledger.pick@/Users/dev/Widget/Sources/Widget/Slow.swift:14:10
+0.62ms	/Users/dev/Widget/Sources/Widget/Slow.swift:19:9
+0.87ms	/Users/dev/Widget/Sources/Widget/Slow.swift:18:10	instance method Widget.(file).Ledger.doubled()@/Users/dev/Widget/Sources/Widget/Slow.swift:18:10
+0.01ms	/Users/dev/Widget/Sources/Widget/Slow.swift:1:8	initializer Widget.(file).Ledger.init()@/Users/dev/Widget/Sources/Widget/Slow.swift:1:8
+0.02ms	/Users/dev/Widget/Sources/Widget/Slow.swift:23:34
+0.04ms	/Users/dev/Widget/Sources/Widget/Slow.swift:23:6	global function Widget.(file).box@/Users/dev/Widget/Sources/Widget/Slow.swift:23:6
+0.02ms	/Users/dev/Widget/Sources/Widget/Slow.swift:27:21
+2.49ms	/Users/dev/Widget/Sources/Widget/Slow.swift:29:13
+0.02ms	/Users/dev/Widget/Sources/Widget/Slow.swift:31:16
+0.07ms	/Users/dev/Widget/Sources/Widget/Slow.swift:28:18
+0.04ms	/Users/dev/Widget/Sources/Widget/Slow.swift:28:9
+0.01ms	/Users/dev/Widget/Sources/Widget/Slow.swift:28:9
+3.39ms	/Users/dev/Widget/Sources/Widget/Slow.swift:26:10	local function Widget.(file).outer().inner()@/Users/dev/Widget/Sources/Widget/Slow.swift:26:10
+0.02ms	/Users/dev/Widget/Sources/Widget/Slow.swift:33:17
+0.79ms	/Users/dev/Widget/Sources/Widget/Slow.swift:35:9
+0.01ms	/Users/dev/Widget/Sources/Widget/Slow.swift:37:12
+0.03ms	/Users/dev/Widget/Sources/Widget/Slow.swift:34:14
+0.03ms	/Users/dev/Widget/Sources/Widget/Slow.swift:34:5
+0.01ms	/Users/dev/Widget/Sources/Widget/Slow.swift:34:5
+4.66ms	/Users/dev/Widget/Sources/Widget/Slow.swift:25:6	global function Widget.(file).outer()@/Users/dev/Widget/Sources/Widget/Slow.swift:25:6
+[5/9] Emitting module Widget
+0.46ms	/Users/dev/Widget/Sources/Widget/Slow.swift:2:17
+0.81ms	/Users/dev/Widget/Sources/Widget/main.swift:1:14
+0.06ms	/Users/dev/Widget/Sources/Widget/main.swift:2:1
+0.05ms	/Users/dev/Widget/Sources/Widget/main.swift:3:1
+0.09ms	/Users/dev/Widget/Sources/Widget/main.swift:4:1
+0.03ms	/Users/dev/Widget/Sources/Widget/main.swift:5:1
+0.12ms	/Users/dev/Widget/Sources/Widget/main.swift:6:1
+0.02ms	/Users/dev/Widget/Sources/Widget/main.swift:7:1
+[6/9] Compiling Widget main.swift
+0.47ms	/Users/dev/Widget/Sources/Widget/Slow.swift:2:17
+0.80ms	/Users/dev/Widget/Sources/Widget/main.swift:1:14
+0.06ms	/Users/dev/Widget/Sources/Widget/main.swift:2:1
+0.04ms	/Users/dev/Widget/Sources/Widget/main.swift:3:1
+0.10ms	/Users/dev/Widget/Sources/Widget/main.swift:4:1
+0.03ms	/Users/dev/Widget/Sources/Widget/main.swift:5:1
+0.11ms	/Users/dev/Widget/Sources/Widget/main.swift:6:1
+0.02ms	/Users/dev/Widget/Sources/Widget/main.swift:7:1
+[6/9] Write Objects.LinkFileList
+[7/9] Linking Widget
+[8/9] Applying Widget
+Build complete! (0.50s)
+warning: '--build-system native' has been deprecated and will be removed in a future release; please report an issue at https://github.com/swiftlang/swift-package-manager/issues if you are unable to adopt the default build system.

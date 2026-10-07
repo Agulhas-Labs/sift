@@ -1,0 +1,20 @@
+Building for debugging...
+[1 / 5]
+Build complete! (0.55 secs)
+Test Suite 'Selected tests' started at 2000-01-01 12:00:00.791.
+Test Suite 'PalletTests.xctest' started at 2000-01-01 12:00:00.792.
+Test Suite 'PalletTests' started at 2000-01-01 12:00:00.792.
+Test Case '-[PalletTests.PalletTests testStacks]' started.
+Test Case '-[PalletTests.PalletTests testStacks]' passed (0.001 seconds).
+Test Suite 'PalletTests' passed at 2000-01-01 12:00:00.793.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'PalletTests.xctest' passed at 2000-01-01 12:00:00.793.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'Selected tests' passed at 2000-01-01 12:00:00.793.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.003) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test stacks() started.
+✔ Test stacks() passed after 0.001 seconds.
+✔ Test run with 1 test in 0 suites passed after 0.001 seconds.

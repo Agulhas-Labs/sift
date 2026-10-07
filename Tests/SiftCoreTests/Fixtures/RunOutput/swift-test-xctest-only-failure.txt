@@ -1,0 +1,20 @@
+[0/1] Planning build
+Building for debugging...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build complete! (0.09s)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.932.
+Test Suite 'MixedPackageTests.xctest' started at 2000-01-01 12:00:00.932.
+Test Suite 'LegacyTests' started at 2000-01-01 12:00:00.932.
+Test Case '-[MixedTests.LegacyTests testOldMath]' started.
+/Users/dev/Mixed/Tests/MixedTests/Legacy.swift:6: error: -[MixedTests.LegacyTests testOldMath] : XCTAssertEqual failed: ("6") is not equal to ("42")
+Test Case '-[MixedTests.LegacyTests testOldMath]' failed (0.006 seconds).
+Test Suite 'LegacyTests' failed at 2000-01-01 12:00:00.939.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.006 (0.006) seconds
+Test Suite 'MixedPackageTests.xctest' failed at 2000-01-01 12:00:00.939.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.006 (0.006) seconds
+Test Suite 'All tests' failed at 2000-01-01 12:00:00.939.
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.006 (0.007) seconds
+􀟈  Test run started.
+􀄵  Testing Library Version: 1902
+􀄵  Target Platform: arm64e-apple-macos14.0
+􁁛  Test run with 0 tests in 0 suites passed after 0.001 seconds.

@@ -1,0 +1,72 @@
+Building for debugging...
+[Planning deferred tasks]
+[27 / 50]
+[38 / 55]
+[40 / 55] P
+[45 / 56] PTests-product
+[54 / 76]
+[58 / 76]
+[59 / 76]
+[62 / 76]
+[70 / 76] PTests-product
+[72 / 76] PTests-product
+Build complete! (2.30 secs)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.000.
+Test Suite 'All tests' passed at 2000-01-01 12:00:00.001.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test nothing() started.
+◇ Test long() started.
+◇ Test probe() started.
+◇ Test prefix() started.
+◇ Test suffix() started.
+◇ Test variable() started.
+✘ Test probe() recorded an issue at T.swift:5:5: Expectation failed: reason.contains("truncated: 10 more member lines — pass offset: 60")
+↳ reason.contains("truncated: 10 more member lines — pass offset: 60") → false
+↳   reason → "first line of the answer that goes on for quite a while and then some more text here
+    truncated: 11 more member lines — pass offset: 60
+    last"
+✘ Test nothing() recorded an issue at T.swift:31:5: Expectation failed: reason.contains("zzzz qqqq")
+↳ reason.contains("zzzz qqqq") → false
+↳   reason → "alpha line one
+    beta line two"
+✘ Test long() recorded an issue at T.swift:26:5: Expectation failed: reason.contains("matching needle row there")
+↳ reason.contains("matching needle row there") → false
+↳   reason → "row 1 of the long haystack
+    row 2 of the long haystack
+    row 3 of the long haystack
+    row 4 of the long haystack
+    row 5 of the long haystack
+    row 6 of the long haystack
+    row 7 of the long haystack
+    row 8 of the long haystack
+    the matching needle row here"
+✘ Test suffix() recorded an issue at T.swift:15:5: Expectation failed: reason.hasSuffix("gamma line four")
+↳ reason.hasSuffix("gamma line four") → false
+↳   reason → "alpha line one
+    beta line two
+    gamma line three"
+✘ Test variable() recorded an issue at T.swift:21:5: Expectation failed: reason.contains(needle)
+↳ reason.contains(needle) → false
+↳   reason → "alpha line one
+    beta line two
+    gamma line three
+    delta line four
+    epsilon line five"
+↳   needle → "delta line nine"
+✘ Test prefix() recorded an issue at T.swift:10:5: Expectation failed: reason.hasPrefix("alpha line zero")
+↳ reason.hasPrefix("alpha line zero") → false
+↳   reason → "alpha line one
+    beta line two
+    gamma line three"
+✘ Test long() failed after 0.001 seconds with 1 issue.
+✘ Test suffix() failed after 0.001 seconds with 1 issue.
+✘ Test prefix() failed after 0.001 seconds with 1 issue.
+✘ Test probe() failed after 0.001 seconds with 1 issue.
+✘ Test nothing() failed after 0.001 seconds with 1 issue.
+✘ Test variable() failed after 0.001 seconds with 1 issue.
+✘ Test run with 6 tests in 0 suites failed after 0.001 seconds with 6 issues.
+Note: Some test targets reported failures:
+  - PTests (Swift Testing)

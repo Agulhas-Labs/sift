@@ -1,0 +1,59 @@
+Building for debugging...
+[Planning deferred tasks]
+[27 / 50]
+[32 / 55] P
+[40 / 55] P
+[45 / 56] PTests-product
+[54 / 76]
+[58 / 76]
+[59 / 76]
+[62 / 76]
+[70 / 76] PTests-product
+[72 / 76] PTests-product
+Build complete! (2.35 secs)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.000.
+Test Suite 'All tests' passed at 2000-01-01 12:00:00.001.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test blank() started.
+◇ Test gap() started.
+◇ Test single() started.
+◇ Test detail() started.
+◇ Test quoted() started.
+✘ Test single() recorded an issue at T.swift:10:5: Expectation failed: reason.contains("truncated: 10 more member lines — pass offset: 60")
+↳ reason.contains("truncated: 10 more member lines — pass offset: 60") → false
+↳   reason → "xyz
+    
+    truncated: 11 more member lines — pass offset: 60"
+✘ Test gap() recorded an issue at T.swift:23:5: Expectation failed: 1 == 2
+↳ 1 == 2 → false
+✘ Test detail() recorded an issue at T.swift:19:5: Expectation failed: Bool(false)
+↳ head:
+    detail one
+  
+    detail two
+↳ Bool(false) → false
+↳   false → ()
+✘ Test quoted() recorded an issue at T.swift:15:5: Expectation failed: reason.contains("truncated: 10 more member lines — pass offset: 60")
+↳ reason.contains("truncated: 10 more member lines — pass offset: 60") → false
+↳   reason → "xyz
+    qwv "k"
+    truncated: 11 more member lines — pass offset: 60"
+✘ Test blank() recorded an issue at T.swift:5:5: Expectation failed: reason.contains("truncated: 10 more member lines — pass offset: 60")
+↳ reason.contains("truncated: 10 more member lines — pass offset: 60") → false
+↳   reason → "xyz
+    qwv
+    
+    truncated: 11 more member lines — pass offset: 60"
+
+    indented output
+✘ Test gap() failed after 0.001 seconds with 1 issue.
+✘ Test detail() failed after 0.001 seconds with 1 issue.
+✘ Test blank() failed after 0.001 seconds with 1 issue.
+✘ Test quoted() failed after 0.001 seconds with 1 issue.
+✘ Test single() failed after 0.001 seconds with 1 issue.
+✘ Test run with 5 tests in 0 suites failed after 0.001 seconds with 5 issues.
+Note: Some test targets reported failures:
+  - PTests (Swift Testing)

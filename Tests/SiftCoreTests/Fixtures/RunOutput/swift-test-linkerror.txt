@@ -1,0 +1,20 @@
+[0/1] Planning build
+Building for debugging...
+[0/5] Write sources
+[2/5] Write swift-version--58304C5D6DBC2206.txt
+[4/7] Emitting module Widget
+[5/7] Compiling Widget Linkless.swift
+[6/11] Compiling WidgetTests WidgetTests.swift
+[7/11] Compiling WidgetTests LegacyWidgetTests.swift
+[8/11] Compiling WidgetTests LinklessTests.swift
+[9/11] Emitting module WidgetTests
+[9/11] Write Objects.LinkFileList
+error: link command failed with exit code 1 (use -v to see invocation)
+ld: warning: Could not parse or use implicit file '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/SwiftUICore.framework/Versions/A/SwiftUICore.tbd': cannot link directly with 'SwiftUICore' because product being built is not an allowed client of it
+Undefined symbols for architecture arm64:
+  "_widget_missing_helper", referenced from:
+      Widget.callMissingHelper() -> Swift.Int in Linkless.swift.o
+ld: symbol(s) not found for architecture arm64
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+[10/11] Linking WidgetPackageTests
+error: fatalError

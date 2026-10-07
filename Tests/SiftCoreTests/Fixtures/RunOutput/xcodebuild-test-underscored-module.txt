@@ -1,0 +1,31 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun ValidationProjects/TestDemo/.derived/Build/Products/TestDemo_Default_iphonesimulator27.0-arm64.xctestrun -destination "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000" -parallel-testing-enabled NO -collect-test-diagnostics never "-only-testing:Demo Spaced Tests/SpacedTests/testCountsUp()" "-only-testing:Demo Spaced Tests/SpacedTests/testCountsDown()"
+
+2000-01-01 12:00:00.891665+0100 DemoApp[65232:14124442] [API] cannot add handler to 0 from 0 - dropping
+2000-01-01 12:00:00.891968+0100 DemoApp[65232:14124442] [API] cannot add handler to 0 from 0 - dropping
+2000-01-01 12:00:00.896485+0100 DemoApp[65232:14124442] [XPCErrors] non-launching port is incompatible with service identifier "com.apple.PointerUI.pointeruid.default-service"
+2000-01-01 12:00:00.897272+0100 DemoApp[65232:14124442] [API] cannot add handler to 0 from 0 - dropping
+2000-01-01 12:00:00.897336+0100 DemoApp[65232:14124442] [API] cannot add handler to 0 from 0 - dropping
+Test Suite 'Selected tests' started at 2000-01-01 12:00:00.801.
+Test Suite 'Demo Spaced Tests.xctest' started at 2000-01-01 12:00:00.802.
+Test Suite 'SpacedTests' started at 2000-01-01 12:00:00.802.
+Test Case '-[Demo_Spaced_Tests.SpacedTests testCountsDown]' started.
+Test Case '-[Demo_Spaced_Tests.SpacedTests testCountsDown]' passed (0.001 seconds).
+Test Case '-[Demo_Spaced_Tests.SpacedTests testCountsUp]' started.
+Test Case '-[Demo_Spaced_Tests.SpacedTests testCountsUp]' passed (0.000 seconds).
+Test Suite 'SpacedTests' passed at 2000-01-01 12:00:00.804.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'Demo Spaced Tests.xctest' passed at 2000-01-01 12:00:00.804.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'Selected tests' passed at 2000-01-01 12:00:00.804.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.003) seconds
+2000-01-01 12:00:00.433 xcodebuild[64860:14123279] [MT] IDETestOperationsObserverDebug: 3.374 elapsed -- Testing started completed.
+2000-01-01 12:00:00.433 xcodebuild[64860:14123279] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2000-01-01 12:00:00.433 xcodebuild[64860:14123279] [MT] IDETestOperationsObserverDebug: 3.374 sec, +3.374 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/dev/Library/Developer/Xcode/DerivedData/TestDemo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Logs/Test/Test-TestDemo-2000.01.01_12-00-00-+0100.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

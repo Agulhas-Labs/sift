@@ -1,0 +1,128 @@
+# SwiftLint configuration for sift.
+#
+# Intentionally disabled and why:
+# - line/body length, brace/comma style → owned by SwiftFormat, which runs first.
+# - indentation_width → owned by SwiftFormat; the rule false-positives on SwiftFormat-aligned wrapped
+#   case labels and on indentation inside multi-line string literals.
+# - file_name → this repo deliberately names some files for what they hold rather than for the one
+#   type inside them.
+# - type_contents_order → orders members in a way this codebase does not follow.
+# - redundant_discardable_let → its autocorrect rewrites `let _ = …` into `_ = …`, which is not
+#   always the same expression.
+# - redundant_string_enum_value → raw values that back PERSISTED data (the index's SQLite columns)
+#   must stay explicit, so a case rename cannot silently change a stored string.
+disabled_rules:
+  - duplicate_conditions
+  - trailing_comma
+  - opening_brace
+  - line_length
+  - file_length
+  - function_body_length
+  - nesting
+  - file_name
+  - indentation_width
+  - type_contents_order
+  - redundant_discardable_let
+  - redundant_string_enum_value
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - implicit_return
+  - multiline_parameters_brackets
+  - redundant_nil_coalescing
+  - implicit_optional_initialization
+  - unneeded_parentheses_in_closure_argument
+  - vertical_parameter_alignment_on_call
+  - modifier_order
+  - vertical_whitespace_closing_braces
+  - vertical_whitespace_opening_braces
+  - redundant_type_annotation
+  - force_unwrapping
+
+custom_rules:
+  no_dot_init:
+    name: "No .init() shorthand"
+    regex: '(?<![A-Za-z])\.init\('
+    message: "Use the explicit type name instead of .init(). Prefer MyType(param:) over .init(param:) for clarity and faster compile times."
+    severity: error
+
+  no_swiftlint_disable:
+    name: "No SwiftLint Disable"
+    regex: '(?i)//\s*swiftlint:(disable|next|this)'
+    message: "Never use inline swiftlint:disable. Refactor code to pass lint, or adjust the project configuration."
+    severity: warning
+
+  no_print:
+    name: "No print()"
+    regex: '(?<![A-Za-z0-9_.])print\('
+    message: "Do not use print(). Write through the explicit stdout/stderr streams — the MCP server's stdout carries JSON-RPC only, and one stray print corrupts the protocol."
+    severity: error
+
+function_parameter_count: 6
+cyclomatic_complexity:
+  warning: 40
+  error: 200
+type_body_length:
+  warning: 400
+  error: 600
+type_name:
+  min_length: 3
+  max_length: 40
+  allowed_symbols:
+    - _
+
+# Bans single-letter and abbreviated names. Error-level: anything shorter than 3 characters fails
+# unless it is one of the conventional loop, math or coordinate idioms listed below.
+identifier_name:
+  min_length:
+    warning: 3
+    error: 3
+  max_length: 50
+  excluded:
+    - id
+    - URL
+    # coordinate / geometry
+    - x
+    - y
+    - dx
+    - dy
+    - w
+    - h
+    - r
+    # loop / math locals
+    - i
+    - j
+    - n
+    - m
+    - s
+    - t
+    - d
+    - b
+    - a
+    - q
+    - v
+    - c
+    - mn
+    - mx
+    - lo
+    - hi
+    - d1
+    - d2
+    - d3
+    - t0
+    # unit abbreviations
+    - ms
+    - to
+    - up
+
+vertical_whitespace:
+  max_empty_lines: 1
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - DerivedData

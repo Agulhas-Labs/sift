@@ -1,0 +1,93 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -testPlan Retrying "-only-testing:DemoUnitTests" -project ValidationProjects/TestDemo/TestDemo.xcodeproj -scheme TestDemo -destination "platform=iOS Simulator,id=00000000-0000-0000-0000-000000000000" -derivedDataPath ValidationProjects/TestDemo/.derived
+
+2000-01-01 12:00:00.261965+0100 DemoApp[62685:5695985] [API] cannot add handler to 0 from 0 - dropping
+2000-01-01 12:00:00.262105+0100 DemoApp[62685:5695985] [API] cannot add handler to 0 from 0 - dropping
+2000-01-01 12:00:00.274614+0100 DemoApp[62685:5696527] [General] Failed to send CA Event for app launch measurements for ca_event_type: 0 event_name: com.apple.app_launch_measurement.FirstFramePresentationMetric
+2000-01-01 12:00:00.278619+0100 DemoApp[62685:5695985] [XPCErrors] non-launching port is incompatible with service identifier "com.apple.PointerUI.pointeruid.default-service"
+2000-01-01 12:00:00.279780+0100 DemoApp[62685:5695985] [API] cannot add handler to 0 from 0 - dropping
+2000-01-01 12:00:00.279841+0100 DemoApp[62685:5695985] [API] cannot add handler to 0 from 0 - dropping
+2000-01-01 12:00:00.331810+0100 DemoApp[62685:5696527] [General] Failed to send CA Event for app launch measurements for ca_event_type: 1 event_name: com.apple.app_launch_measurement.ExtendedLaunchMetrics
+Test Suite 'All tests' started at 2000-01-01 12:00:00.495.
+Test Suite 'DemoUnitTests.xctest' started at 2000-01-01 12:00:00.495.
+Test Suite 'CalculatorTests' started at 2000-01-01 12:00:00.495.
+Test Case '-[DemoUnitTests.CalculatorTests testAddition]' started (Iteration 1 of 3).
+Test Case '-[DemoUnitTests.CalculatorTests testAddition]' passed (0.001 seconds).
+Test Case '-[DemoUnitTests.CalculatorTests testDivision]' started (Iteration 1 of 3).
+Test Case '-[DemoUnitTests.CalculatorTests testDivision]' passed (0.000 seconds).
+Test Case '-[DemoUnitTests.CalculatorTests testFailsOnce]' started (Iteration 1 of 3).
+/Users/dev/Project/ValidationProjects/TestDemo/DemoUnitTests/CalculatorTests.swift:20: error: -[DemoUnitTests.CalculatorTests testFailsOnce] : failed - first attempt under the fail-once trigger
+Test Case '-[DemoUnitTests.CalculatorTests testFailsOnce]' failed (0.172 seconds).
+Test Case '-[DemoUnitTests.CalculatorTests testFailsOnce]' started (Iteration 2 of 3).
+Test Case '-[DemoUnitTests.CalculatorTests testFailsOnce]' passed (0.001 seconds).
+Test Case '-[DemoUnitTests.CalculatorTests testMultiplyCrashesWhenTriggered]' started (Iteration 1 of 3).
+Test Case '-[DemoUnitTests.CalculatorTests testMultiplyCrashesWhenTriggered]' passed (0.000 seconds).
+Test Case '-[DemoUnitTests.CalculatorTests testSkipsWhenUnsupported]' started (Iteration 1 of 3).
+/Users/dev/Project/ValidationProjects/TestDemo/DemoUnitTests/CalculatorTests.swift:35: -[DemoUnitTests.CalculatorTests testSkipsWhenUnsupported] : Test skipped - not supported on this configuration
+Test Case '-[DemoUnitTests.CalculatorTests testSkipsWhenUnsupported]' skipped (0.004 seconds).
+Test Case '-[DemoUnitTests.CalculatorTests testSubtraction]' started (Iteration 1 of 3).
+Test Case '-[DemoUnitTests.CalculatorTests testSubtraction]' passed (0.000 seconds).
+Test Suite 'CalculatorTests' failed at 2000-01-01 12:00:00.677.
+	 Executed 7 tests, with 1 test skipped and 1 failure (0 unexpected) in 0.179 (0.181) seconds
+Test Suite 'StringHelperTests' started at 2000-01-01 12:00:00.677.
+Test Case '-[DemoUnitTests.StringHelperTests testJoining]' started (Iteration 1 of 3).
+Test Case '-[DemoUnitTests.StringHelperTests testJoining]' passed (0.000 seconds).
+Test Case '-[DemoUnitTests.StringHelperTests testTrimming]' started (Iteration 1 of 3).
+Test Case '-[DemoUnitTests.StringHelperTests testTrimming]' passed (0.000 seconds).
+Test Case '-[DemoUnitTests.StringHelperTests testUppercasing]' started (Iteration 1 of 3).
+Test Case '-[DemoUnitTests.StringHelperTests testUppercasing]' passed (0.000 seconds).
+Test Suite 'StringHelperTests' passed at 2000-01-01 12:00:00.679.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'DemoUnitTests.xctest' failed at 2000-01-01 12:00:00.679.
+	 Executed 10 tests, with 1 test skipped and 1 failure (0 unexpected) in 0.180 (0.183) seconds
+Test Suite 'All tests' failed at 2000-01-01 12:00:00.679.
+	 Executed 10 tests, with 1 test skipped and 1 failure (0 unexpected) in 0.180 (0.184) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64-apple-ios17.0-simulator
+◇ Suite "Math" started.
+◇ Suite "Formatting" started.
+​◇ Test addsTwoNumbers() started.
+◇ Test subtractsTwoNumbers() started.
+◇ Test doublingIsEven(_:) started.
+◇ Test aKnownFormattingIssuePasses() started.
+➜ Test multipliesLargeNumbers() skipped: "not ready"
+​◇ Test formatsJoinedList() started.
+◇ Test formatsUppercase() started.
+◇ Test case passing 1 argument value → 2 to doublingIsEven(_:) started.
+◇ Test case passing 1 argument value → 3 to doublingIsEven(_:) started.
+◇ Test case passing 1 argument value → 1 to doublingIsEven(_:) started.
+​​​✔ Test addsTwoNumbers() passed after 0.001 seconds.
+✔ Test formatsJoinedList() passed after 0.001 seconds.
+✔ Test formatsUppercase() passed after 0.001 seconds.
+✔ Test subtractsTwoNumbers() passed after 0.001 seconds.
+✔ Test doublingIsEven(_:) with 3 test cases passed after 0.001 seconds.
+✔ Suite "Math" passed after 0.001 seconds.
+━ Test aKnownFormattingIssuePasses() recorded a known issue at FormattingSuite.swift:15:13: Expectation failed: 0.1 + 0.2 == 0.3
+↳ formatting rounding is tracked separately
+↳ 0.1 + 0.2 == 0.3 → false
+↳   0.1 + 0.2 → 0.30000000000000004
+◇ Test aKnownFormattingIssuePasses() started (repetition 2).
+━ Test aKnownFormattingIssuePasses() recorded a known issue at FormattingSuite.swift:15:13: Expectation failed: 0.1 + 0.2 == 0.3
+↳ formatting rounding is tracked separately
+↳ 0.1 + 0.2 == 0.3 → false
+↳   0.1 + 0.2 → 0.30000000000000004
+◇ Test aKnownFormattingIssuePasses() started (repetition 3).
+━ Test aKnownFormattingIssuePasses() recorded a known issue at FormattingSuite.swift:15:13: Expectation failed: 0.1 + 0.2 == 0.3
+↳ formatting rounding is tracked separately
+↳ 0.1 + 0.2 == 0.3 → false
+↳   0.1 + 0.2 → 0.30000000000000004
+━ Test aKnownFormattingIssuePasses() passed after 0.002 seconds with 1 known issue.
+━ Suite "Formatting" passed after 0.002 seconds with 1 known issue.
+━ Test run with 7 tests in 2 suites passed after 0.002 seconds with 1 known issue.
+2000-01-01 12:10:00.972 xcodebuild[62482:5694412]  IDETestOperationsObserverDebug: Failure collecting diagnostics from simulator: Timed out after 600.0 seconds while waiting for a response from the invoked process
+2000-01-01 12:10:00.989 xcodebuild[62482:5694334] [MT] IDETestOperationsObserverDebug: 609.914 elapsed -- Testing started completed.
+2000-01-01 12:10:00.989 xcodebuild[62482:5694334] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2000-01-01 12:10:00.989 xcodebuild[62482:5694334] [MT] IDETestOperationsObserverDebug: 609.914 sec, +609.914 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/dev/Project/ValidationProjects/TestDemo/.derived/Logs/Test/Test-TestDemo-2000.01.01_12-00-00-+0100.xcresult
+
+** TEST EXECUTE SUCCEEDED **
+
+Testing started

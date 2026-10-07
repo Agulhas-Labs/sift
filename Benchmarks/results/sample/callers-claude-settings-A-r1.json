@@ -1,0 +1,54 @@
+{
+ "task": "callers-claude-settings",
+ "kind": "find callers",
+ "arm": "A",
+ "repeat": 1,
+ "position": 2,
+ "model": "claude-sonnet-5-5",
+ "effort": "medium",
+ "sift_version": "0.1.0",
+ "started_at": "2026-10-01T11:37:21.896995+00:00",
+ "wall_seconds": 6.1,
+ "exit_code": 0,
+ "timed_out": false,
+ "success": true,
+ "check_detail": "exact set",
+ "answer": "SiftUninstall.swift, AgentDetection.swift, UninstallHookCommand.swift, InstallDryRun.swift, DoctorClaude.swift, InstallHookCommand.swift, ClaudeInstallStep.swift",
+ "changed_files": [],
+ "controls": "n/a",
+ "valid": true,
+ "invalid_reasons": [],
+ "models": [
+  "claude-sonnet-5-5"
+ ],
+ "claude_code_version": "2.1.286",
+ "tokens": {
+  "uncached": 4,
+  "cache_read": 11933,
+  "cache_write": 3844,
+  "cache_write_5m": 0,
+  "cache_write_1h": 3844,
+  "cache_write_unsplit": 0,
+  "input_raw": 15781,
+  "input_weighted": 8885.3,
+  "output": 514
+ },
+ "cost_usd": 0.0229106,
+ "turns": 2,
+ "duration_ms": 4981,
+ "result_subtype": "success",
+ "is_error": false,
+ "sift_use": {
+  "servers": [],
+  "tools_listed": 0,
+  "mcp_calls": 0,
+  "bash_invocations": 0,
+  "hook_events": {}
+ },
+ "tool_calls": 1,
+ "final_reply": [
+  "Seven files under `Sources/` call `SiftPaths.claudeSettings(environment:)`. The declaring file is `Sources/SiftCore/SiftPaths.swift`, which I excluded. `InstallDryRun.swift` is included for its call on line 43. The `claudeSettings(_:word:)` function on line 87 is a separate private helper in that file.",
+  "",
+  "ANSWER: SiftUninstall.swift, AgentDetection.swift, UninstallHookCommand.swift, InstallDryRun.swift, DoctorClaude.swift, InstallHookCommand.swift, ClaudeInstallStep.swift"
+ ]
+}

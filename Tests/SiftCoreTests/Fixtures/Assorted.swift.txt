@@ -1,0 +1,99 @@
+import Foundation
+import HealthKit
+
+/// A generic container with a where-clause method.
+public struct Box<Value: Equatable> {
+    /// The wrapped value.
+    public var value: Value
+    private let created = Date()
+    public func map<Other>(_ transform: (Value) -> Other) -> Box<Other> where Other: Equatable { fatalError() }
+}
+
+@propertyWrapper
+struct Clamped {
+    var wrappedValue: Int
+}
+
+@MainActor
+@Observable
+final class StoreExample: NSObject, ObservableObject {
+    var status: String = "idle"
+    @Clamped var level: Int
+    nonisolated func ping() async throws -> String { "pong" }
+    static func make() -> StoreExample { StoreExample() }
+    struct Nested {
+        let flag: Bool
+    }
+}
+
+actor Cache {
+    subscript(key: String) -> Int? { nil }
+    func store(_ value: Int, for key: String) {}
+    func store(_ value: Double, for key: String) {}
+}
+
+protocol Sampler: AnyObject {
+    associatedtype Sample
+    var latest: Sample? { get }
+    func sample(at date: Date) -> Sample
+}
+
+extension Sampler where Sample == Int {
+    /// Default implementation in a constrained protocol extension.
+    func sampleTwice(at date: Date) -> [Sample] { [] }
+}
+
+enum Fuel: String, CaseIterable {
+    case wood, coal
+    case hydrogen
+    var renewable: Bool { self == .hydrogen }
+}
+
+private extension Fuel {
+    func label() -> String { rawValue }
+}
+
+@resultBuilder
+struct ListBuilder {
+    static func buildBlock(_ parts: String...) -> [String] { parts }
+}
+
+func topLevel(_ input: some Collection, other: any Equatable) -> Int { input.count }
+
+typealias Grams = Double
+
+infix operator ++*: AdditionPrecedence
+
+#if os(iOS)
+struct PlatformShim {
+    let touchy = true
+}
+#else
+struct PlatformShim {
+    let touchy = false
+}
+#endif
+
+final class Housekeeping {
+    deinit {
+        let leakGuard = "cleanup"
+        _ = leakGuard
+    }
+}
+
+#Preview {
+    let previewLocal = Box(value: 1)
+    return previewLocal
+}
+
+struct TupleHolder {
+    let (leftPart, rightPart) = (1, 2)
+    var observedValue: Int = 0 {
+        didSet {}
+    }
+}
+
+@available(macOS 13, *)
+private extension Fuel {
+    func availabilityLabel() -> String { rawValue }
+}

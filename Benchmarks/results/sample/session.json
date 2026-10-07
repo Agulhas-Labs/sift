@@ -1,0 +1,14 @@
+{
+ "session": "smoke",
+ "model": "claude-sonnet-5-5",
+ "effort": "medium",
+ "repeats": 1,
+ "tasks": [
+  "callers-claude-settings"
+ ],
+ "corpus": "27d3aca3",
+ "sift_version": "0.1.0",
+ "claude_code_version": "2.1.286 (Claude Code)",
+ "timeout_seconds": 1200,
+ "budget_usd": 5.0
+}

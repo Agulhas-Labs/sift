@@ -1,0 +1,6 @@
+{
+  "name": "sift-describe",
+  "version": "0.1.0",
+  "author": { "name": "Agulhas Labs" },
+  "description": "In a Swift repository with sift on PATH, adds one paragraph to the Read, Grep and Glob descriptions pointing Swift lookups at sift"
+}

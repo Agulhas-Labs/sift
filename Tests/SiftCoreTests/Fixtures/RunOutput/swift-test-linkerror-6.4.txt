@@ -1,0 +1,21 @@
+Building for debugging...
+[Planning deferred tasks]
+[27 / 50]
+[32 / 55] Widget
+[40 / 55] Widget
+[45 / 56] WidgetTests-product
+[54 / 76]
+[57 / 76]
+[59 / 76]
+[62 / 76]
+[70 / 76] WidgetTests-product
+Undefined symbols for architecture arm64:
+  "__widget_missing_helper", referenced from:
+      static Widget.Widget.callMissingHelper() -> Swift.Int in Widget.o
+ld: symbol(s) not found for architecture arm64
+/Users/dev/Widget/Package.swift: WidgetTests-product: clang: error: linker command failed with exit code 1 (use -v to see invocation)
+[72 / 76] WidgetTests-product
+error: Ld /Users/dev/Widget/.build/out/Products/Debug/WidgetTests.xctest/Contents/MacOS/WidgetTests normal failed with a nonzero exit code. Command line:     cd /Users/dev/Widget
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -Xlinker -reproducible -target arm64-apple-macos14.0 -Xlinker -bundle -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -Xlinker -no_warn_duplicate_libraries -L/Users/dev/Widget/.build/out/Intermediates.noindex/EagerLinkingTBDs/Debug -L/Users/dev/Widget/.build/out/Products/Debug -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F/Users/dev/Widget/.build/out/Intermediates.noindex/EagerLinkingTBDs/Debug -F/Users/dev/Widget/.build/out/Products/Debug/PackageFrameworks -F/Users/dev/Widget/.build/out/Products/Debug -Fsystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks @/Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @loader_path -Xlinker -rpath -Xlinker /Users/dev/Widget/.build/out/Products/Debug/PackageFrameworks -Xlinker -rpath -Xlinker @loader_path/../../.. -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -rpath -Xlinker @loader_path/../Frameworks -Xlinker -rpath -Xlinker /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-6.2/macosx -Xlinker -dead_strip -Xlinker -object_path_lto -Xlinker /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests_lto.o -Xclang-linker -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests_dependency_info.dat -link-objc-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftmodule -Xlinker -needed_framework -Xlinker XCTest -framework XCTest -Xlinker -needed-lXCTestSwiftSupport -lXCTestSwiftSupport -Xlinker -no_adhoc_codesign -o /Users/dev/Widget/.build/out/Products/Debug/WidgetTests.xctest/Contents/MacOS/WidgetTests -no-stdlib-rpath
+error: Build failed
+error: fatalError

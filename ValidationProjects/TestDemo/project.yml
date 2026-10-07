@@ -1,0 +1,88 @@
+name: TestDemo
+options:
+  bundleIdPrefix: dev.example.testdemo
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
+    GENERATE_INFOPLIST_FILE: YES
+    SWIFT_VERSION: "6.0"
+targets:
+  DemoApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: DemoApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.example.testdemo.app
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+
+  DemoUnitTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: DemoUnitTests
+      - path: Shared
+    dependencies:
+      - target: DemoApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.example.testdemo.unittests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/DemoApp.app/DemoApp"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+  DemoLogicTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: DemoLogicTests
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.example.testdemo.logictests
+
+  Demo Spaced Tests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: DemoSpacedTests
+    dependencies:
+      - target: DemoApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.example.testdemo.spacedtests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/DemoApp.app/DemoApp"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+  DemoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: DemoUITests
+      - path: Shared
+    dependencies:
+      - target: DemoApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.example.testdemo.uitests
+        TEST_TARGET_NAME: DemoApp
+
+schemes:
+  TestDemo:
+    build:
+      targets:
+        DemoApp: all
+        DemoUnitTests: [test]
+        DemoLogicTests: [test]
+        Demo Spaced Tests: [test]
+        DemoUITests: [test]
+    test:
+      testPlans:
+        - path: TestPlans/Default.xctestplan
+          defaultPlan: true
+        - path: TestPlans/Excluding.xctestplan
+        - path: TestPlans/Retrying.xctestplan

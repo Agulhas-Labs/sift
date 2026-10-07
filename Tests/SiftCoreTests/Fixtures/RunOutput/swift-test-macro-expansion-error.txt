@@ -1,0 +1,48 @@
+Building for debugging...
+[Planning deferred tasks]
+[27 / 50]
+[32 / 55] Widget
+[40 / 55] Widget
+[45 / 56] WidgetTests-product
+[51 / 76]
+[54 / 76]
+[57 / 76]
+[59 / 76]
+[61 / 76]
+[62 / 76]
+error: SwiftCompile normal arm64 /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift failed with a nonzero exit code. Command line:     cd /Users/dev
+    builtin-SwiftPerFileCompile WidgetTests.swift
+macro expansion #require:1:54: [1;31merror: [1;39mproperty access can throw, but it is not marked with 'try' and the error is not handled[0;0m
+`- /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift:7:49: [1;39mnote: [1;39mexpanded code originates here[0;0m
+ [0;36m5 |[0;0m     @Test func sizeIsCarried() throws {
+ [0;36m6 |[0;0m         let widget = Widget(size: 4)
+ [0;36m7 |[0;0m         let value = try [4;39m#require(widget.checked)[0;0m
+   [0;36m|[0;0m                         `- [1;39mnote: [1;39min expansion of macro 'require' here[0;0m
+[0;36m   +--- [0;0mmacro expansion #require [0;36m---------------------------------------[0;0m
+[0;36m   |[0;0m[0;36m1 |[0;0m Testing.__checkPropertyAccess(widget.self,getting: { $0.checked },expression: .__fromPropertyAccess(.__fromSyntaxNode("widget"),.__fromSyntaxNode("checked")),comments: [],isRequired: true,sourceLocation: Testing.SourceLocation.__here()).__required()
+[0;36m   |[0;0m  [0;36m|[0;0m                                                      `- [1;31merror: [1;39mproperty access can throw, but it is not marked with 'try' and the error is not handled[0;0m
+[0;36m   +-----------------------------[0;0m[0;36m---------------------------------------[0;0m
+ [0;36m8 |[0;0m         #expect(value == 4)
+ [0;36m9 |[0;0m     }
+
+macro expansion #require:1:54: [1;31merror: [1;39mproperty access can throw, but it is not marked with 'try' and the error is not handled[0;0m
+`- /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift:13:51: [1;39mnote: [1;39mexpanded code originates here[0;0m
+[0;36m11 |[0;0m     @Test func sizeIsNested() throws {
+[0;36m12 |[0;0m         let widget = Widget(size: 4)
+[0;36m13 |[0;0m         [4;39m#expect(try #require(widget.checked) == 4)[0;0m
+   [0;36m|[0;0m         `- [1;39mnote: [1;39min expansion of macro 'expect' here[0;0m
+[0;36m   +--- [0;0mmacro expansion #expect [0;36m----------------------------------------[0;0m
+[0;36m   |[0;0m[0;36m1 |[0;0m Testing.__checkValue(try [4;39m#require(widget.checked)[0;0m == 4,expression: .__fromSyntaxNode("try #require(widget.checked) == 4"),comments: [],isRequired: false,sourceLocation: Testing.SourceLocation.__here()).__expected()
+[0;36m   |[0;0m  [0;36m|[0;0m                          `- [1;39mnote: [1;39min expansion of macro 'require' here[0;0m
+[0;36m   |  +--- [0;0mmacro expansion #require [0;36m------------------------------------[0;0m
+[0;36m   |  |[0;0m[0;36m1 |[0;0m Testing.__checkPropertyAccess(widget.self,getting: { $0.checked },expression: .__fromPropertyAccess(.__fromSyntaxNode("widget"),.__fromSyntaxNode("checked")),comments: [],isRequired: true,sourceLocation: Testing.SourceLocation.__here()).__required()
+[0;36m   |  |[0;0m  [0;36m|[0;0m                                                      `- [1;31merror: [1;39mproperty access can throw, but it is not marked with 'try' and the error is not handled[0;0m
+[0;36m   |  +-----------------------------[0;0m[0;36m------------------------------------[0;0m
+[0;36m   +----------------------------[0;0m[0;36m----------------------------------------[0;0m
+[0;36m14 |[0;0m     }
+[0;36m15 |[0;0m }
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources/test_entry_point.swift -primary-file /Users/dev/Widget/Tests/WidgetTests/WidgetTests.swift -emit-dependencies-path /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.d -emit-const-values-path /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftconstvalues -emit-reference-dependencies-path /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftdeps -serialize-diagnostics-path /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.dia -target arm64-apple-macos14.0 -module-can-import-version Testing 2084 0 -module-can-import-version XCTest 25228 0 -disable-cross-import-overlay-search -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/AppKit.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreGraphics.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreImage.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/CoreTransferable.swiftoverlay -swift-module-cross-import Testing /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/Testing.framework/Modules/Testing.swiftcrossimport/Foundation.swiftoverlay -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing/libTestingMacros.dylib\#\#TestingMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests-dependencies-1.json -Xllvm -aarch64-use-tbi -enable-objc-interop -stack-check -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -I /Users/dev/Widget/.build/out/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/Widget/.build/out/Products/Debug/PackageFrameworks -F /Users/dev/Widget/.build/out/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -module-cache-path /Users/dev/Widget/.build/out/Intermediates.noindex/SwiftExplicitPrecompiledModules -color-diagnostics -Xcc -fcolor-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=4 -swift-version 6 -Onone -D SWIFT_PACKAGE -D DEBUG -D Xcode -serialize-debugging-options -enable-experimental-feature DebugDescriptionMacro -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/dev/Widget/.build/out/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/dev -enable-anonymous-context-mangled-names -file-compilation-dir /Users/dev -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/dev/Widget/.build/out/SDKStatCaches.noindex/macosx27.0-26A425-a0facfad118c1a7a18f0aad9463f65497231f6df4def33e022ae2eb8f782df1a.sdkstatcache -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -Xcc -I/Users/dev/Widget/.build/out/Products/Debug/include -Xcc -I/Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources/arm64 -Xcc -I/Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name WidgetTests -package-name widget -const-gather-protocols-file /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests_const_extract_protocols.json -disable-clang-spi -clang-target arm64-apple-macos27.0 -target-sdk-version 27.0 -target-sdk-name macosx27.0 -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -parse-as-library -o /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.o -debug-module-path /Users/dev/Widget/.build/out/Intermediates.noindex/Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.swiftmodule -index-unit-output-path /Widget.build/Debug/WidgetTests-p.build/Objects-normal/arm64/WidgetTests.o -index-store-path /Users/dev/Widget/.build/out -index-system-modules
+[70 / 76] WidgetTests-product
+error: Build failed
+error: fatalError

@@ -1,0 +1,20 @@
+Building for debugging...
+[1 / 5]
+[2 / 6] PalletTests-product
+[5 / 12] PalletTests-product
+[10 / 12] PalletTests-product
+Build complete! (1.04 secs)
+error: Process '/Applications/Xcode.app/Contents/Developer/usr/bin/xctest -XCTest PalletTests.PalletTests/testBuckles,PalletTests.PalletTests/testLoads,PalletTests.PalletTests/testStacks /Users/dev/Pallet/.build/out/Products/Debug/PalletTests.xctest' exited with unexpected signal code 5
+Test Suite 'Selected tests' started at 2000-01-01 12:00:00.254.
+Test Suite 'PalletTests.xctest' started at 2000-01-01 12:00:00.255.
+Test Suite 'PalletTests' started at 2000-01-01 12:00:00.255.
+Test Case '-[PalletTests.PalletTests testBuckles]' started.
+Swift/ContiguousArrayBuffer.swift:695: Fatal error: Index out of range
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test loads() started.
+✔ Test loads() passed after 0.001 seconds.
+✔ Test run with 1 test in 0 suites passed after 0.001 seconds.
+Note: Some test targets reported failures:
+  - PalletTests (XCTest)

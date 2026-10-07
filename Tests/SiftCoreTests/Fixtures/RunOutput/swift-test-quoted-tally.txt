@@ -1,0 +1,24 @@
+[0/1] Planning build
+Building for debugging...
+[0/3] Write sources
+[1/3] Write swift-version--58304C5D6DBC2206.txt
+[3/5] Compiling QuotedTests QuotedTests.swift
+[4/5] Emitting module QuotedTests
+[4/6] Write Objects.LinkFileList
+[5/6] Linking QuotedPackageTests
+Build complete! (0.39s)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.959.
+Test Suite 'All tests' passed at 2000-01-01 12:00:00.960.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+􀟈  Test run started.
+􀄵  Testing Library Version: 1902
+􀄵  Target Platform: arm64e-apple-macos14.0
+􀟈  Suite QuotedTests started.
+􀟈  Test anOrdinaryFailure() started.
+􀟈  Test quotesThePhraseInItsFailure() started.
+􀢄  Test anOrdinaryFailure() recorded an issue at QuotedTests.swift:7:9: Expectation failed: (Quoted.phrase → "nope") == "ordinary"
+􀢄  Test quotesThePhraseInItsFailure() recorded an issue at QuotedTests.swift:12:9: Expectation failed: (Quoted.phrase → "nope") == "Test run with 2 tests in 1 suite passed after 0.001 seconds."
+􀢄  Test quotesThePhraseInItsFailure() failed after 0.001 seconds with 1 issue.
+􀢄  Test anOrdinaryFailure() failed after 0.001 seconds with 1 issue.
+􀢄  Suite QuotedTests failed after 0.001 seconds with 2 issues.
+􀢄  Test run with 2 tests in 1 suite failed after 0.001 seconds with 2 issues.

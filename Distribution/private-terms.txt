@@ -1,0 +1,29 @@
+# Terms that must not appear in anything published — checked by SiftCoreTests' shipped-content suite
+# over every tracked file on every run, and by Distribution/verify-private.sh over the staged bundle
+# before release and over the working tree — what git tracks plus what it neither tracks nor ignores —
+# on every push and before the repository goes public.
+#
+# Only generic terms belong here. The private names themselves are NOT listed: verify-private.sh
+# discovers them from the sibling directories of the checkout, so this file can be read by anyone
+# without telling them what it is protecting. Matching is case-insensitive and whole-word.
+#
+# Whose machine it was built on, and under what arrangement, is not part of any explanation a reader
+# of this tool needs.
+#
+# A phrase has to be listed in every spelling it has. `work monorepo` does not catch `work codebase` —
+# the term nobody thought to write down is the one that gets through, so the siblings are enumerated
+# rather than trusted to a reader's eye.
+work machine
+work mac
+work laptop
+work computer
+work monorepo
+work codebase
+work repo
+work repository
+work project
+work code
+day job
+employer
+at work
+my employer

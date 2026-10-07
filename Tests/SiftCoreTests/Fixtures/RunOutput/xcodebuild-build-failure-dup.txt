@@ -1,0 +1,172 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project Gizmo.xcodeproj -scheme Gizmo -destination platform=macOS clean build
+
+2000-01-01 12:00:00.643 xcodebuild[65610:31540279]  DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+2000-01-01 12:00:00.643 xcodebuild[65610:31540255] [MT] DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00000000-0000000000000000, name:My Mac }
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+** CLEAN SUCCEEDED **
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00000000-0000000000000000, name:My Mac }
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (1 target)
+    Target 'Gizmo' in project 'Gizmo' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/libtool -V
+
+Build description signature: 00000000000000000000000000000004
+Build description path: /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/XCBuildData/00000000000000000000000000000004.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk /Users/dev/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-e082c4a02f00227109f4ed75e425c832.sdkstatcache
+    cd /Users/dev/Gizmo/Gizmo.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -o /Users/dev/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-e082c4a02f00227109f4ed75e425c832.sdkstatcache
+
+CreateBuildDirectory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex
+    cd /Users/dev/Gizmo/Gizmo.xcodeproj
+    builtin-create-build-directory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex
+
+CreateBuildDirectory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products
+    cd /Users/dev/Gizmo/Gizmo.xcodeproj
+    builtin-create-build-directory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products
+
+CreateBuildDirectory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+    cd /Users/dev/Gizmo/Gizmo.xcodeproj
+    builtin-create-build-directory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/ExplicitPrecompiledModules
+    cd /Users/dev/Gizmo/Gizmo.xcodeproj
+    builtin-create-build-directory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+CreateBuildDirectory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/EagerLinkingTBDs/Debug
+    cd /Users/dev/Gizmo/Gizmo.xcodeproj
+    builtin-create-build-directory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/EagerLinkingTBDs/Debug
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo-00000000000000000000000000000001-VFS/all-product-headers.yaml
+    cd /Users/dev/Gizmo/Gizmo.xcodeproj
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo-00000000000000000000000000000001-VFS/all-product-headers.yaml
+
+CreateBuildDirectory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug
+    cd /Users/dev/Gizmo/Gizmo.xcodeproj
+    builtin-create-build-directory /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Script-2184A52037BBB05250570C27.sh (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Script-2184A52037BBB05250570C27.sh
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-project-headers.hmap (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-project-headers.hmap
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo.hmap (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo.hmap
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo.DependencyMetadataFileList (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo.DependencyMetadataFileList
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo.DependencyStaticMetadataFileList (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo.DependencyStaticMetadataFileList
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-own-target-headers.hmap (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-own-target-headers.hmap
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-generated-files.hmap (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-generated-files.hmap
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-all-target-headers.hmap (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-all-target-headers.hmap
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-all-non-framework-target-headers.hmap (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-all-non-framework-target-headers.hmap
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo_const_extract_protocols.json (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo_const_extract_protocols.json
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.SwiftFileList (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.SwiftFileList
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.SwiftConstValuesFileList (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.SwiftConstValuesFileList
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-OutputFileMap.json (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-OutputFileMap.json
+
+WriteAuxiliaryFile /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.LinkFileList (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    write-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.LinkFileList
+
+SwiftDriver Gizmo normal arm64 com.apple.xcode.tools.swift.compiler (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name Gizmo -Onone @/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -target arm64-apple-macos13.0 -g -module-cache-path /Users/dev/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug -F /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug -parse-as-library -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-e082c4a02f00227109f4ed75e425c832.sdkstatcache -output-file-map /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/dev/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/dev/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo_const_extract_protocols.json -Xcc -iquote -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-generated-files.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-own-target-headers.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-all-target-headers.hmap -Xcc -iquote -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-project-headers.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug/include -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources/arm64 -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-Swift.h -working-directory /Users/dev/Gizmo -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal arm64 Compiling\ Gizmo.swift /Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift (in target 'Gizmo' from project 'Gizmo')
+
+SwiftCompile normal arm64 /Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    
+/Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift:4:30: error: cannot find type 'MissingWidget' in scope
+    public func doubled() -> MissingWidget {
+                             ^~~~~~~~~~~~~
+/Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift:6:16: error: cannot find 'MissingWidget' in scope
+        return MissingWidget()
+               ^~~~~~~~~~~~~
+
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c -primary-file /Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift -emit-dependencies-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.d -emit-const-values-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.swiftconstvalues -emit-reference-dependencies-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.swiftdeps -serialize-diagnostics-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.dia -target arm64-apple-macos13.0 -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-dependencies-1.json -debug-module-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.swiftmodule -Xllvm -aarch64-use-tbi -enable-objc-interop -stack-check -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -I /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug -F /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug -no-color-diagnostics -Xcc -fno-color-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=4 -module-cache-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -swift-version 5 -Onone -D DEBUG -serialize-debugging-options -const-gather-protocols-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo_const_extract_protocols.json -enable-experimental-feature DebugDescriptionMacro -enable-bare-slash-regex -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/dev/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/dev/Gizmo -enable-anonymous-context-mangled-names -file-compilation-dir /Users/dev/Gizmo -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-e082c4a02f00227109f4ed75e425c832.sdkstatcache -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/swift-overrides.hmap -Xcc -iquote -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-generated-files.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-own-target-headers.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-all-target-headers.hmap -Xcc -iquote -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-project-headers.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug/include -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources/arm64 -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name Gizmo -frontend-parseable-output -disable-clang-spi -clang-target arm64-apple-macos26.5 -target-sdk-version 26.5 -target-sdk-name macosx26.5 -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -parse-as-library -o /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.o -index-unit-output-path /Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.o -index-store-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Index.noindex/DataStore -index-system-modules
+SwiftEmitModule normal arm64 Emitting\ module\ for\ Gizmo (in target 'Gizmo' from project 'Gizmo')
+SwiftCompile normal arm64 /Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift (in target 'Gizmo' from project 'Gizmo')
+    cd /Users/dev/Gizmo
+    
+/Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift:4:30: error: cannot find type 'MissingWidget' in scope
+    public func doubled() -> MissingWidget {
+                             ^~~~~~~~~~~~~
+
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -emit-module -experimental-skip-non-inlinable-function-bodies-without-types /Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift -target arm64-apple-macos13.0 -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-dependencies-1.json -Xllvm -aarch64-use-tbi -enable-objc-interop -stack-check -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -I /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug -F /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug -no-color-diagnostics -Xcc -fno-color-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=4 -module-cache-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -swift-version 5 -Onone -D DEBUG -serialize-debugging-options -const-gather-protocols-file /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo_const_extract_protocols.json -enable-experimental-feature DebugDescriptionMacro -enable-bare-slash-regex -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/dev/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/dev/Gizmo -enable-anonymous-context-mangled-names -file-compilation-dir /Users/dev/Gizmo -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/macosx26.5-25F70-e082c4a02f00227109f4ed75e425c832.sdkstatcache -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/swift-overrides.hmap -Xcc -iquote -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-generated-files.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-own-target-headers.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-all-target-headers.hmap -Xcc -iquote -Xcc /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Gizmo-project-headers.hmap -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Products/Debug/include -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources/arm64 -Xcc -I/Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/DerivedSources -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name Gizmo -frontend-parseable-output -disable-clang-spi -clang-target arm64-apple-macos26.5 -target-sdk-version 26.5 -target-sdk-name macosx26.5 -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -emit-module-doc-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.swiftdoc -emit-module-source-info-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.swiftsourceinfo -emit-objc-header-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-Swift.h -serialize-diagnostics-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-primary-emit-module.dia -emit-dependencies-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo-primary-emit-module.d -parse-as-library -o /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.swiftmodule -emit-abi-descriptor-path /Users/dev/Library/Developer/Xcode/DerivedData/Gizmo-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Build/Intermediates.noindex/Gizmo.build/Debug/Gizmo.build/Objects-normal/arm64/Gizmo.abi.json
+** BUILD FAILED **
+
+
+The following build commands failed:
+	SwiftCompile normal arm64 /Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift (in target 'Gizmo' from project 'Gizmo')
+	SwiftCompile normal arm64 Compiling\ Gizmo.swift /Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift (in target 'Gizmo' from project 'Gizmo')
+	SwiftCompile normal arm64 /Users/dev/Gizmo/Sources/Gizmo/Gizmo.swift (in target 'Gizmo' from project 'Gizmo')
+	SwiftEmitModule normal arm64 Emitting\ module\ for\ Gizmo (in target 'Gizmo' from project 'Gizmo')
+	Building project Gizmo with scheme Gizmo
+(5 failures)

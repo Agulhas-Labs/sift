@@ -1,0 +1,11 @@
+/Users/dev/Widget/Tests/WidgetTests/FooTests.swift:8: error: aTestThatFailed(): Expectation failed: (1 → 1) == (2 → 2)
+
+Test session results, code coverage, and logs:
+	/Users/dev/Library/Developer/Xcode/DerivedData/Widget-xxxxxxxxxxxxxxxxxxxxxxxxxxxx/Logs/Test/Test-Widget-2000.01.01_12-00-00-+0000.xcresult
+
+Failing tests:
+	FooTests.aTestThatFailed()
+
+** TEST FAILED **
+
+Testing started

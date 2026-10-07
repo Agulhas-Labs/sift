@@ -1,0 +1,36 @@
+Building for debugging...
+[Planning deferred tasks]
+[27 / 50]
+[32 / 55] Pallet
+/Users/dev/Pallet/Sources/Pallet/Pallet.swift:4:13: [1;33mwarning: [1;39minitialization of immutable value 'spare' was never used; consider replacing with assignment to '_' or removing it[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m2 |[0;0m     public init() {}
+[0;36m3 |[0;0m     public func count() -> Int {
+[0;36m4 |[0;0m         let spare = 0
+  [0;36m|[0;0m             `- [1;33mwarning: [1;39minitialization of immutable value 'spare' was never used; consider replacing with assignment to '_' or removing it[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m5 |[0;0m         return 1
+[0;36m6 |[0;0m     }
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[40 / 55] Pallet
+[45 / 56] PalletTests-product
+[54 / 76]
+[57 / 76]
+[59 / 76]
+[62 / 76]
+[70 / 76] PalletTests-product
+[72 / 76] PalletTests-product
+Build complete! (2.61 secs)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.660.
+Test Suite 'All tests' passed at 2000-01-01 12:00:00.661.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Test countIsOne() started.
+✘ Test countIsOne() recorded an issue at PalletTests.swift:5:5: Expectation failed: Pallet().count() == 2
+↳ Pallet().count() == 2 → false
+↳   Pallet().count() → 1
+✘ Test countIsOne() failed after 0.001 seconds with 1 issue.
+✘ Test run with 1 test in 0 suites failed after 0.001 seconds with 1 issue.
+Note: Some test targets reported failures:
+  - PalletTests (Swift Testing)

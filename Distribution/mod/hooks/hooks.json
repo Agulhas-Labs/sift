@@ -1,0 +1,4 @@
+{
+  "description": "sift-describe: the tool.describe mod",
+  "modules": ["./register.ts"]
+}

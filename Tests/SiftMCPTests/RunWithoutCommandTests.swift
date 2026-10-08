@@ -320,15 +320,16 @@ struct RunWithoutCommandTests {
         let fixture = try Fixture()
         let builds = ["SIFT_TEST_BUILDS": "1"]
         let own = ".sift/without-build/swiftpm/built"
+        let keeping = ["run", "--without", "Sources/", "--keep-without-build", "--", "swift", "test", "--filter", "WidgetTests"]
 
-        let withAStraggler = try fixture.sift(Fixture.proof, environment: builds.merging(fixture.leavingAWriter) { _, new in new })
+        let withAStraggler = try fixture.sift(keeping, environment: builds.merging(fixture.leavingAWriter) { _, new in new })
         try fixture.waitForTheWriterToEnd()
 
         #expect(withAStraggler.status == 0, "\(withAStraggler.stdout)\(withAStraggler.stderr)")
         #expect(withAStraggler.stdout.contains("the run without Sources/ left running, before putting the changes back"), "\(withAStraggler.stdout)")
         #expect(fixture.contents(of: own) == "without\n")
 
-        #expect(try fixture.sift(Fixture.proof, environment: builds).status == 0)
+        #expect(try fixture.sift(keeping, environment: builds).status == 0)
         #expect(fixture.contents(of: own) == "without\n", "a build the run left a writer running in is never trusted, so the next one starts afresh")
     }
 }

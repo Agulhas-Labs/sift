@@ -31,9 +31,9 @@ public struct ShellSyntax {
         withoutHeredocBodies(withoutComments(command))
     }
 
-    /// Whether `command` is a line the shell would not run as written, and Claude Code does not split into statements: one that opens or ends on an operator with nothing on one side of it (`swift test &&`), ends on a line continuation, leaves a quote, a `$(` or a backtick unclosed, or holds a `)` no `(` opens or a `(` nothing closes.
+    /// Whether `command` is a line the shell would not run as written, and Claude Code does not split into statements, judged on its text with comments and heredoc bodies set aside and its ends trimmed: one that opens on `&&`, `||`, `|` or `;`; ends on `&&`, `||`, `|`, `|&` or a line continuation (`swift test &&`); ends inside a single- or double-quoted run, a `$(` or a backtick run, or after a lone backslash; or whose parentheses outside quoted runs and backslash escapes do not pair, a `)` no earlier `(` opens or a `(` nothing closes.
     ///
-    /// Conservative: a parenthesis a `case` pattern owns reads as unbalanced, and a line so read is only left alone.
+    /// Conservative: a parenthesis a `case` pattern owns reads as unbalanced, and so does one quoted inside a substitution, whose quotes are not tracked; a line so read is only left alone.
     public static func isIncomplete(_ command: String) -> Bool {
         let text = runnableText(command).trimmingCharacters(in: .whitespacesAndNewlines)
         let atItsEnds = ["&&", "||", "|", "|&", "\\"].contains { text.hasSuffix($0) } || ["&&", "||", "|", ";"].contains { text.hasPrefix($0) }

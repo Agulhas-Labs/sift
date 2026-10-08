@@ -409,12 +409,14 @@ public actor MCPServer {
     ///
     /// Only on a miss. A spaced path that resolves is exactly what `target` is for, and a note beside it would second-guess an answer that is right; a spaced value that names nothing is, far more often than not, several names sent where one goes.
     ///
-    /// A path-shaped target — one with a `/`, a `.swift` suffix, or a line range — never gets the note, missed or not: a gitignored file with a space in its path answers correctly (the exclusion, not a miss — see `unindexedFileAnswer`) and the note above it would second-guess a right answer, while a mistyped spaced path is still one path wrongly spelled, not several names run together, and the advice to split it on whitespace is simply wrong.
+    /// A target that is one path with a space inside it (``DigestSpacedTarget/isOnePath(_:)``, the reading the renderer's split and the hook's credit take too) gets a note of its own on a miss: that it was read as one path, so a reader who meant several names knows to send them apart. It never lists the path's words as targets, since a mistyped spaced path is still one path wrongly spelled and the advice to split it on whitespace is simply wrong. A gitignored file with a space in its path is no miss (the exclusion — see `unindexedFileAnswer`) and gets no note.
     static func spacedTargetNote(arguments: [String: Any], missed: Bool) -> String? {
         guard missed, arguments["targets"] == nil,
-              let target = arguments["target"] as? String, target.contains(where: \.isWhitespace),
-              !target.contains("/"), !target.hasSuffix(".swift"), DigestLineRange.parse(target) == nil
+              let target = arguments["target"] as? String, target.contains(where: \.isWhitespace)
         else { return nil }
+        guard !DigestSpacedTarget.isOnePath(target) else {
+            return "read target: as one path, whitespace included — several names go as separate targets in targets: [...]"
+        }
         let pieces = target.split(whereSeparator: \.isWhitespace).map { "\"\($0)\"" }
         return "read target: as one name, whitespace included — several targets go in targets: [\(pieces.joined(separator: ", "))]"
     }

@@ -66,17 +66,22 @@ build)` where the file changed, then one row per line, ascending — `    :<line
 conformance(s) listed below` after its reference and file counts, and its rows leave those lines out.
 
 A protocol's conformers, with a store, are one block headed `conformers of <Protocol> (<N>: <d> direct, <i>
-indirect[, <k> inherited][, <k> through a typealias][, <k> in a deleted file] — direct is every inheritance clause
-in this tree's source that writes the name, so a grep for the name finds the same lines; <alias note>; indirect is
-from the index store[; inherited is reached through a listed protocol or class, so a grep for the name does not
+indirect[, <k> inherited][, <k> through a typealias][, <k> resolved to another declaration][, <k> in a deleted file][, <k> in a changed
+file without its clause] — direct is every inheritance clause in this tree's source that writes the name, so a grep
+for the name finds the same lines; <alias note>[; resolved to another declaration is a clause writing the name that
+the index store resolves to another declaration of it]; indirect is from the index store[; inherited is reached through a listed protocol or class, so a grep for the name does not
 find it][, <k> files changed since last build][, <k> files deleted since last build]):`, where `<alias
 note>` is `a typealias to it is not followed` when no conformer is listed through one, else `through a typealias
 is a clause writing a typealias of it`, one row per conformer, `  <qualified
 name> — <kind> — <path>:<start>-<end> — <mark>[  ×<N> units][  (file … since last build)]`, where `<mark>` is
 `direct`, `indirect`, `inherited through <Name>`, `through typealias <alias>`, `direct; the index store has it
-through another type` or `direct; the index store does not have it`; a conformer the index has no declaration
-for is `  <name> — <path>:<line> — <mark>`, and one in a file deleted since the build has no `<mark>` (the heading
-counts it as `<k> in a deleted file`, after the indirect count). Past the cap, `  truncated: <k> more conformers`.
+through another type`, `direct; the index store does not have it` or `writes <Name>, which the index store
+resolves to <Declaration>` (a clause writing the name the store resolves to another declaration of it, in a file
+unchanged since the build, for a row the store records no conformance of the protocol for; counted as `<k> resolved
+to another declaration`, not direct); a conformer the index has no declaration for is `  <name> — <path>:<line> —
+<mark>`, and one only the store has in a file deleted since the build, or changed since so that its clause no longer
+writes an entry where the store recorded one, nor anywhere the name the store recorded there, has no `<mark>` (the heading counts it as `<k> in a deleted file` or
+`<k> in a changed file without its clause`). Past the cap, `  truncated: <k> more conformers`.
 `inherited through <Name>` marks a conformer reached through the listed protocol or class `<Name>` (a refiner's
 conformer, a subclass, to any depth); those rows follow every other. Every other conformers block, by written name
 (for a class, with no store, or beside a second protocol's store block), is headed `conformers of <Type> (<N>, by

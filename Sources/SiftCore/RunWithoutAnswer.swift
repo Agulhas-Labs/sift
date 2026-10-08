@@ -27,10 +27,12 @@ public struct RunWithoutAnswer {
     public let retriesFailures: Bool
     /// Whether the watcher had stopped before the changes were back — for part of the run, a kill would have left them out of the tree.
     public let watcherLost: Bool
-    /// Where the run without the change built, as an absolute path — named in the receipt, from the working directory, since nothing else removes it.
+    /// Where the run without the change built, as an absolute path — named in the receipt, from the working directory, with how to remove it when the run left it in place.
     public let buildDirectory: String?
-    /// ``buildDirectory``'s size on disk, in bytes; `nil` when nothing was built there.
+    /// ``buildDirectory``'s size on disk, in bytes, measured before it was removed; `nil` when nothing was built there.
     public let buildDirectorySize: Int64?
+    /// Whether ``buildDirectory`` was gone once the run ended, read off the disk: the receipt then says it was removed, and otherwise names it and how to remove it.
+    public let buildDirectoryRemoved: Bool
     /// The tests the change itself adds or edits, as bare identifiers (``ChangedTests``); `nil` where that could not be read, which folds nothing.
     ///
     /// A test the change never wrote passing both ways is the expected case rather than a finding, so those are counted into one line instead of listed. `nil` and an empty set are different answers: unread lists every test as it always did, and read-and-empty folds every untouched one.
@@ -91,6 +93,7 @@ public struct RunWithoutAnswer {
         watcherLost: Bool = false,
         buildDirectory: String? = nil,
         buildDirectorySize: Int64? = nil,
+        buildDirectoryRemoved: Bool = false,
         changedTests: Set<String>? = nil,
         selector: RunTestSelector? = nil
     ) {
@@ -106,6 +109,7 @@ public struct RunWithoutAnswer {
         self.watcherLost = watcherLost
         self.buildDirectory = buildDirectory
         self.buildDirectorySize = buildDirectorySize
+        self.buildDirectoryRemoved = buildDirectoryRemoved
         self.changedTests = changedTests
         self.selector = selector
     }
@@ -880,6 +884,10 @@ extension RunWithoutAnswer {
         let arithmetic = "sift run: \(total) lines in, \(answerLines) out"
         let logs = [(without, "without \(pathspecs)"), (with, withName)].map { Self.logLine($0, named: $1, paths: paths) }
         let built = buildDirectory.map { directory in
+            guard !buildDirectoryRemoved else {
+                let size = buildDirectorySize.map { "\(Self.described(bytes: $0)), " } ?? ""
+                return "; built without the change in a scratch build (\(size)removed)"
+            }
             // Named from where the run started, which can be below the repository root, and quoted, since a
             // repository's path can hold what a shell would split.
             let shown = paths.shown(directory)

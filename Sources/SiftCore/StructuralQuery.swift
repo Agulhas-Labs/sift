@@ -19,7 +19,7 @@ public struct StructuralQuery: Sendable {
 
     /// Parses `text`; throws `EngineError.malformedQuery` naming the valid fields when a term is unusable, the heal that produced an unhealable piece named alongside it.
     public init(_ text: String) throws {
-        let spelled = try text.split(whereSeparator: \.isWhitespace).map(Self.readingBareTerms).map { try Self.readingSpellings($0) }
+        let spelled = try Self.pieces(text).map(Self.readingBareTerms).map { try Self.readingSpellings($0) }
         guard !spelled.isEmpty else {
             throw EngineError.malformedQuery("empty query — \(Self.usage)")
         }
@@ -77,51 +77,210 @@ public struct StructuralQuery: Sendable {
     /// A misspelt field or kind word read as the one it spells, and the reading said.
     ///
     /// Only the grammar's own words are read this way, each one-to-one: a spelling has one meaning, so the call answers the question it asked. A value never is — a near-miss name read as the nearest one would be believed and wrong. A `calls:`/`uses:`/`name:` value is the one exception, and not really an exception: `rendered()` is a spelling of the callee's own name, parentheses included, not a different value — the index keeps no argument list for a call, only the base name, so it is read down to it. Anything inside the parentheses (`rendered(_:)`, `save(to:)`) is read down the same way, but widens what the query matches — every call named `save`, whatever its arity or labels — so it carries its own plain sentence (``labelDroppedNotes``) rather than joining the one-line spelling note; only a bare `()` keeps that plain note.
+    ///
+    /// An `a|b` value is read one alternative at a time, each exactly as the field reads a single value, so `file:Tests|file:Sources`, `kind:struct|function` and `calls:print|map()` are each read as their one-value forms would be.
     private static func readingSpellings(_ piece: String) throws -> (piece: String, note: Note?) {
         let negation = piece.hasPrefix("!") ? "!" : ""
         let body = piece.dropFirst(negation.count)
         guard let separator = body.firstIndex(of: ":") else { return (piece, nil) }
-        let field = String(body[body.startIndex ..< separator])
+        let label = String(body[body.startIndex ..< separator])
         let written = String(body[body.index(after: separator)...])
-        let namesADeclaration = field == Field.calls.rawValue || field == Field.uses.rawValue || field == Field.name.rawValue
-        // A name written in backticks is matched by the name the index holds, which drops them around an ordinary word.
-        let value = namesADeclaration ? SymbolNaming.unbackticked(written) : written
-        let unwrapped = value == written ? piece : "\(negation)\(field):\(value)"
-        if let wanted = fieldSpellings[field] {
-            let clarifier = wanted == .path ? " (a path substring, not a type)" : ""
-            return ("\(negation)\(wanted.rawValue):\(value)", .plain("\(field): as \(wanted.rawValue):\(clarifier)"))
+        let spelt = fieldSpellings[label]
+        guard let field = spelt ?? Field(rawValue: label) else { return (piece, nil) }
+        let clarifier = spelt == .path ? " (a path substring, not a type)" : ""
+        let spellingNote = spelt.map { Note.plain("\(label): as \($0.rawValue):\(clarifier)") }
+        guard !written.isEmpty else { return ("\(negation)\(field.rawValue):", spellingNote) }
+        let read = try Self.alternatives(of: written, field: field, piece: "\(label):\(written)").map { try Self.readingAlternative($0, field: field) }
+        let value = try Self.joiningRegexes(read.map(\.value), field: field, piece: "\(label):\(written)")
+        let respelt = "\(negation)\(field.rawValue):\(value)"
+        let reading = "\(label):\(written) as \(field.rawValue):\(value)"
+        let widened = read.compactMap(\.widened)
+        let namesADeclaration = field == .calls || field == .uses || field == .name
+        var note: Note? = spellingNote
+        if !widened.isEmpty {
+            let sentence = "read \(reading) — labels are not indexed, so this matches every \(Self.matchNoun(field.rawValue)) named \(widened.joined(separator: " or ")), whatever its labels."
+            note = .labelDropped(reading: reading, sentence: sentence)
+        } else if value != (namesADeclaration ? SymbolNaming.unbackticked(written) : written) {
+            // Backticks dropped from a name are not a reading worth saying; anything else that changed the value is.
+            note = .plain(reading + clarifier)
         }
-        if field == Field.kind.rawValue, let wanted = kindSpellings[value] {
-            return ("\(negation)kind:\(wanted)", .plain("kind:\(value) as kind:\(wanted)"))
+        if field.readsRegex, let pattern = NamePattern.regexBody(value) {
+            let (healed, healNote) = try Self.readingRegex(pattern, field: field.rawValue, negation: negation, value: value, piece: respelt)
+            return (healed, healNote ?? note)
         }
-        if Field(rawValue: field)?.readsRegex == true, let pattern = NamePattern.regexBody(value) {
-            return try Self.readingRegex(pattern, field: field, negation: negation, value: value, piece: unwrapped)
-        }
-        if let (joined, reading) = Self.readingAlternatives(field: field, value: value) {
-            return ("\(negation)\(field):\(joined)", .plain(reading))
-        }
-        if namesADeclaration, value.contains("(") || value.contains(")") {
-            let (base, hasLabels) = try Self.baseCalleeName(field: field, value: value)
-            let reading = "\(field):\(value) as \(field):\(base)"
-            guard hasLabels else { return ("\(negation)\(field):\(base)", .plain(reading)) }
-            let sentence = "read \(reading) — labels are not indexed, so this matches every \(Self.matchNoun(field)) named \(base), whatever its labels."
-            return ("\(negation)\(field):\(base)", .labelDropped(reading: reading, sentence: sentence))
-        }
-        return (unwrapped, nil)
+        return (respelt, note)
     }
 
-    /// An alternation read as the one spelling the grammar keeps: the field label repeated on an alternative (`kind:struct|kind:enum`) dropped, and each alternative of a `kind:` value spelt as a kind; `nil` when nothing needed reading.
+    /// The query's terms as written: its whitespace-separated words, except that a `/…/` value holding whitespace stays one term.
     ///
-    /// Every field's value is read one alternative at a time, so `kind:struct|enum` and `kind:struct|kind:enum` are the same question. A `/…/` value is a regex, never an alternation, and is not read here.
-    private static func readingAlternatives(field: String, value: String) -> (value: String, reading: String)? {
-        guard value.contains("|"), !NamePattern.isOperatorName(value), Field(rawValue: field) != nil else { return nil }
-        let alternatives = value.split(separator: "|").map { alternative -> String in
-            let bare = alternative.hasPrefix("\(field):") ? String(alternative.dropFirst(field.count + 1)) : String(alternative)
-            return field == Field.kind.rawValue ? kindSpellings[bare] ?? bare : bare
+    /// A word whose value opens a `/` it does not close runs to the first later word that ends in `/`, its whitespace kept as written; a word that starts a `field:` term ends the search, so a term is never swallowed into a regex, and with no closer the words stay as they were split. An opening word whose value holds a `|` is refused rather than run on (`path:/a|name:x b/`): its alternatives could end at the space as well as at the closer, so no one reading is the one meant.
+    private static func pieces(_ text: String) throws -> [Substring] {
+        let words = text.split(whereSeparator: \.isWhitespace)
+        var pieces: [Substring] = []
+        var index = words.startIndex
+        while index < words.endIndex {
+            let word = words[index]
+            let next = words.index(after: index)
+            if Self.opensRegex(word), let end = words[next...].firstIndex(where: { $0.hasSuffix("/") || Self.startsTerm($0) }), !Self.startsTerm(words[end]) {
+                guard !Self.value(of: word).contains("|") else {
+                    throw EngineError.malformedQuery(
+                        "\"\(word)\" opens a /regex/ holding a | that only the later word \"\(words[end])\" closes, across whitespace — the alternatives could end at the space or at the closer; write the space inside the regex as \\s, or close the regex before the space; \(Self.usage)"
+                    )
+                }
+                pieces.append(text[word.startIndex ..< words[end].endIndex])
+                index = words.index(after: end)
+            } else {
+                pieces.append(word)
+                index = next
+            }
         }
-        let joined = alternatives.joined(separator: "|")
-        guard joined != value else { return nil }
-        return (joined, "\(field):\(value) as \(field):\(joined)")
+        return pieces
+    }
+
+    /// Whether a word's value — what follows its field, or the whole word for a bare term — opens a `/regex/` it does not close.
+    private static func opensRegex(_ word: Substring) -> Bool {
+        let value = Self.value(of: word)
+        return value.hasPrefix("/") && (value.count == 1 || !value.hasSuffix("/"))
+    }
+
+    /// What follows a word's field, or the whole word, less any `!`, for a bare term.
+    private static func value(of word: Substring) -> Substring {
+        let body = word.hasPrefix("!") ? word.dropFirst() : word
+        return body.firstIndex(of: ":").map { body[body.index(after: $0)...] } ?? body
+    }
+
+    /// Whether `word` starts a term of its own: a field word, or a spelling of one, before a `:`.
+    private static func startsTerm(_ word: Substring) -> Bool {
+        let body = word.hasPrefix("!") ? word.dropFirst() : word
+        guard let separator = body.firstIndex(of: ":") else { return false }
+        let label = String(body[body.startIndex ..< separator])
+        return Field(rawValue: label) != nil || fieldSpellings[label] != nil
+    }
+
+    /// The alternatives a term's value spells, each as written and whether it repeated the field label: split at every `|`, except inside a `/…/` alternative or an operator name such as `||`.
+    ///
+    /// An alternative may repeat its field's label (`kind:struct|kind:enum`), or a spelling of it (`file:Tests|file:Sources`); one naming another field, or negated on its own, is refused, since a term's alternatives are values of one field. A label with nothing after it (`sig:url:|path:`) is part of the value, not a label. Another field's label inside a `/` regex that a later part closes is regex text (`sig:/file:|in:/` is one regex); the term's own label there is refused (`name:/^a|name:/^b/`), since read as text it would lose the alternative it starts. A regex closed right before a part opening another (`name:/^a/|/^b/`) is two alternatives, as `name:/^a/|name:/^b/` is, and a regex beside a plain part (`path:/a|b/|c`, `path:c|/a|b/`) stays whole, so it is refused as mixed rather than split at its own `|`.
+    private static func alternatives(of value: String, field: Field, piece: String) throws -> [String] {
+        guard value.contains("|"), !NamePattern.isOperatorName(value) else { return [value] }
+        let parts = value.split(separator: "|", omittingEmptySubsequences: false)
+        var segments: [String] = []
+        for (index, part) in parts.enumerated() {
+            let rest = parts[index...]
+            if let last = segments.last, Self.holdsOpenRegex(last, closedIn: rest) {
+                try Self.refusingOwnLabel(part, insideRegex: last, field: field, piece: piece)
+                segments[segments.count - 1] += "|\(part)"
+            } else if let labelled = try Self.labelledAlternative(part, field: field, piece: piece) {
+                segments.append(labelled)
+            } else if let last = segments.last, !Self.holdsOpenRegex(String(part), closedIn: rest.dropFirst()),
+                      NamePattern.regexBody(last) == nil || !part.hasPrefix("/") && rest.contains(where: { $0.hasSuffix("/") })
+            {
+                segments[segments.count - 1] += "|\(part)"
+            } else {
+                segments.append(String(part))
+            }
+        }
+        return segments.flatMap { segment -> [String] in
+            guard NamePattern.regexBody(segment) == nil, !NamePattern.isOperatorName(segment) else { return [segment] }
+            return segment.split(separator: "|").map(String.init)
+        }
+    }
+
+    /// Whether `segment` opens a `/` regex it does not close, and one of the parts still to come — `rest` — closes it by ending in `/`.
+    private static func holdsOpenRegex(_ segment: String, closedIn rest: ArraySlice<Substring>) -> Bool {
+        segment.hasPrefix("/") && (segment.count == 1 || !segment.hasSuffix("/")) && rest.contains { $0.hasSuffix("/") }
+    }
+
+    /// Throws when `part`, about to join the regex `open` holds open, carries the term's own label or a spelling of it: read as regex text, the alternative it starts would be lost.
+    private static func refusingOwnLabel(_ part: Substring, insideRegex open: String, field: Field, piece: String) throws {
+        guard label(of: part)?.field == field else { return }
+        let name = field.rawValue
+        throw EngineError.malformedQuery(
+            "\"\(piece)\" has the alternative \"\(part)\" inside the regex \"\(open)\", which it leaves open — read as regex text, its label would drop the alternative it starts; close the regex first, \(name):/a/|\(name):/b/, or drop the label to keep it in one regex, \(name):/a|b/; \(StructuralQuery.usage)"
+        )
+    }
+
+    /// The field an alternative's label names or spells, past any `!`, and the value after it; `nil` when `part` carries no label, or one with nothing after it.
+    private static func label(of part: Substring) -> (field: Field, value: Substring)? {
+        let body = part.hasPrefix("!") ? part.dropFirst() : part
+        guard let separator = body.firstIndex(of: ":"), body.index(after: separator) < body.endIndex else { return nil }
+        let label = String(body[body.startIndex ..< separator])
+        guard let field = fieldSpellings[label] ?? Field(rawValue: label) else { return nil }
+        return (field, body[body.index(after: separator)...])
+    }
+
+    /// The value of an alternative that carries a field label, or `nil` when `part` carries none; throws when the label names another field or is negated.
+    ///
+    /// A `sig:` value is signature text, where argument labels are often field words (`in:`, `path:`, `name:`), so only a repeated `sig:` is a label there.
+    private static func labelledAlternative(_ part: Substring, field: Field, piece: String) throws -> String? {
+        guard let (labelled, value) = label(of: part), field != .sig || labelled == .sig else { return nil }
+        guard !part.hasPrefix("!") else {
+            throw EngineError.malformedQuery("\"\(piece)\" negates the alternative \"\(part)\" on its own — a ! negates the whole term; write !\(field.rawValue):a|b to exclude both, or two terms; \(StructuralQuery.usage)")
+        }
+        guard labelled == field else {
+            throw EngineError.malformedQuery(
+                "\"\(piece)\" has the alternative \"\(part)\", which names another field — a term's alternatives are values of one field; write both terms, space-separated, for declarations matching both, or search each on its own for either; \(StructuralQuery.usage)"
+            )
+        }
+        return String(value)
+    }
+
+    /// One alternative read exactly as its field reads a single value: backticks dropped from a name, a kind word spelt as the kind, and a `calls:`/`uses:`/`name:` spelling with parentheses read down to its base name — `widened` naming it when labels were dropped.
+    private static func readingAlternative(_ alternative: String, field: Field) throws -> (value: String, widened: String?) {
+        let namesADeclaration = field == .calls || field == .uses || field == .name
+        // A name written in backticks is matched by the name the index holds, which drops them around an ordinary word.
+        let value = namesADeclaration ? SymbolNaming.unbackticked(alternative) : alternative
+        if field == .kind, let wanted = kindSpellings[value] {
+            return (wanted, nil)
+        }
+        guard namesADeclaration, NamePattern.regexBody(value) == nil, value.contains("(") || value.contains(")") else { return (value, nil) }
+        let (base, hasLabels) = try Self.baseCalleeName(field: field.rawValue, value: value)
+        return (base, hasLabels ? base : nil)
+    }
+
+    /// The alternatives joined back into one value, two or more `/…/` alternatives joined into one regex.
+    ///
+    /// Regexes alternate with `|`, the loosest operator, so `/a/|/b/` read as `/a|b/` matches exactly what either does; one holding an inline `(?…)` option is wrapped in a group so the option stays its own. A regex beside a plain value is refused: the two match differently (a regex ignores case, a `path:` or `sig:` substring does not), so no one reading is the one meant. A field that reads no regex refuses each `/…/` alternative as it would refuse the value alone. Each regex must compile alone, or joining could give it another meaning (`/a\/|/b/` read as a literal `|`), and none may refer back to a group (`\1`, `\k<name>`), whose number joining would change.
+    private static func joiningRegexes(_ values: [String], field: Field, piece: String) throws -> String {
+        let patterns = values.compactMap(NamePattern.regexBody)
+        guard values.count > 1, !patterns.isEmpty else { return values.joined(separator: "|") }
+        guard field.readsRegex else {
+            for value in values where NamePattern.regexBody(value) != nil {
+                try field.validate(value: value)
+            }
+            return values.joined(separator: "|")
+        }
+        guard patterns.count == values.count else {
+            let plain = values.filter { NamePattern.regexBody($0) == nil }
+            throw EngineError.malformedQuery(
+                "\"\(piece)\" mixes a /regex/ alternative with a plain one (\(plain.joined(separator: ", "))) — write every alternative inside one regex, \(field.rawValue):/a|b/, or every one plain, \(field.rawValue):a|b; \(StructuralQuery.usage)"
+            )
+        }
+        for (value, pattern) in zip(values, patterns) {
+            guard !Self.refersBack(pattern) else {
+                throw EngineError.malformedQuery(
+                    "\"\(piece)\" has the alternative \"\(value)\", which refers back to a group — joined into one regex, every alternative's groups share one numbering, so the reference would point at another's; search each alternative on its own; \(StructuralQuery.usage)"
+                )
+            }
+            do {
+                _ = try NamePattern.compiled(pattern)
+            } catch {
+                throw EngineError.malformedQuery("\"\(piece)\" has the alternative \"\(value)\", which does not compile as a regex — \(error); \(StructuralQuery.usage)")
+            }
+        }
+        let grouped = patterns.map { $0.contains("(?") ? "(?:\($0))" : $0 }
+        return "/\(grouped.joined(separator: "|"))/"
+    }
+
+    /// Whether `pattern` refers back to a group: an unescaped `\1`–`\9`, `\g…` or `\k…`, or a `(?P=name)`.
+    private static func refersBack(_ pattern: String) -> Bool {
+        var escaped = false
+        for character in pattern {
+            if escaped, "123456789gk".contains(character) {
+                return true
+            }
+            escaped = !escaped && character == "\\"
+        }
+        return pattern.contains("(?P=")
     }
 
     /// A `name:/…/`, `path:/…/` or `sig:/…/` value kept as written when it compiles; when it does not, a `name:` one is read as the words it plainly spells, or refused in one line quoting the regex engine's reason when it spells none.
@@ -307,7 +466,7 @@ public extension StructuralQuery {
             guard !rawValue.isEmpty else {
                 throw EngineError.malformedQuery("\"\(piece)\" has no value — \(StructuralQuery.usage)")
             }
-            if !field.readsRegex, rawValue.count > 1, rawValue.hasPrefix("/"), rawValue.hasSuffix("/"), !NamePattern.isOperatorName(rawValue) {
+            if !field.readsRegex, NamePattern.regexBody(rawValue) != nil {
                 // Refused whole, before any `|` splits the regex into pieces that each look like a plain value.
                 try field.validate(value: rawValue)
             }
@@ -415,12 +574,12 @@ public extension StructuralQuery {
 
         /// Refuses a value written as a pattern — `~x`, `/x/`, `*` globs, `^x`, `x$` — which no field reads: it would be taken as a literal and answer "no declarations match", which reads as "no such symbol".
         ///
-        /// A value made only of operator characters is an operator's name (`==`, `~=`, `*`) and stays literal, as does a leading `~` where it is Swift (`sig:~Copyable`, `inherits:~Copyable`).
+        /// A value made only of operator characters is an operator's name (`==`, `~=`, `*`) and stays literal — unless it is written `/…/`, which no operator is — as does a leading `~` where it is Swift (`sig:~Copyable`, `inherits:~Copyable`).
         private func refuseOperatorSyntax(in value: String) throws {
-            let operatorCharacters = Set("/=-+!*<>&|^~%.?")
-            guard !value.allSatisfy(operatorCharacters.contains) else { return }
+            let isRegex = NamePattern.regexBody(value) != nil
+            guard isRegex || !NamePattern.isOperatorName(value) else { return }
             // A `/…/` value on a field that reads a regex is read by `NamePattern`, so what reads as glob or anchor syntax here is the pattern's own.
-            guard !readsRegex || NamePattern.regexBody(value) == nil else { return }
+            guard !readsRegex || !isRegex else { return }
             let tildeIsSwift = self == .sig || self == .inherits
             let globAnywhere = self == .sig ? value.hasPrefix("*") || value.hasSuffix("*") : value.contains("*")
             let form: String? = if value.hasPrefix("~"), !tildeIsSwift {

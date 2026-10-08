@@ -200,13 +200,27 @@ public extension RunDiagnostic {
         guard !(parts.prefix.isEmpty && namesAFailedSubcommand(parts.message)) else {
             return nil
         }
-        return RunDiagnostic(
+        let diagnostic = RunDiagnostic(
             severity: parts.severity,
             path: location.path,
             line: location.line,
             column: location.column,
             message: parts.message
         )
+        guard !diagnostic.isXCTestAssertion || opensItsLine(location.path) else {
+            return nil
+        }
+        return diagnostic
+    }
+
+    /// Whether an XCTest assertion's path is where XCTest prints it, at the head of the line: an absolute path, which may hold a space, or a relative one, which holds none.
+    ///
+    /// The assertion's shape can sit inside other text — a parameterized case's argument (`◇ Test case passing 1 argument text → "/…/T.swift:12: error: -[T.A b] : …"`), a line a test echoes — and the location reader takes everything before the line number as the path. Read as a failure there, it listed a test that never failed and turned a green run red; read as a compiler error, it would have done the same.
+    private static func opensItsLine(_ path: String?) -> Bool {
+        guard let path else {
+            return true
+        }
+        return path.hasPrefix("/") || !path.contains(where: \.isWhitespace)
     }
 
     /// A diagnostic line cut at its severity marker: everything standing before the marker, and the message after it.

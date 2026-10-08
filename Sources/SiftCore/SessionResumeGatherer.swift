@@ -42,9 +42,14 @@ public struct SessionResumeGatherer {
     /// The facts, or `nil` when gathering them took longer than `deadline`.
     ///
     /// The gather runs on a thread of its own and is waited for, never cancelled: past the deadline the caller goes on without it, prints the primer alone, and exits — and the process takes the thread with it. A git it had started is left to finish on its own, which is harmless: every one is a read with optional locks off, so there is no lock or half-written file for it to leave behind.
-    public static func gather(repositoryRoot: URL?, runLedgerURL: URL, deadline: TimeInterval) -> SessionResumeFacts? {
+    public static func gather(
+        repositoryRoot: URL?,
+        runLedgerURL: URL,
+        deadline: TimeInterval,
+        declarationParseBudget: TimeInterval = defaultDeclarationParseBudget
+    ) -> SessionResumeFacts? {
         bounded(by: deadline) {
-            gather(repositoryRoot: repositoryRoot, runLedgerURL: runLedgerURL)
+            gather(repositoryRoot: repositoryRoot, runLedgerURL: runLedgerURL, declarationParseBudget: declarationParseBudget)
         }
     }
 

@@ -43,4 +43,26 @@ struct UnpublishedInstallLinesTests {
             #expect(command.hasSuffix(Self.marker), "\(document): \(command)")
         }
     }
+
+    /// With every packaged channel marked, each document still shows the one route that works today: a source build from the public repository.
+    @Test(arguments: documents)
+    func everyInstallDocumentShowsTheSourceBuild(_ document: String) throws {
+        let root = URL(filePath: #filePath)
+            .deletingLastPathComponent() // SiftMCPTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent()
+        let text = try String(contentsOf: root.appendingPathComponent(document), encoding: .utf8)
+        var inFence = false
+        var fenced: [Substring] = []
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("```") {
+                inFence.toggle()
+            } else if inFence {
+                fenced.append(line)
+            }
+        }
+
+        #expect(fenced.contains("git clone https://github.com/Agulhas-Labs/sift.git"), "\(document) shows no clone")
+        #expect(fenced.contains("swift build -c release"), "\(document) shows no source build")
+    }
 }

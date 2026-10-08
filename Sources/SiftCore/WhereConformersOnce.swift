@@ -30,9 +30,11 @@ extension ConformersOnce {
         var through: String?
     }
 
-    /// Whether a declaration's name is the one the store related the conformance to, allowing for an extension written through its outer type.
+    /// Whether a declaration's name is the one the store related the conformance to, allowing for an extension written through its outer type or with generic arguments.
     static func names(_ rowName: String, _ hitName: String) -> Bool {
-        rowName == hitName || rowName.hasSuffix("." + hitName)
+        // An extension's row carries the generic arguments its header writes, which are no part of the name the store records.
+        let path = rowName.contains("<") ? DeclaredTypeName.path(ofSpelling: rowName) : rowName
+        return path == hitName || path.hasSuffix("." + hitName)
     }
 
     /// The entry among `entries` declaring `hit`: same file and name, the innermost whose range holds the hit's line, else the first of that name.
@@ -58,6 +60,55 @@ extension ConformersOnce {
         inheritsThroughAnotherType ? "direct; the index store has it through another type" : "direct; the index store does not have it"
     }
 
+    /// What a listed conformer's row is marked, and so which heading count it is in.
+    enum Mark {
+        /// A clause writes the protocol's name and the store records the conformance there.
+        case direct
+        /// A clause writes the protocol's name and the store records no conformance of it there.
+        case unrecorded
+        /// A clause writes the protocol's name, which the store resolves to another declaration of that name, spelled qualified, and the store records no conformance of the protocol for the row.
+        case resolvedElsewhere(String)
+        /// Only the store has it, and the clause it recorded still stands.
+        case indirect
+        /// The clause writes this typealias of the protocol.
+        case alias(String)
+        /// The walk reached it through this listed protocol or class.
+        case inherited(String)
+        /// Only the store has it, in a file deleted since the build or changed since so that its clause no longer writes an entry where the store recorded one, nor anywhere the name the store recorded there: nothing is known of how it conforms.
+        case unread(OccurrenceState)
+
+        /// The heading count this row is in: `direct` holds the rows whose clause the store does not record as well.
+        var heading: Heading {
+            switch self {
+            case .direct, .unrecorded: .direct
+            case .resolvedElsewhere: .resolvedElsewhere
+            case .indirect: .indirect
+            case .alias: .alias
+            case .inherited: .inherited
+            case let .unread(state): state == .deleted ? .deletedFile : .changedFile
+            }
+        }
+
+        /// The mark of `entry`, in a file standing as `state`: `resolution` names what the store resolves a written name of a row to, or `nil`, and `standing` says whether a changed file's clause still writes an entry where the store recorded the conformance, or anywhere the name the store recorded there.
+        init(_ entry: Entry, state: OccurrenceState, resolution: (SymbolRow) throws -> String?, standing: (Entry) -> Bool) rethrows {
+            if let through = entry.through {
+                self = .inherited(through)
+            } else if let alias = entry.alias {
+                self = .alias(alias)
+            } else if entry.direct {
+                self = if !entry.hits.isEmpty {
+                    .direct
+                } else {
+                    try entry.row.flatMap(resolution).map(Self.resolvedElsewhere) ?? .unrecorded
+                }
+            } else if state == .deleted || (state == .modifiedSinceBuild && !standing(entry)) {
+                self = .unread(state)
+            } else {
+                self = .indirect
+            }
+        }
+    }
+
     /// Whether the scan's row is another type's inheritor: the store records no conformance of the asked protocol for it and records one to another protocol or class of the name inside its declaration, in a file unchanged since the build, of a type whose own declaration is in a file unchanged since the build too.
     static func conformsElsewhere(_ entry: Entry, recorded otherHits: [SemanticStore.Hit], context: SemanticContext, occurrences: OccurrenceFreshness) -> Bool {
         guard entry.hits.isEmpty, let row = entry.row else { return false }
@@ -66,6 +117,13 @@ extension ConformersOnce {
                 && (row.line ... max(row.line, row.endLine)).contains(hit.line) && occurrences.state(of: hit.path).isLive
                 && (hit.protocolPath.map { occurrences.state(of: $0).isLive } ?? true)
         }
+    }
+}
+
+extension ConformersOnce.Mark {
+    /// The heading count a row of each mark is in.
+    enum Heading {
+        case direct, indirect, alias, resolvedElsewhere, deletedFile, changedFile, inherited
     }
 }
 
@@ -103,6 +161,14 @@ extension WhereRenderer {
     static func written(_ name: String, by hits: [SemanticStore.Hit], in row: SymbolRow, files: inout ConformanceHeads.Files, context: SemanticContext) -> SemanticStore.Hit? {
         hits.first { hit in
             context.relativePath(hit.path) == row.path && files.declaration(row, writes: name, atLine: hit.line, column: hit.column)
+        }
+    }
+
+    /// The other declarations in the tree a clause may write as `name`, types and typealiases the store resolves to a declaration other than `usr`, each spelled qualified with the store's references to it.
+    private func otherDeclarations(named name: String, besides usr: String, context: SemanticContext) throws -> [(spelling: String, hits: [SemanticStore.Hit])] {
+        try store.symbols(named: name).filter { $0.kind.isTypeDeclaration || $0.kind == .typealiasKind }.compactMap { row in
+            guard let other = context.store.usr(for: row), other != usr else { return nil }
+            return try (store.qualifiedName(of: row), context.store.references(ofUSR: other))
         }
     }
 
@@ -167,7 +233,7 @@ extension WhereRenderer {
 
     /// The one conformers block for the protocol `usr` the store answered, or nil when neither the store nor the scan by written name finds a conformer.
     ///
-    /// A conformer the scan finds is direct; one only the store has is direct when its declaration's inheritance clause still names the protocol, else indirect; one only the scan finds says the store has it through another type where the store records it inheriting from the protocol through a chain of clauses — its clause names a type of the same name that does — and else that the store does not have it. Rows the tree no longer backs as built are labelled and sort last, so the cap is spent on the rows that still stand.
+    /// A conformer the scan finds is direct; one only the store has is direct when its declaration's inheritance clause still names the protocol, else indirect; one only the scan finds says the store has it through another type where the store records it inheriting from the protocol through a chain of clauses — its clause names a type of the same name that does — and else, where the store resolves the name its clause writes to another declaration of it, says so, and otherwise that the store does not have it. Rows the tree no longer backs as built are labelled and sort last, so the cap is spent on the rows that still stand.
     func conformersOnce(
         of protocolRow: SymbolRow,
         usr: String,
@@ -187,7 +253,7 @@ extension WhereRenderer {
                 entries[index].units = max(entries[index].units, units)
                 continue
             }
-            let declared = try (store.typeDeclarations(named: hit.name) + store.extensions(ofTypeNamed: hit.name))
+            let declared = try (store.typeDeclarations(named: hit.name) + ExtensionPaths.extensions(ofTypeNamed: hit.name, in: store))
                 .map { ConformersOnce.Entry(row: $0, hits: [], direct: false) }
             guard let found = ConformersOnce.matchIndex(of: hit, at: path, in: declared), let row = declared[found].row else {
                 entries.append(ConformersOnce.Entry(row: nil, hits: [hit], direct: false, units: units))
@@ -226,36 +292,60 @@ extension WhereRenderer {
             let (left, right) = (state(lhs).isLive, state(rhs).isLive)
             return left != right ? left : place(lhs) < place(rhs)
         } + walk.rows.map { ConformersOnce.Entry(row: $0.row, hits: [], direct: false, through: $0.through) }
-        let direct = entries.count(where: \.direct)
-        let throughAlias = entries.count { $0.alias != nil }
-        // A conformer in a file the tree no longer has is unclassified: its clause cannot be read, so it is neither direct nor indirect.
-        let inDeletedFile = entries.count { !$0.direct && $0.alias == nil && state($0) == .deleted }
-        let indirect = entries.count - direct - throughAlias - inDeletedFile
-        let inherited = walk.rows.count
+        // Every heading count and every row's mark come from one classification, so the counts are the rows shown with each mark.
+        let elsewhere = try entries.contains { $0.direct && $0.hits.isEmpty } ? otherDeclarations(named: protocolRow.name, besides: usr, context: context) : []
+        // An extension's clause may write another declaration of the name while the type it extends, as the store resolves it, conforms through another clause, so that type speaks for it too.
+        let marks = sorted.map { entry in
+            ConformersOnce.Mark(entry, state: state(entry)) { row in
+                guard occurrences.state(of: context.repoRoot.appendingPathComponent(row.path).path).isLive,
+                      let other = elsewhere.first(where: { Self.written(protocolRow.name, by: $0.hits, in: row, files: &files, context: context) != nil }),
+                      !context.store.inheritsThroughExtendedType(row, from: usr) else { return nil }
+                return other.spelling
+            } standing: { entry in
+                // The store's line and column are the build's, so an edit above the clause moves it: the name the store recorded there, written anywhere in the clause, stands for it too.
+                guard let row = entry.row else { return false }
+                let written = files.names(writtenBy: row)
+                return entry.hits.contains { hit in
+                    context.relativePath(hit.path) == row.path
+                        && (files.declaration(row, writesAHeadAtLine: hit.line, column: hit.column) || written.contains { context.store.records($0, writtenAt: hit) })
+                }
+            }
+        }
+        let direct = marks.count { $0.heading == .direct }
+        let indirect = marks.count { $0.heading == .indirect }
+        let throughAlias = marks.count { $0.heading == .alias }
+        let resolvedElsewhere = marks.count { $0.heading == .resolvedElsewhere }
+        let inDeletedFile = marks.count { $0.heading == .deletedFile }
+        let inChangedFile = marks.count { $0.heading == .changedFile }
+        let inherited = marks.count { $0.heading == .inherited }
         var statesByPath: [String: OccurrenceState] = [:]
         for hit in entries.flatMap(\.hits) {
             statesByPath[hit.path] = occurrences.state(of: hit.path)
         }
-        let extra = (throughAlias == 0 ? "" : ", \(throughAlias) through a typealias") + (inDeletedFile == 0 ? "" : ", \(inDeletedFile) in a deleted file")
+        let extra = (throughAlias == 0 ? "" : ", \(throughAlias) through a typealias")
+            + (resolvedElsewhere == 0 ? "" : ", \(resolvedElsewhere) resolved to another declaration")
+            + (inDeletedFile == 0 ? "" : ", \(inDeletedFile) in a deleted file")
+            + (inChangedFile == 0 ? "" : ", \(inChangedFile) in a changed file without its clause")
         let aliasNote = throughAlias == 0 ? "a typealias to it is not followed" : "through a typealias is a clause writing a typealias of it"
+        let resolvedNote = resolvedElsewhere == 0 ? "" : "; resolved to another declaration is a clause writing the name that the index store resolves to another declaration of it"
         let inheritedCount = inherited == 0 ? "" : ", \(inherited) inherited"
         let inheritedNote = inherited == 0 ? "" : "; \(InheritedConformers.definition)"
-        let details = ["\(sorted.count): \(direct) direct, \(indirect) indirect\(inheritedCount)\(extra) — direct is every inheritance clause in this tree's source that writes the name, so a grep for the name finds the same lines; \(aliasNote); indirect is from the index store\(inheritedNote)"]
+        let details = ["\(sorted.count): \(direct) direct, \(indirect) indirect\(inheritedCount)\(extra) — direct is every inheritance clause in this tree's source that writes the name, so a grep for the name finds the same lines; \(aliasNote)\(resolvedNote); indirect is from the index store\(inheritedNote)"]
             + Self.driftDetails(states: Array(statesByPath.values))
             + (others == 0 ? [] : ["\(others) left out: the index store records \(others == 1 ? "its clause" : "their clauses") as conforming to another \"\(protocolRow.name)\""])
         var lines = ["", "conformers of \(protocolRow.name) (\(details.joined(separator: ", "))):"]
         var cited: [String] = []
         var clauseLines: Set<String> = []
-        for entry in sorted.prefix(Self.listCap) {
-            // A row in a file the tree no longer has carries no mark of its own: the stale-file label after it says all that is known.
-            let mark: String? = if let through = entry.through {
-                "inherited through \(through)"
-            } else if let alias = entry.alias {
-                "through typealias \(alias)"
-            } else if entry.direct {
-                entry.hits.isEmpty ? ConformersOnce.unrecordedMark(entry.row.map { context.store.inherits($0, from: usr) } ?? false) : "direct"
-            } else {
-                state(entry) == .deleted ? nil : "indirect"
+        for (entry, classified) in zip(sorted, marks).prefix(Self.listCap) {
+            // A row whose clause cannot be read carries no mark of its own: the stale-file label after it says all that is known.
+            let mark: String? = switch classified {
+            case let .inherited(through): "inherited through \(through)"
+            case let .alias(alias): "through typealias \(alias)"
+            case .direct: "direct"
+            case .unrecorded: ConformersOnce.unrecordedMark(entry.row.map { context.store.inherits($0, from: usr) } ?? false)
+            case let .resolvedElsewhere(spelling): "writes \(protocolRow.name), which the index store resolves to \(spelling)"
+            case .indirect: "indirect"
+            case .unread: nil
             }
             let marked = mark.map { " — \($0)" } ?? ""
             let marker = (entry.units > 1 ? "  ×\(entry.units) units" : "") + (state(entry).marker ?? "")
@@ -287,14 +377,16 @@ extension WhereRenderer {
     ) throws {
         let typeNames = Set(declarations.filter(\.kind.isTypeDeclaration).map(\.name))
         for typeName in typeNames.sorted() {
-            let extensions = try store.extensions(ofTypeNamed: typeName)
+            let owners = declarations.filter { $0.kind.isTypeDeclaration && $0.name == typeName }
+            let extensions = try ExtensionPaths.listed(under: owners, named: typeName, in: store)
             if !extensions.isEmpty {
                 lines.append("")
                 lines.append("extensions of \(typeName) (\(extensions.count)):")
-                for row in extensions.prefix(Self.listCap) {
+                for (row, mayExtendAnother) in extensions.prefix(Self.listCap) {
                     citedPaths.append(row.path)
                     let memberCount = try store.childCount(of: row.id)
-                    lines.append("  extension \(row.name)\(extensionContext(row)) — \(memberCount) members — \(row.path)\(row.rangeDescription)")
+                    let mark = mayExtendAnother ? " — may extend another module's \(typeName)" : ""
+                    lines.append("  extension \(row.name)\(extensionContext(row)) — \(memberCount) members — \(row.path)\(row.rangeDescription)\(mark)")
                 }
             }
             if let block = conformerBlocks[typeName] {

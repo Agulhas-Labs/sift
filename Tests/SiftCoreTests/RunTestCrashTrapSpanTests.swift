@@ -6,7 +6,7 @@ import Foundation
 @testable import SiftCore
 import Testing
 
-/// Trap-shaped text outside the crashed test's own stretch of the log is dropped; inside the stretch every trap is kept, unranked, since neither the log nor the event stream says which one the runtime wrote.
+/// Trap-shaped text outside the crashed test's own stretch of the log is dropped; inside the stretch every trap is kept, unranked where none lies in the source of a test the event stream left unfinished, since neither the log nor the stream says which one the runtime wrote.
 struct RunTestCrashTrapSpanTests {
     private static var lookalike: String {
         "Shelf/Rack.swift:9: Fatal error: printed by a passing test"

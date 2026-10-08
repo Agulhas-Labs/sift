@@ -86,7 +86,7 @@ struct DigestSingleLineWindowTests {
     func aDeclarationWrittenOverSeveralLinesIsShownAsItsDigestLineShowsIt() throws {
         let output = try Self.ledger().render(target: "Sources/Gizmo/Ledger.swift:120", options: DigestOptions())
 
-        #expect(output.contains("\n\n    private static func wide(first: Int, second: String)\n(…17 lines skipped)\n        _ = \"wide-14\"\n"))
+        #expect(output.contains("\n\n    private static func wide(first: Int, second: String)\n(…14 lines skipped)\n        _ = \"wide-14\"\n"))
         #expect(output.hasSuffix("_ = \"wide-20\"\nlines 99-133; read it by range"))
     }
 }

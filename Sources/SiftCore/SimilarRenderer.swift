@@ -102,7 +102,7 @@ struct SimilarRenderer {
     /// The locator line a hit and a subject share: where it is, what it is called, how it is written.
     static func located(_ fingerprint: DeclarationFingerprint) -> String {
         let declaration = fingerprint.declaration
-        return "\(declaration.path):\(declaration.line)-\(declaration.endLine)  \(declaration.qualifiedName) — \(declaration.signature)"
+        return "\(declaration.path):\(declaration.line)-\(declaration.endLine)  \(declaration.qualifiedName) — \(SourceSlicer.shown(declaration.signature))"
     }
 
     /// Two decimals, so the floor in the header and the scores under it are the same kind of number.

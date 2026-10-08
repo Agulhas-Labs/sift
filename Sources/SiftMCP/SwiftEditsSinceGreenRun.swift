@@ -76,9 +76,12 @@ public struct SwiftEditsSinceGreenRun {
     ///
     /// The command's result is its last pipeline's, so a run answers for itself only where nothing could have turned its failure into that success: it ends its pipeline (`sift run -- swift build | tail` exits with `tail`'s status), no `||` stands just before it (which can skip it), and only `&&` joins it to every statement after it. A command holding a subshell, a group or any other compound statement proves nothing, since how its pieces join is not read here.
     ///
-    /// The directory starts at `cwd`, the one the call ran in, and moves with each plain `cd` before the run that `&&` joins to it. Any other change of directory before the run — a `cd` after a `;`, which a failed `cd` still reaches, a `pushd`, a `cd` in a pipeline or a substitution — or a relative `cd` with no `cwd` to read it from leaves the directory unknown, and that run proves nothing.
+    /// The directory starts at `cwd`, the one the call ran in, and moves with each plain `cd` before the run that `&&` joins to it. Any other change of directory before the run — a `cd` after a `;` or a newline, which a failed `cd` still reaches, a `pushd`, a `cd` in a pipeline or a substitution — or a relative `cd` with no `cwd` to read it from leaves the directory unknown, and that run proves nothing.
+    ///
+    /// The command is read as the shell reads it: comments out first, so a backslash ending one continues nothing, then each backslash-newline joined away, and a statement of blanks alone is no statement.
     public static func validatedDirectories(of command: String, cwd: String?) -> [String] {
-        let located = ShellSyntax.statementRanges(of: command)
+        let command = ShellSyntax.withoutComments(command).replacingOccurrences(of: "\\\n", with: "")
+        let located = ShellSyntax.statementRanges(of: command).filter { !$0.statement.allSatisfy(\.isWhitespace) }
         guard let last = located.indices.last, !located.contains(where: { InPlaceShape.isCompoundMarker($0.statement) }) else { return [] }
         // `joints[k]` is what follows statement `k`: the operator before the next one, or whatever ends the command.
         let joints = located.indices.map { index in

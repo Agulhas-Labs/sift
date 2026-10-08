@@ -252,15 +252,15 @@ struct BuildRewriteTests {
         #expect(!permission.vetoes(line: "(git status) && swift build"))
     }
 
-    /// A settings file with a trailing comma is a syntax error to Claude Code, which skips it, so no rule of it counts; a comma inside a string is only text.
+    /// A settings file with a trailing comma is a syntax error to Claude Code, which skips it, so no allow rule of it counts, while its ask rule still withholds a rewrite; a comma inside a string is only text.
     @Test
-    func aSettingsFileWithATrailingCommaCountsForNothing() throws {
+    func aSettingsFileWithATrailingCommaAllowsNothing() throws {
         let root = try TemporaryDirectory.make("rewrite-comma")
         let home = root.appendingPathComponent("home")
         let missing = root.appendingPathComponent("managed-settings.json").path
         try Self.write(#"{"permissions":{"allow":["Bash(sift run *)",],"ask":["Bash(rm *)"]}}"#, to: home.appendingPathComponent(".claude/settings.json"))
         #expect(WrappedRunPermission.load(project: nil, environment: ["HOME": home.path], managed: missing).allowed.isEmpty)
-        #expect(WrappedRunPermission.load(project: nil, environment: ["HOME": home.path], managed: missing).vetoed.isEmpty)
+        #expect(WrappedRunPermission.load(project: nil, environment: ["HOME": home.path], managed: missing).vetoed == ["rm *"])
 
         try Self.write(#"{"permissions":{"allow":["Bash(echo a,] *)" ],"ask":["Bash(rm *)"]}}"#, to: home.appendingPathComponent(".claude/settings.json"))
         let valid = WrappedRunPermission.load(project: nil, environment: ["HOME": home.path], managed: missing)
@@ -308,23 +308,25 @@ struct BuildRewriteTests {
         #expect(WrappedRunPermission.load(project: nil, environment: ["HOME": home.path], managed: managed.path).allowed == ["sift run *"])
     }
 
-    /// A line the shell would not run as written is never rewritten.
+    /// A line the shell would not run as written is never rewritten, nor refused with a wrapping of it named, but let through as written.
     @Test
     func anIncompleteLineIsNotRewritten() throws {
         let outcome = try Self.judged("swift test &&", mode: "auto")
 
         #expect(ShellSyntax.isIncomplete("swift test &&"))
         #expect(!ShellSyntax.isIncomplete("swift test && git status"))
-        #expect(outcome.verdict.token == "deny")
+        #expect(outcome.json == nil)
+        #expect(outcome.verdict.line == "allowed\t\tincomplete")
     }
 
-    /// A line with a quote, a substitution or a parenthesis left open, or a `)` nothing opens, is one Claude Code cannot parse either, so it is never rewritten; a balanced one is.
+    /// A line with a quote, a substitution or a parenthesis left open, or a `)` nothing opens, is one Claude Code cannot parse either, so it is neither rewritten nor refused but let through; a balanced one is complete.
     @Test(arguments: ["swift test --filter \"Foo", "swift test --filter $(echo", "swift test )", "swift test --filter 'Foo", "swift test `echo"])
     func anUnclosedLineIsNotRewritten(shell: String) throws {
         let outcome = try Self.judged(shell, mode: "auto")
 
         #expect(ShellSyntax.isIncomplete(shell))
-        #expect(outcome.verdict.token == "deny")
+        #expect(outcome.json == nil)
+        #expect(outcome.verdict.line == "allowed\t\tincomplete")
     }
 
     /// A group nothing closes is incomplete too, though the hook never sees a build in it.

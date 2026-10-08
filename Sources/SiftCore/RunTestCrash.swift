@@ -12,7 +12,7 @@ import Foundation
 public struct RunTestCrash: Sendable, Equatable {
     /// Every process SwiftPM said died on a signal, in the order it said so.
     public private(set) var processes: [Process] = []
-    /// Every `File.swift:N: Fatal error: …` (or `Precondition failed`, `Assertion failed`) line the run printed, trimmed, in order — once settled, only those inside a crashed test's own stretch of the log where one is known, the trap that ended it first.
+    /// Every `File.swift:N: Fatal error: …` (or `Precondition failed`, `Assertion failed`) line the run printed, trimmed, in order — once settled, only those inside a crashed test's own stretch of the log where one is known, one raised in the source of a test the event stream left unfinished first.
     public internal(set) var traps: [String] = []
     /// Where each trap line sat, beside ``traps`` until settled.
     var trapMarks: [Mark] = []
@@ -22,6 +22,8 @@ public struct RunTestCrash: Sendable, Equatable {
     public internal(set) var unfinished: [String] = []
     /// The Swift Testing tests the run's event stream declared, by the name the console prints, under the test target that holds them, or `nil` where no stream was read.
     public internal(set) var declaredSwiftTesting: [String: [String]]?
+    /// Where each Swift Testing test the run's event stream started and never ended was declared, empty where no stream was read.
+    var unfinishedSources: [DeclaredTestSource] = []
     /// How many tests each process in ``processes``, by its index there, was handed and never started, or no entry where the log does not say what it was handed.
     public internal(set) var neverStarted: [Int: Shortfall] = [:]
     /// The exit code of a run whose test process ended with no signal line, on `exit(N)` or a `SIGKILL`, read from the tests it left unfinished; `nil` for a crash SwiftPM reported on a signal.
@@ -124,20 +126,25 @@ public extension RunTestCrash {
 
         /// Whether `line` is the runtime's report of a trap: `File.swift:12: Fatal error: …`, anchored on the location ahead of it.
         static func isTrap(_ line: String) -> Bool {
+            trapLocation(line) != nil
+        }
+
+        /// The file and line a trap line names ahead of its kind, `File.swift` and `12` in `File.swift:12: Fatal error: …`, or `nil` where `line` is no trap.
+        static func trapLocation(_ line: String) -> (file: Substring, line: Int)? {
             for kind in [": Fatal error", ": Precondition failed", ": Assertion failed"] {
                 guard let range = line.range(of: kind) else {
                     continue
                 }
                 let location = line[..<range.lowerBound]
                 guard let colon = location.lastIndex(of: ":"), location[location.index(after: colon)...].allSatisfy(\.isNumber),
-                      location.index(after: colon) < location.endIndex, !location[..<colon].contains(" ")
+                      let number = Int(location[location.index(after: colon)...]), !location[..<colon].contains(" ")
                 else {
-                    return false
+                    return nil
                 }
                 let rest = line[range.upperBound...]
-                return rest.isEmpty || rest.hasPrefix(":")
+                return rest.isEmpty || rest.hasPrefix(":") ? (location[..<colon], number) : nil
             }
-            return false
+            return nil
         }
     }
 }
@@ -177,9 +184,11 @@ extension RunTestCrash {
         return settled
     }
 
-    /// The trap lines that belong to the crash, the one that ended each crashed process first.
+    /// The trap lines that belong to the crash, one the event stream places in a crashed test's own source first.
     ///
-    /// **A trap belongs to a crashed test where it follows that test's start inside the same process's output.** Another test can print the same `File.swift:N: Fatal error: …` text and pass, in another process or before the crashed test began, and that line says nothing about the crash. The start line and the runtime's trap message both go to the test process's standard error, which SwiftPM relays in the order it was written, so the real trap is never before its test's start and never dropped. Inside the crashed test's stretch every trap is kept, the last of each process listed first, and that order is not a ranking, in any run mode: a test running beside the crashed one can print the same text to standard output, which reaches the log out of step with standard error, so the printed line can land before or after the trap and even after its own test's ending; and Swift Testing's event stream records no printed text, so no test id says whose line it is. Where no unfinished test's start is known, every trap is kept in log order.
+    /// **A trap belongs to a crashed test where it follows that test's start inside the same process's output.** Another test can print the same `File.swift:N: Fatal error: …` text and pass, in another process or before the crashed test began, and that line says nothing about the crash. The start line and the runtime's trap message both go to the test process's standard error, which SwiftPM relays in the order it was written, so the real trap is never before its test's start and never dropped. Inside the crashed test's stretch every trap is kept, and position cannot rank them: a test running beside the crashed one can print the same text to standard output, which reaches the log out of step with standard error, so the printed line can land before or after the trap and even after its own test's ending. Where no unfinished test's start is known, every trap is kept in log order.
+    ///
+    /// **A trap whose `File.swift:N` lies in the source of a test the event stream started and never ended is listed first.** Swift Testing's stream records no printed text and no event at the crash, so no test id says whose line a trap is; what it does record is where each test is declared, and which tests started and never ended. A trap raised in such a test's own body names a line between its declaration and the next test or suite declared in that file, which a look-alike printed with another location does not. Every other trap inside the stretch follows, the last of each process first, and that order is not a ranking: a trap raised in library code or the standard library, the usual case, names no test's source, and XCTest writes no stream.
     func trapsOfTheCrash() -> [String] {
         let spans = unfinished.compactMap { starts[$0] }
         guard !spans.isEmpty else {
@@ -191,7 +200,11 @@ extension RunTestCrash {
         let leads = Set(inside.map { trapMarks[$0].process }).sorted().compactMap { process in
             inside.last { trapMarks[$0].process == process }
         }
-        return (leads + inside.filter { !leads.contains($0) }).map { traps[$0] }
+        let unranked = leads + inside.filter { !leads.contains($0) }
+        let attributed = unranked.filter { index in
+            Reader.trapLocation(traps[index]).map { location in unfinishedSources.contains { $0.holds(file: location.file, line: location.line) } } ?? false
+        }
+        return (attributed + unranked.filter { !attributed.contains($0) }).map { traps[$0] }
     }
 
     /// The clause an `inventory:` line carries for this crash, so its counts never read as a run that finished: how many tests started and never ended, and how many selected tests never started, or that the log does not say.

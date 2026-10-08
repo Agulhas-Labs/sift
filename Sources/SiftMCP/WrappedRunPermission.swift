@@ -11,16 +11,19 @@ import SiftCore
 ///
 /// No prompt can follow where the session's permission mode asks nobody (`bypassPermissions`, and `auto`, whose classifier reviews a call in the user's place), or where an allow rule the hook can read covers every wrapped statement. Either way an `ask` or `deny` rule that matches anything the line runs — as written or as wrapped — keeps the rewrite from being made, since Claude Code applies those whatever a hook or a mode says. An allow rule counts only where Claude Code would apply it: a project file's only once the workspace trust dialog was accepted for that project, and nobody's but the managed files' where those set `allowManagedPermissionRulesOnly`.
 ///
-/// The limit is the rules the hook cannot read. One it cannot see that allows only ever withholds a rewrite. One it cannot see that asks or denies — passed on the command line, granted for the session, delivered by an MDM profile, the server or an embedding host — is matched by Claude Code against the rewritten command, so the rewrite can then meet a prompt or a denial it did not foresee, and a deny rule written for the command as the user wrote it does not match the wrapped one.
+/// A settings file the hook cannot read as Claude Code does — one Foundation reads no JSON object from, though there is something in it — withholds every rewrite, since a rule in it is one the hook cannot see. The limit is the rules the hook has no file for. One it cannot see that allows only ever withholds a rewrite. One it cannot see that asks or denies — passed on the command line, granted for the session, delivered by an MDM profile, the server or an embedding host — is matched by Claude Code against the rewritten command, so the rewrite can then meet a prompt or a denial it did not foresee, and a deny rule written for the command as the user wrote it does not match the wrapped one.
 public struct WrappedRunPermission: Sendable, Equatable {
     /// The `Bash` allow rules' patterns, `*` standing for any text.
     public let allowed: [String]
     /// The `Bash` ask and deny rules' patterns, either of which keeps the refusal.
     public let vetoed: [String]
+    /// Whether a settings file in the chain has something in it the hook cannot read as Claude Code reads it, so an ask or deny rule may be there unseen: while one does, no build is rewritten.
+    public let hasUnreadableSettings: Bool
 
-    public init(allowed: [String], vetoed: [String]) {
+    public init(allowed: [String], vetoed: [String], hasUnreadableSettings: Bool = false) {
         self.allowed = allowed
         self.vetoed = vetoed
+        self.hasUnreadableSettings = hasUnreadableSettings
     }
 
     /// The rules of the session the hook serves: its project is the directory Claude Code names in the hook's environment, else `directory`.
@@ -47,12 +50,16 @@ public struct WrappedRunPermission: Sendable, Equatable {
         let dropIns = managedFile.deletingLastPathComponent().appendingPathComponent("managed-settings.d")
         let dropInFiles = ((try? FileManager.default.contentsOfDirectory(atPath: dropIns.path)) ?? [])
             .filter { $0.hasSuffix(".json") }.sorted().map { dropIns.appendingPathComponent($0) }
-        let managedSettings = ([managedFile] + dropInFiles).compactMap(settings(at:))
+        let managedFiles = [managedFile] + dropInFiles
+        let managedSettings = managedFiles.compactMap(settings(at:))
+        let managedReadings = managedFiles.map(vetoReading(at:))
         // Claude Code reads the shared file from the directory the session started in, and the local one from the
         // repository's root — the main checkout's, in a linked worktree. Allow rules count from exactly those two files;
         // ask and deny rules from both files in every one of those directories, since an extra veto only withholds a rewrite.
+        // For the same reason a file Claude Code skips as malformed JSON still vetoes, while its allow rules count for nothing,
+        // and a file with something in it the hook cannot read as Claude Code does withholds every rewrite.
         var projectSettings: [[String: Any]] = []
-        var vetoingProjectSettings: [[String: Any]] = []
+        var projectReadings: [VetoReading] = []
         if let project {
             let roots = repositoryRoots(of: project)
             let localRoot = roots.main ?? roots.top ?? project
@@ -65,21 +72,24 @@ public struct WrappedRunPermission: Sendable, Equatable {
             let directories = [project, roots.top, roots.main].compactMap(\.self).filter {
                 seen.insert(URL(fileURLWithPath: $0).resolvingSymlinksInPath().standardizedFileURL.path).inserted
             }
-            vetoingProjectSettings = directories.flatMap { directory in
+            projectReadings = directories.flatMap { directory in
                 ["settings.json", "settings.local.json"].map { URL(fileURLWithPath: directory).appendingPathComponent(".claude/\($0)") }
-            }.compactMap(settings(at:))
+            }.map(vetoReading(at:))
         }
-        let userSettings = [configHome.appendingPathComponent("settings.json")].compactMap(settings(at:))
+        let userFile = configHome.appendingPathComponent("settings.json")
+        let userSettings = [userFile].compactMap(settings(at:))
+        let userReadings = [vetoReading(at: userFile)]
 
-        let managedOnly = managedSettings.contains { $0["allowManagedPermissionRulesOnly"] as? Bool == true }
+        let readings = userReadings + managedReadings + projectReadings
+        let managedOnly = managedReadings.compactMap(\.object).contains { $0["allowManagedPermissionRulesOnly"] as? Bool == true }
         let trusted = project.map { isTrusted($0, config: globalConfig) } ?? false
         let allowSources = managedOnly ? managedSettings : userSettings + managedSettings + (trusted ? projectSettings : [])
         let allowed = allowSources.flatMap { patterns(in: permissions(of: $0)["allow"]) }
-        let vetoed = (userSettings + managedSettings + vetoingProjectSettings).flatMap { settings in
+        let vetoed = readings.compactMap(\.object).flatMap { settings in
             let permissions = permissions(of: settings)
             return patterns(in: permissions["ask"], toolGlobs: true) + patterns(in: permissions["deny"], toolGlobs: true)
         }
-        return WrappedRunPermission(allowed: allowed, vetoed: vetoed)
+        return WrappedRunPermission(allowed: allowed, vetoed: vetoed, hasUnreadableSettings: readings.contains(where: \.isUnreadable))
     }
 
     /// Whether running every one of `legs` — each a statement as the rewrite leaves it, `sift run -- ` in front — can reach the user as a prompt in a session in permission mode `mode`.
@@ -112,11 +122,32 @@ public struct WrappedRunPermission: Sendable, Equatable {
         Self.forms(of: statement).contains { form in vetoed.contains { Self.matches(form, pattern: $0) } }
     }
 
-    /// The forms of `statement` an ask or deny rule is matched against: as written, past its leading variable assignments and the wrappers Claude Code strips, and each of those with its redirections set aside as well.
+    /// The forms of `statement` an ask or deny rule is matched against: as written, past its leading variable assignments and the wrappers Claude Code strips, and each of those with its redirections set aside as well; the same for the command inside any group punctuation, after any `case` arm's pattern and at any function body's opening brace.
     static func forms(of statement: String) -> Set<String> {
         let written = statement.trimmingCharacters(in: .whitespacesAndNewlines)
-        let inner = withoutGroupPunctuation(written)
-        return inner == written ? forms(ofTrimmed: written) : forms(ofTrimmed: written).union(forms(ofTrimmed: inner))
+        var found: Set<String> = []
+        for command in [written] + commandsAfterPatternsAndBraces(in: written) {
+            let inner = withoutGroupPunctuation(command)
+            found.formUnion(forms(ofTrimmed: command))
+            if inner != command {
+                found.formUnion(forms(ofTrimmed: inner))
+            }
+        }
+        return found
+    }
+
+    /// The text after every `)` and `{` outside quoted runs, trimmed, where it is not empty: where a `case` arm's pattern (`(a) rm x`, `a)rm x`) ends and its command begins, and where a function's body opens (`f(){ rm x`, `function f { rm x`).
+    ///
+    /// Over-reading is the safe side, as for the group punctuation: the text after a `)` or `{` that opens no command only makes the hook stand aside more often.
+    private static func commandsAfterPatternsAndBraces(in statement: String) -> [String] {
+        let written = Array(statement)
+        let text = Array(ShellSyntax.executableText(of: statement))
+        guard written.count == text.count else { return [] }
+        return text.indices.dropLast().compactMap { index in
+            guard text[index] == ")" || text[index] == "{" else { return nil }
+            let command = String(written[(index + 1)...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return command.isEmpty ? nil : command
+        }
     }
 
     /// `statement`, already trimmed, in the forms ``forms(of:)`` describes, without the group punctuation set aside.
@@ -235,10 +266,26 @@ public struct WrappedRunPermission: Sendable, Equatable {
         return (lines[0], common.lastPathComponent == ".git" ? common.deletingLastPathComponent().path : nil)
     }
 
-    /// The JSON object in the file at `url`, or `nil` where there is none.
+    /// The JSON object in the file at `url` as Claude Code reads it, or `nil` where there is none or the file is JSON only Foundation's lenient reader takes: a trailing comma, which Claude Code documents as a syntax error and skips the file for, a byte order mark, which strict JSON forbids, or UTF-16 or UTF-32, where Claude Code reads settings as UTF-8.
     private static func settings(at url: URL) -> [String: Any]? {
-        guard let data = try? Data(contentsOf: url), !hasTrailingComma(data) else { return nil }
+        guard let data = try? Data(contentsOf: url), !hasByteOrderMark(data), !data.contains(0), !hasTrailingComma(data) else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    /// What the file at `url` gives the reading for ask and deny rules.
+    private static func vetoReading(at url: URL) -> VetoReading {
+        guard FileManager.default.fileExists(atPath: url.path) else { return .nothing }
+        guard let data = try? Data(contentsOf: url) else { return .unreadable }
+        guard data.contains(where: { ![0x20, 0x09, 0x0A, 0x0D].contains($0) }) else { return .nothing }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], !hasDuplicateKey(data, read: object) else {
+            return .unreadable
+        }
+        return .object(object)
+    }
+
+    /// Whether `data` opens on a UTF-8 byte order mark, which Foundation skips and strict JSON does not allow.
+    private static func hasByteOrderMark(_ data: Data) -> Bool {
+        data.starts(with: [0xEF, 0xBB, 0xBF])
     }
 
     /// Whether `data` has a comma with nothing but whitespace between it and the `}` or `]` closing its container.
@@ -283,9 +330,9 @@ public struct WrappedRunPermission: Sendable, Equatable {
 
     /// The patterns of the `Bash` rules in `rules`: a bare `Bash` is every command, and the legacy `prefix:*` is the prefix alone or followed by a space and anything.
     ///
-    /// For ask and deny rules, a tool-name glob that matches `Bash` — `*`, say — is every command too; Claude Code skips such a glob in an allow rule.
+    /// For ask and deny rules, a tool-name glob that matches `Bash` — `*`, say — is every command too; Claude Code skips such a glob in an allow rule. An ask or deny list keeps its rules past an entry that is not a string, since a rule counted that Claude Code drops only withholds a rewrite.
     static func patterns(in rules: Any?, toolGlobs: Bool = false) -> [String] {
-        (rules as? [String] ?? []).flatMap { rule -> [String] in
+        (toolGlobs ? (rules as? [Any] ?? []).compactMap { $0 as? String } : rules as? [String] ?? []).flatMap { rule -> [String] in
             let rule = rule.trimmingCharacters(in: .whitespaces)
             if rule == "Bash" || (toolGlobs && !rule.contains("(") && rule.contains("*") && matches("Bash", pattern: rule)) {
                 return ["*"]
@@ -330,5 +377,78 @@ public struct WrappedRunPermission: Sendable, Equatable {
             index += 1
         }
         return nil
+    }
+}
+
+extension WrappedRunPermission {
+    /// What one settings file gives the reading for ask and deny rules and for managed settings that keep permission rules to themselves, each of which can only withhold a rewrite.
+    private enum VetoReading {
+        /// No file, or one with nothing but whitespace in it: no rule can be there.
+        case nothing
+        /// The JSON object Foundation reads from the file, a file `settings(at:)` passes over included.
+        case object([String: Any])
+        /// A file with something in it that Foundation reads no JSON object from — Latin-1 text, say, or a lone surrogate escape, both of which Claude Code reads — or one whose object names a key twice, where Foundation keeps the first and Claude Code may keep the last, so a rule may be there that the hook cannot see.
+        case unreadable
+
+        var object: [String: Any]? {
+            switch self {
+            case let .object(object): object
+            case .nothing, .unreadable: nil
+            }
+        }
+
+        var isUnreadable: Bool {
+            switch self {
+            case .unreadable: true
+            case .nothing, .object: false
+            }
+        }
+    }
+
+    /// Whether the JSON in `data`, which Foundation read as `object`, names some key twice in one object: it then writes more key-value pairs — one `:` outside a string each — than `object` holds.
+    ///
+    /// Foundation keeps the first of two equal keys, `{"permissions":{},"permissions":{"deny":[…]}}` reading as no rules at all, while Claude Code may keep the last, so the two readers can disagree on what the file says. Keys compare as Foundation decodes them, an escaped spelling of a key included.
+    private static func hasDuplicateKey(_ data: Data, read object: [String: Any]) -> Bool {
+        guard let text = jsonText(of: data) else { return true }
+        var inString = false
+        var escaped = false
+        var pairs = 0
+        for scalar in text.unicodeScalars {
+            if inString {
+                if escaped {
+                    escaped = false
+                } else if scalar == "\\" {
+                    escaped = true
+                } else if scalar == "\"" {
+                    inString = false
+                }
+            } else if scalar == "\"" {
+                inString = true
+            } else if scalar == ":" {
+                pairs += 1
+            }
+        }
+        return pairs != keyCount(of: object)
+    }
+
+    /// The text of the JSON in `data`, in the encoding Foundation reads it in: UTF-8, or UTF-16 or UTF-32 where a NUL byte shows one, told apart by its byte order mark or by where its zero bytes fall.
+    private static func jsonText(of data: Data) -> String? {
+        guard data.contains(0) else { return String(data: data, encoding: .utf8) }
+        let head = Array(data.prefix(4)) + Array(repeating: UInt8(1), count: 4)
+        let encoding: String.Encoding = switch (head[0], head[1], head[2], head[3]) {
+        case (0xFF, 0xFE, 0, 0), (_, 0, 0, 0): .utf32LittleEndian
+        case (0, 0, 0xFE, 0xFF), (0, 0, 0, _): .utf32BigEndian
+        case (0xFF, 0xFE, _, _), (_, 0, _, _): .utf16LittleEndian
+        default: .utf16BigEndian
+        }
+        return String(data: data, encoding: encoding)
+    }
+
+    /// How many keys `value` holds, counting every object nested in it.
+    private static func keyCount(of value: Any) -> Int {
+        if let object = value as? [String: Any] {
+            return object.count + object.values.reduce(0) { $0 + keyCount(of: $1) }
+        }
+        return (value as? [Any])?.reduce(0) { $0 + keyCount(of: $1) } ?? 0
     }
 }

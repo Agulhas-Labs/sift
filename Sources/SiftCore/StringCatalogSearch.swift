@@ -46,7 +46,7 @@ struct StringCatalogSearch {
             hits: hits,
             catalogsSearched: paths.count,
             literalSites: literalSites,
-            sourceLiterals: SourceLiteralSearch(repoRoot: repoRoot, swiftPaths: swiftPaths).run(query: query),
+            sourceLiterals: SourceLiteralSearch(repoRoot: repoRoot, swiftPaths: swiftPaths).run(query: query, catalogAnswered: !hits.isEmpty),
             accessorTrails: accessorTrails(scanKeys: scanKeys, literalSites: literalSites)
         )
     }
@@ -127,7 +127,8 @@ struct StringCatalogSearch {
                   let source = String(data: data, encoding: .utf8)
             else { continue }
             let interested = needles.filter { source.contains($0.quoted) }
-            let interpolated = source.contains("\\(") ? formatted.filter { key in key.pieces.allSatisfy { $0.isEmpty || source.contains($0) } } : []
+            // A raw literal interpolates with `\#(`, and the match below reads a key's text as the literal prints it, so a file is kept wherever an escape could spell that text.
+            let interpolated = source.contains("\\(") || source.contains("\\#") ? formatted.filter { key in key.pieces.allSatisfy { Self.mayPrint($0, in: source) } } : []
             guard !interested.isEmpty || !interpolated.isEmpty else { continue }
             var lexer = SwiftLiteralLexer()
             for (number, line) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
@@ -143,6 +144,11 @@ struct StringCatalogSearch {
             }
         }
         return sites
+    }
+
+    /// Whether `source` may hold a literal printing `text`: each run of it free of the characters an escape can stand for (`"`, `'`, `\`, control characters) appears in `source` as written, or `source` writes a `\u{…}` escape, which can stand for any character.
+    private static func mayPrint(_ text: String, in source: String) -> Bool {
+        source.contains("u{") || text.split { "\"'\\".contains($0) || $0.unicodeScalars.contains { $0.properties.generalCategory == .control } }.allSatisfy { source.contains($0) }
     }
 }
 

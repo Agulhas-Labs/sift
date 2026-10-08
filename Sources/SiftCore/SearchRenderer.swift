@@ -36,7 +36,7 @@ struct SearchRenderer {
                 currentPath = match.path
                 lines.append(currentPath + ":")
             }
-            lines.append("  :\(match.line)-\(match.endLine)  \(match.qualifiedName) — \(match.signature)")
+            lines.append("  :\(match.line)-\(match.endLine)  \(match.qualifiedName) — \(SourceSlicer.shown(match.signature))")
         }
         let remaining = result.matches.count - start - page.count
         if remaining > 0 {

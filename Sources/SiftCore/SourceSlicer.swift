@@ -82,13 +82,18 @@ struct SourceSlicer {
         return out
     }
 
-    /// The index just past the string literal that opens at `start`, or past the one character at `start` where none does.
+    /// The index just past the string or extended regex (`#/…/#`) literal that opens at `start`, or past the one character at `start` where none does.
+    ///
+    /// A bare `/…/` regex is not read: in a signature it cannot be told from a division.
     private static func literalEnd(in chars: [Character], from start: Int) -> Int {
         var cursor = start
         while cursor < chars.count, chars[cursor] == "#" {
             cursor += 1
         }
         let hashes = cursor - start
+        if hashes > 0, cursor < chars.count, chars[cursor] == "/" {
+            return regexEnd(in: chars, from: cursor + 1, hashes: hashes)
+        }
         guard cursor < chars.count, chars[cursor] == "\"" else { return start + 1 }
         var quotes = 0
         while cursor + quotes < chars.count, chars[cursor + quotes] == "\"", quotes < 3 {
@@ -112,6 +117,51 @@ struct SourceSlicer {
             cursor += 1
         }
         return chars.count
+    }
+
+    /// The index just past the `/` and `hashes` hashes that close an extended regex literal whose body starts at `start`; a backslash escapes the character after it.
+    private static func regexEnd(in chars: [Character], from start: Int, hashes: Int) -> Int {
+        var cursor = start
+        while cursor < chars.count {
+            if chars[cursor] == "\\" {
+                cursor += 2
+                continue
+            }
+            if chars[cursor] == "/", cursor + 1 + hashes <= chars.count, chars[(cursor + 1) ..< (cursor + 1 + hashes)].allSatisfy({ $0 == "#" }) {
+                return cursor + 1 + hashes
+            }
+            cursor += 1
+        }
+        return chars.count
+    }
+
+    /// A stored signature as every answer prints it: the space a collapsed line break left just inside a bracket removed, and the result cut at `signatureCap`.
+    static func shown(_ signature: String) -> String {
+        cut(tidyingBrackets(in: signature), at: signatureCap)
+    }
+
+    /// `text` without a space just after `(` or `[` or just before `)` or `]`, outside string literals.
+    ///
+    /// The stored text has one space where the source broke the line (`answer(` then `_ call:`), and cannot tell that from a space written there, so any such space goes. A space between a name and `(` (`-> (Int)`), and a literal's contents, are never touched.
+    static func tidyingBrackets(in text: String) -> String {
+        let chars = Array(text)
+        var out = ""
+        var index = 0
+        while index < chars.count {
+            let end = literalEnd(in: chars, from: index)
+            if end - index > 1 {
+                out.append(contentsOf: chars[index ..< end])
+                index = end
+                continue
+            }
+            let char = chars[index]
+            index += 1
+            if char == " ", let last = out.last, "([".contains(last) || (index < chars.count && ")]".contains(chars[index])) {
+                continue
+            }
+            out.append(char)
+        }
+        return out
     }
 
     /// `text` cut to `cap` characters, the last of them an ellipsis when anything was cut.

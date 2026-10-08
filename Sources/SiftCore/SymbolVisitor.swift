@@ -150,7 +150,7 @@ final class SymbolVisitor: SyntaxVisitor {
                 record(
                     .variable,
                     name: SymbolNaming.name(of: identifier.identifier),
-                    head: head(of: node, headEnd: requirementAccessorsEnd(binding.accessorBlock) ?? variableHeadEnd(binding: binding)),
+                    head: head(of: node, headEnd: requirementAccessorsEnd(binding.accessorBlock) ?? Self.variableHeadEnd(binding: binding)),
                     modifiers: node.modifiers,
                     docTrivia: node.leadingTrivia,
                     details: RecordDetails(
@@ -220,6 +220,17 @@ final class SymbolVisitor: SyntaxVisitor {
 // MARK: - Record value types
 
 extension SymbolVisitor {
+    /// Where a variable binding's recorded signature ends: through a short initializer, else through its type annotation, else its name — so a long initial value is not part of the signature.
+    static func variableHeadEnd(binding: PatternBindingSyntax) -> AbsolutePosition {
+        if let initializer = binding.initializer, initializer.trimmedDescription.count <= 44 {
+            return initializer.endPosition
+        }
+        if let annotation = binding.typeAnnotation {
+            return annotation.endPosition
+        }
+        return binding.pattern.endPosition
+    }
+
     /// How much of each declaration's head its recorded signature holds.
     enum Signatures {
         /// The whole head, as the index stores it; each answer that prints one shapes it for its own line.
@@ -344,16 +355,6 @@ private extension SymbolVisitor {
     func requirementAccessorsEnd(_ block: AccessorBlockSyntax?) -> AbsolutePosition? {
         guard signatures == .compared, let block, let parent = parentStack.last, symbols[parent].kind == .protocolKind else { return nil }
         return block.endPosition
-    }
-
-    func variableHeadEnd(binding: PatternBindingSyntax) -> AbsolutePosition {
-        if let initializer = binding.initializer, initializer.trimmedDescription.count <= 44 {
-            return initializer.endPosition
-        }
-        if let annotation = binding.typeAnnotation {
-            return annotation.endPosition
-        }
-        return binding.pattern.endPosition
     }
 }
 

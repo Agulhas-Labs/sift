@@ -1,0 +1,225 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -scheme Pallet -destination platform=macOS -derivedDataPath /Users/dev/DerivedData -resultBundlePath /Users/dev/Results/run1.xcresult
+
+Resolve Package Graph
+2000-01-01 12:00:00.169 xcodebuild[12586:49248553] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+
+
+Resolved source packages:
+  Pallet: /Users/dev/Pallet
+
+Writing result bundle at path:
+	/Users/dev/Results/run1.xcresult
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:macOS, arch:arm64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:x86_64, variant:Mac Catalyst, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:DriverKit, id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64_32, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+{ platform:macOS, arch:arm64e.x1, variant:Designed for [iPad,iPhone], id:00000000-0000000000000000, name:My Mac }
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (3 targets)
+    Target 'Pallet-product' in project 'Pallet'
+        ➜ Explicit dependency on target 'Pallet' in project 'Pallet'
+    Target 'PalletTests-product' in project 'Pallet'
+        ➜ Explicit dependency on target 'Pallet' in project 'Pallet'
+    Target 'Pallet' in project 'Pallet' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk /Users/dev/DerivedData/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache
+    cd /Users/dev/Pallet/.swiftpm/xcode
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -o /Users/dev/DerivedData/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache
+
+SwiftDriver PalletTests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet/.swiftpm/xcode
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -parse-as-library -module-name PalletTests -Onone @/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dev/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/dev/DerivedData/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/dev/DerivedData/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/DerivedData/Build/Products/Debug/PackageFrameworks -F /Users/dev/DerivedData/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/DerivedData/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -output-file-map /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/dev/DerivedData/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/dev/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -package-name pallet -emit-const-values -const-gather-protocols-list /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests_const_extract_protocols.json -Xcc -I/Users/dev/DerivedData/Build/Products/Debug/include -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources/arm64 -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -working-directory /Users/dev/Pallet/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftCompile normal arm64 Compiling\ LegacyTests.swift /Users/dev/Pallet/Tests/PalletTests/LegacyTests.swift (in target 'PalletTests-product' from project 'Pallet')
+
+SwiftCompile normal arm64 /Users/dev/Pallet/Tests/PalletTests/LegacyTests.swift (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet/.swiftpm/xcode
+    builtin-SwiftPerFileCompile LegacyTests.swift
+
+SwiftCompile normal arm64 Compiling\ SwiftTestingTests.swift /Users/dev/Pallet/Tests/PalletTests/SwiftTestingTests.swift (in target 'PalletTests-product' from project 'Pallet')
+
+SwiftCompile normal arm64 /Users/dev/Pallet/Tests/PalletTests/SwiftTestingTests.swift (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet/.swiftpm/xcode
+    builtin-SwiftPerFileCompile SwiftTestingTests.swift
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ PalletTests (in target 'PalletTests-product' from project 'Pallet')
+
+SwiftCompile normal arm64 (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet/.swiftpm/xcode
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling LegacyTests.swift (in target 'PalletTests-product' from project 'Pallet')
+
+SwiftDriverJobDiscovery normal arm64 Compiling SwiftTestingTests.swift (in target 'PalletTests-product' from project 'Pallet')
+
+SwiftDriver\ Compilation PalletTests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet/.swiftpm/xcode
+    builtin-Swift-Compilation -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -parse-as-library -module-name PalletTests -Onone @/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dev/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/dev/DerivedData/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/dev/DerivedData/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/DerivedData/Build/Products/Debug/PackageFrameworks -F /Users/dev/DerivedData/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/DerivedData/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -output-file-map /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/dev/DerivedData/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/dev/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -package-name pallet -emit-const-values -const-gather-protocols-list /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests_const_extract_protocols.json -Xcc -I/Users/dev/DerivedData/Build/Products/Debug/include -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources/arm64 -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -working-directory /Users/dev/Pallet/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for PalletTests (in target 'PalletTests-product' from project 'Pallet')
+
+SwiftDriver\ Compilation\ Requirements PalletTests normal arm64 com.apple.xcode.tools.swift.compiler (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet/.swiftpm/xcode
+    builtin-Swift-Compilation-Requirements -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -parse-as-library -module-name PalletTests -Onone @/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.SwiftFileList -DSWIFT_PACKAGE -DDEBUG -DXcode -plugin-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dev/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/dev/DerivedData/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 6 -I /Users/dev/DerivedData/Build/Products/Debug -Isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F /Users/dev/DerivedData/Build/Products/Debug/PackageFrameworks -F /Users/dev/DerivedData/Build/Products/Debug -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks -c -j16 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dev/DerivedData/SDKStatCaches.noindex/macosx27.0-26A425-7231f6df4def33e022ae2eb8f782df1a.sdkstatcache -output-file-map /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests-OutputFileMap.json -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dev/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dev/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/dev/DerivedData/SDKExplicitPrecompiledModules -emit-dependencies -emit-module -emit-module-path /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.swiftmodule -serialize-diagnostics -dependency-scan-serialize-diagnostics-path /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests-dependency-scan.dia -validate-clang-modules-once -clang-build-session-file /Users/dev/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -fmodules-prune-interval\=86400 -Xcc -fmodules-prune-after\=345600 -package-name pallet -emit-const-values -const-gather-protocols-list /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests_const_extract_protocols.json -Xcc -I/Users/dev/DerivedData/Build/Products/Debug/include -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources-normal/arm64 -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources/arm64 -Xcc -I/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/DerivedSources -Xcc -DSWIFT_PACKAGE -Xcc -DDEBUG\=1 -working-directory /Users/dev/Pallet/.swiftpm/xcode -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/MacOS/PalletTests normal (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -Xlinker -reproducible -target arm64-apple-macos14.0 -Xlinker -bundle -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -Xlinker -no_warn_duplicate_libraries -L/Users/dev/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -L/Users/dev/DerivedData/Build/Products/Debug -L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib -F/Users/dev/DerivedData/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -F/Users/dev/DerivedData/Build/Products/Debug/PackageFrameworks -F/Users/dev/DerivedData/Build/Products/Debug -Fsystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks @/Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.LinkFileList -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker @loader_path -Xlinker -rpath -Xlinker /Users/dev/DerivedData/Build/Products/Debug/PackageFrameworks -Xlinker -rpath -Xlinker @loader_path/../../.. -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -rpath -Xlinker @loader_path/../Frameworks -Xlinker -object_path_lto -Xlinker /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests_lto.o -Xclang-linker -rdynamic -Xlinker -no_deduplicate -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests_dependency_info.dat -link-objc-runtime -profile-generate -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.swiftmodule -Xlinker -needed_framework -Xlinker XCTest -framework XCTest -Xlinker -needed-lXCTestSwiftSupport -lXCTestSwiftSupport -o /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/MacOS/PalletTests -no-stdlib-rpath
+
+Copy /Users/dev/DerivedData/Build/Products/Debug/PalletTests.swiftmodule/arm64-apple-macos.swiftmodule /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.swiftmodule (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.swiftmodule /Users/dev/DerivedData/Build/Products/Debug/PalletTests.swiftmodule/arm64-apple-macos.swiftmodule
+
+Copy /Users/dev/DerivedData/Build/Products/Debug/PalletTests.swiftmodule/arm64-apple-macos.abi.json /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.abi.json (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.abi.json /Users/dev/DerivedData/Build/Products/Debug/PalletTests.swiftmodule/arm64-apple-macos.abi.json
+
+Copy /Users/dev/DerivedData/Build/Products/Debug/PalletTests.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.swiftsourceinfo (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.swiftsourceinfo /Users/dev/DerivedData/Build/Products/Debug/PalletTests.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo
+
+ExtractAppIntentsMetadata (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name PalletTests --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk --xcode-version 27A266a --platform-family macOS --deployment-target 14.0 --bundle-identifier pallet.PalletTests --output /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/Resources --target-triple arm64-apple-macos14.0 --binary-file /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/MacOS/PalletTests --dependency-file /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests_dependency_info.dat --stringsdata-file /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.SwiftFileList --metadata-file-list /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/PalletTests.DependencyMetadataFileList --static-metadata-file-list /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/PalletTests.DependencyStaticMetadataFileList --swift-const-vals-list /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/Objects-normal/arm64/PalletTests.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --no-app-shortcuts-localization
+2000-01-01 12:00:01.898 appintentsmetadataprocessor[12997:49250473] Starting appintentsmetadataprocessor export
+2000-01-01 12:00:01.900 appintentsmetadataprocessor[12997:49250473] warning: Metadata extraction skipped, no AppIntents.framework dependency found
+
+CopySwiftLibs /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest (in target 'PalletTests-product' from project 'Pallet')
+    cd /Users/dev/Pallet
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/MacOS/PalletTests --scan-folder /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/Frameworks --scan-folder /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/PlugIns --scan-folder /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/Library/SystemExtensions --scan-folder /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/Extensions --platform macosx --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/dev/DerivedData/Build/Products/Debug/PalletTests.xctest/Contents/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/dev/DerivedData/Build/Intermediates.noindex/Pallet.build/Debug/PalletTests-p.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os --back-deploy-swift-span
+Ignoring --strip-bitcode because --sign was not passed
+
+PruneExplicitPrecompiledModules /Users/dev/DerivedData/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/dev/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/dev/DerivedData/SDKExplicitPrecompiledModules
+
+2000-01-01 12:00:01.960 xcodebuild[12586:49248562]  DVTAssertions: Warning in IDEFrameworks/IDEFoundation/Execution/LaunchSystem/IDELaunchSession.m:395
+Details:  setRunnablePIDWithDiagnostics:logSection:andCompletionHandler: called without a completion handler - blocking until diagnostics setup completes. Callers should migrate to using a completion handler for better performance.
+Object:   <IDELaunchSession: 0x79d349a400>
+Method:   -setRunnablePIDWithDiagnostics:logSection:andCompletionHandler:
+Thread:   <NSThread: 0x79d519c040>{number = 2, name = (null)}
+Please file a bug at https://feedbackassistant.apple.com with this warning message and any useful information you can provide.
+Test Suite 'All tests' started at 2000-01-01 12:00:02.097.
+Test Suite 'PalletTests.xctest' started at 2000-01-01 12:00:02.097.
+Test Suite 'LegacyTests' started at 2000-01-01 12:00:02.097.
+Test Case '-[PalletTests.LegacyTests testBuckles]' started.
+legacyTest Case '-[PalletTests.LegacyTests testBuckles]' passed (0.001 seconds).
+Test Case '-[PalletTests.LegacyTests testDoubling]' started.
+Test Case '-[PalletTests.LegacyTests testDoubling]' passed (0.000 seconds).
+Test Suite 'LegacyTests' passed at 2000-01-01 12:00:02.099.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'PalletTests.xctest' passed at 2000-01-01 12:00:02.100.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'All tests' passed at 2000-01-01 12:00:02.100.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.003) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite Bays started.
+◇ Test range(index:) started.
+◇ Suite Crates started.
+◇ Test first() started.
+◇ Test second() started.
+◇ Test fails() started.
+◇ Test third() started.
+bay◇ Test case passing 1 argument index → 0 to range(index:) started.
+​◇ Test chatter() started.
+◇ Test case passing 1 argument index → 2 to range(index:) started.
+​◇ Test labels(text:) started.
+◇ Test broken() started.
+◇ Test slow() started.
+◇ Test partial() started.
+◇ Test cases(value:) started.
+◇ Test inner() started.
+◇ Test stray() started.
+◇ Test line() started.
+◇ Test case passing 1 argument index → 1 to range(index:) started.
+stderr partial​about to fail✔ Test third() passed after 0.002 seconds.
+✘ Test fails() recorded an issue at SwiftTestingTests.swift:23:66: Expectation failed: Bool(false)
+↳ Bool(false) → false
+↳   false → ()
+✔ Test first() passed after 0.003 seconds.
+✔ Test stray() passed after 0.002 seconds.
+✔ Test range(index:) with 3 test cases passed after 0.003 seconds.
+✘ Test fails() failed after 0.003 seconds with 1 issue.
+chatter 0
+◇ Test outer() started.
+chatter 1
+chatter 2
+chatter 3
+chatter 4
+chatter 5
+chatter 6
+chatter 7
+chatter 8
+chatter 9
+chatter 10
+chatter 11
+chatter 12
+chatter 13
+chatter 14
+chatter 15
+chatter 16
+chatter 17
+chatter 18
+chatter 19
+✔ Test chatter() passed after 0.003 seconds.
+✔ Test outer() passed after 0.001 seconds.
+✔ Test second() passed after 0.001 seconds.
+✘ Suite Bays failed after 0.004 seconds with 1 issue.
+crate line
+✔ Test line() passed after 0.003 seconds.
+◇ Test case passing 1 argument text → "a" to labels(text:) started.
+arg a​◇ Test case passing 1 argument text → "b" to labels(text:) started.
+arg b✘ Test broken() recorded an issue at SwiftTestingTests.swift:14:27: Expectation failed: double(2) == 5
+↳ double(2) == 5 → false
+↳   double(2) → 4
+​✘ Test broken() failed after 0.003 seconds with 1 issue.
+partial crate output✔ Test partial() passed after 0.003 seconds.
+◇ Test case passing 1 argument value → 1 to cases(value:) started.
+​◇ Test case passing 1 argument value → 2 to cases(value:) started.
+​◇ Test case passing 1 argument value → 3 to cases(value:) started.
+​◇ Test case passing 1 argument value → 4 to cases(value:) started.
+​✔ Test cases(value:) with 4 test cases passed after 0.004 seconds.
+✔ Test inner() passed after 0.004 seconds.
+✔ Test labels(text:) with 2 test cases passed after 0.004 seconds.
+✔ Test slow() passed after 0.063 seconds.
+✘ Suite Crates failed after 0.064 seconds with 1 issue.
+✘ Test run with 15 tests in 2 suites failed after 0.067 seconds with 2 issues.
+2000-01-01 12:00:13.764 xcodebuild[12586:49248553] [MT] IDETestOperationsObserverDebug: 11.839 elapsed -- Testing started completed.
+2000-01-01 12:00:13.764 xcodebuild[12586:49248553] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2000-01-01 12:00:13.764 xcodebuild[12586:49248553] [MT] IDETestOperationsObserverDebug: 11.839 sec, +11.839 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/dev/Results/run1.xcresult
+
+Failing tests:
+	Crates.broken()
+	Bays.fails()
+
+** TEST FAILED **
+
+Testing started

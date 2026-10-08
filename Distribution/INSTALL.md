@@ -3,9 +3,9 @@
      goes in CHANGELOG.md, which ships beside this. -->
 # sift — install
 
-Compressed, structurally accurate views of Swift code — type digests, symbol resolution, member
-source, reference sweeps, structural search, string-catalog tracing — as a CLI and an MCP stdio
-server for Claude Code.
+A Swift toolkit for AI coding agents: an index of your code (type digests, symbol resolution,
+member source, reference sweeps, structural search, string-catalog tracing), builds and tests that
+tell the truth, and checks on every change — as a CLI and an MCP stdio server for Claude Code.
 
 <!-- PROVENANCE -->
 
@@ -149,7 +149,8 @@ upgrade, not the Cellar copy behind it), provided that is the file actually runn
 space in it (a `SIFT_DEST` under `~/Library/Application Support`) is written single-quoted, so the shell
 Claude Code runs each hook through reaches it; re-running `install-hook` repoints an older unquoted entry.
 Run through `npx` it refuses, since a binary in npx's cache is replaced per version and the hooks would then exit 127:
-install the binary (Homebrew, `install.sh` or `npm install -g @agulhas-labs/sift`) and run `sift install-hook` from that.
+install the binary (a source build, `install.sh`, or once they are published Homebrew or
+`npm install -g @agulhas-labs/sift`) and run `sift install-hook` from that.
 
 The merge into `settings.json` is done by the binary: it preserves every other key and hook, refuses
 a file that will not parse, and copies it to `settings.json.bak-sift` first (rewritten on every run

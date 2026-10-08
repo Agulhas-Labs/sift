@@ -299,7 +299,7 @@ extension RunTestOutcomes {
     }
 
     /// The two spellings of Swift Testing's continuation marker: `↳`, and the SF Symbol it draws in its place, which the captures carry as U+100135.
-    private static let continuationMarkers: Set<Unicode.Scalar> = ["↳", "\u{100135}"]
+    static let continuationMarkers: Set<Unicode.Scalar> = ["↳", "\u{100135}"]
 
     /// XCTest: `Test Case '-[Suite testName]' started.`, then `… passed (0.001 seconds).`, `… failed (…)` or `… skipped (…)`.
     ///

@@ -175,7 +175,7 @@ public struct DigestRenderer {
         let extensionNote = extensions.isEmpty ? "" : " (+\(extensions.count) extension\(extensions.count == 1 ? "" : "s"))"
         let header = "\(name) — \(primary.module) — \(primary.path)\(primary.rangeDescription)\(extensionNote)"
         lines.append(header)
-        lines.append(decorated(signature: SourceSlicer.cut(primary.signature, at: SourceSlicer.signatureCap), options: options) + macroMarker(for: primary))
+        lines.append(decorated(signature: SourceSlicer.shown(primary.signature), options: options) + macroMarker(for: primary))
 
         let children = try store.children(of: primary.id)
 
@@ -466,7 +466,7 @@ public struct DigestRenderer {
     ///
     /// `excluded` tells the caller which of the two this is: a plain miss named nothing at all, while an exclusion found exactly the file the target named and said why it isn't indexed — an answer about something that is there, not a miss, whatever else the target looked like (a spaced path included).
     func unindexedFileAnswer(path: String) -> (text: String, excluded: Bool) {
-        let miss = "no indexed file matches \(path)"
+        let miss = "\(DigestMiss.noIndexedFilePrefix)\(path)"
         guard let relative = relativeToRepository(path), fileExistsOnDisk(relative) else { return (miss, false) }
         let exclusion = FileEnumerator(repoRoot: repoRoot, config: config).exclusion(of: relative)
             ?? (GitContext(repoRoot: repoRoot).ignores(relativePath: relative) ? .gitIgnored : nil)
@@ -980,7 +980,7 @@ extension DigestRenderer {
         let children = try namingChildren ? store.children(of: row.id) : []
         let count = try namingChildren ? children.count : store.childCount(of: row.id)
         let noun = row.kind == .enumKind ? "cases/members" : "members"
-        let line = "\(decorated(signature: SourceSlicer.cut(row.signature, at: SourceSlicer.signatureCap), options: options)) — \(count) \(noun)"
+        let line = "\(decorated(signature: SourceSlicer.shown(row.signature), options: options)) — \(count) \(noun)"
         return indent + line + NestedNames.suffix(for: children) + "  " + row.rangeDescription
     }
 
@@ -1040,12 +1040,12 @@ extension DigestRenderer {
     /// A member's signature as its digest line shows it: whole up to the cap, wrapped at parameter boundaries past it, and cut at the cap where there is no parameter list to wrap.
     private func signatureLines(of row: SymbolRow, options: DigestOptions) -> [String] {
         guard row.signature.count > SourceSlicer.signatureCap else {
-            return [decorated(signature: row.signature, options: options)]
+            return [decorated(signature: SourceSlicer.tidyingBrackets(in: row.signature), options: options)]
         }
-        if let layout = DigestSignatureLayout(decorated(signature: row.signature, options: options)) {
+        if let layout = DigestSignatureLayout(decorated(signature: SourceSlicer.tidyingBrackets(in: row.signature), options: options)) {
             return layout.lines
         }
-        return [decorated(signature: SourceSlicer.cut(row.signature, at: SourceSlicer.signatureCap), options: options)]
+        return [decorated(signature: SourceSlicer.shown(row.signature), options: options)]
     }
 
     private func decorated(signature: String, options: DigestOptions) -> String {

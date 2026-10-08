@@ -1125,3 +1125,48 @@ macOS 27.0, Xcode 27.0, 2 Oct 2026 (#523).
 The same edits as the two above: the package's path became `/Users/dev/Pallet`, the stream path on the signal
 line `/Users/dev/Pallet/.build/st/event-stream-1-PalletTests.jsonl`, and the XCTest timestamps
 `2000-01-01 12:00:00`.
+
+A fourth capture, from a one-target package (`PalletTests` holding Swift Testing `stacks()`, `topples()`, `loads()`
+and `zlifts()`), deleted after. Three of them print `Shelf/Rack.swift:9: Fatal error: look-alike`, and `topples()`
+calls `fatalError("real")` in its own body at `PalletTests/Stacking.swift:9`, so the real trap lands among the
+look-alikes inside the crashed span. Run in parallel; in this capture the look-alike leads under the old order.
+macOS 27.0, Xcode 27.0, 7 Oct 2026 (#523).
+
+| Fixture | Invocation | Exit | What it is here for |
+| --- | --- | --- | --- |
+| `swift-test-crash-st-trap-in-test.txt`, `.jsonl` | `swift test --skip-build --package-path <dir> --event-stream-output-path <file>` | 1 | A trap raised in the crashed test's own body, behind look-alikes: the stream's unfinished tests and their declared source stretches put the real trap first |
+
+The same edits as above: the package's path became `/Users/dev/Pallet`, the stream path on the signal line
+`/Users/dev/Pallet/.build/st/event-stream-1-PalletTests.jsonl`, and the XCTest timestamps `2000-01-01 12:00:00`.
+## Two failing tests sharing two signatures, one of them parameterised
+
+The raw log `sift run -- swift test` kept for a throwaway one-target package, `Probe` (`judged(_:)` returning
+its argument and `exitCode(_:)` its count), deleted after. `ProbeTests` holds two Swift Testing tests making
+the same two failing expectations: `aSingleFilterIsNotJudged()`, and `anObjCRenamedXCTestIsNotJudged(patterns:)`
+over three arguments, whose cases sleep 20 ms before the first expectation or 50 ms between the two, so the
+cases reach the two signatures in different orders. macOS 27.0.1, Xcode 27.0 (27A266a), Swift 6.4
+(swiftlang-6.4.0.34.1), 7 Oct 2026 (#413).
+
+| Fixture | Command | Exit | What it is here for |
+| --- | --- | --- | --- |
+| `swift-test-failure-groups.txt` | `swift test` | 1 | Eight failures, two signatures, both tests under each: the second signature's `also:` line named the plain test a second time, and the two example lines listed the three arguments in two different orders |
+
+The one edit: the XCTest timestamps became `2000-01-01 12:00:00.000`.
+## Result lines glued behind a test's own output under `xcodebuild`
+
+One capture from a throwaway SwiftPM package, `Pallet`, driven by `xcodebuild test -scheme Pallet -destination
+'platform=macOS' -derivedDataPath <dir> -resultBundlePath <bundle>` and deleted after. Its one test target,
+`PalletTests`, holds two Swift Testing suites — `Crates` (`inner()`, `outer()`, `line()`, `partial()`, `stray()`,
+`chatter()`, `cases(value:)` over four values, `labels(text:)` over two, `broken()` failing, `slow()`) and `Bays`
+(`first()`, `second()`, `third()`, `range(index:)` over three, `fails()` failing) — and `LegacyTests` with
+`testDoubling` and `testBuckles`. Several of them print without a newline (`print(…, terminator: "")`) or write
+to standard error, so the framework's next line arrives glued behind that text. macOS 27.0.1 (26A434), Xcode
+27.0 (27A266a), Swift 6.4 (`swiftlang-6.4.0.34.1`), 7 Oct 2026 (#559).
+
+| Fixture | Invocation | Exit | What it is here for |
+| --- | --- | --- | --- |
+| `xcodebuild-test-glued-results.txt` | the command above, the first of six runs, every one of which glued at least one ending | 65 | XCTest's `testBuckles` ending glued behind `legacy`, Swift Testing's `third()` and `partial()` endings and `broken()`'s issue line glued behind printed text; the result bundle counted 15 passed and 2 failed |
+
+The edits: the package's path became `/Users/dev/Pallet`, the DerivedData path `/Users/dev/DerivedData`, the
+result bundle's directory `/Users/dev/Results`, the Mac's identifier `id:00000000-0000000000000000`, and every
+timestamp moved by one whole-second shift to open at `2000-01-01 12:00:00`.

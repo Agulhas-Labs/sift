@@ -115,7 +115,10 @@ private extension SymlinkedSessionDirectoryTests {
             cwd: nil,
             event: nil,
             runLedgerURL: ledger,
-            resumptionDeadline: 60
+            resumptionDeadline: 60,
+            // No wall-clock budget on the declaration comparison: on a loaded machine the blob read alone can
+            // outlast the hook's quarter second, and the block falls back to a bare count this suite is not about.
+            declarationParseBudget: .infinity
         )
     }
 }

@@ -312,7 +312,7 @@ struct WhereRenderer {
 
         try appendTypeRelations(of: declarations, conformerBlocks: conformerBlocks, writtenNameChecks: writtenNameChecks, citing: &citedPaths, into: &lines, qualifiedName: qualifiedName(of:))
         // Every count in this answer is read out of a repository-wide lookup: `declarations (N)` through
-        // `resolveDeclarations` → `symbols(named:)`, `extensions of X (N)` through `extensions(ofTypeNamed:)`,
+        // `resolveDeclarations` → `symbols(named:)`, `extensions of X (N)` through `ExtensionPaths.extensions(ofTypeNamed:in:)`,
         // and `conformers of X (N, …)` through `conformers(of:)`. A row lost with the tail of a truncated file
         // is missing from its number *and* from the cited paths, so the banner below goes quiet about the only
         // file that could explain it. One note for all three, because three would be the noise a single one
@@ -1040,7 +1040,7 @@ extension WhereRenderer {
 ///
 /// The conformance colon is searched only *before* any `where` clause, so `extension S where T: Sendable` reports its constraint as a where-clause — never a fabricated "(: Sendable)" conformance.
 func extensionContext(_ row: SymbolRow) -> String {
-    let stripped = AttributeScanner.strippingLeadingAttributes(row.signature)
+    let stripped = AttributeScanner.strippingLeadingAttributes(SourceSlicer.tidyingBrackets(in: row.signature))
     var parts: [String] = []
     if let firstWord = stripped.split(separator: " ").first.map(String.init),
        AccessLevel(rawValue: firstWord) != nil

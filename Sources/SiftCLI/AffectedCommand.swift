@@ -25,8 +25,8 @@ struct AffectedCommand: AsyncParsableCommand {
     @Option(name: .customLong("depth"), help: "Reference hops followed out from the changed declarations. A bounded walk is bounded, and the answer says at what.")
     var depth: Int = AffectedOptions.defaultDepth
 
-    @Option(name: .customLong("reached"), help: "Also say whether this test or suite was reached, and at how many hops, even where the lists cut it off. Spell it as the list prints it (Target.Suite/function()); a fragment matches every name containing it.")
-    var reached: String?
+    @Option(name: .customLong("reached"), help: "Also say whether this test or suite was reached, and at how many hops, even where the lists cut it off. Spell it as the list prints it (Target.Suite/function()); a fragment matches every name containing it. Repeat it for several names.")
+    var reached: [String] = []
 
     @OptionGroup var rootOptions: RootOptions
 
@@ -47,7 +47,7 @@ struct AffectedCommand: AsyncParsableCommand {
     func answer(registry: RootsRegistry = .standard()) async throws -> String {
         let (engine, note) = try rootOptions.makeEngine(registry: registry)
         let freshness = try await engine.ensureFresh()
-        let options = AffectedOptions(range: from.map { AffectedOptions.CommitRange(from: $0, to: to) }, depth: depth, probe: reached)
+        let options = AffectedOptions(range: from.map { AffectedOptions.CommitRange(from: $0, to: to) }, depth: depth, probes: reached)
         return try await Freshness.placing([note], under: engine.affected(options: options, freshness: freshness))
     }
 }

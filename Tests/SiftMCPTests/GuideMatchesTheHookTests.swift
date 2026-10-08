@@ -120,4 +120,10 @@ struct GuideMatchesTheHookTests {
         #expect(text.contains("A build the user's own rules speak for runs as written."))
         #expect(text.contains("ask or deny rule"))
     }
+
+    /// The `refusals` topic says a settings file the hook cannot read makes it stand aside from every build, as `WrappedRunPermission.hasUnreadableSettings` does.
+    @Test
+    func theRefusalsTopicNamesTheStandAsideForAnUnreadableSettingsFile() {
+        #expect(Self.topicText().contains("So is every build while a settings file has something in it the hook cannot read as JSON"))
+    }
 }

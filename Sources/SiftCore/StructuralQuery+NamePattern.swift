@@ -72,8 +72,10 @@ public extension StructuralQuery {
         }
 
         /// The pattern inside a `/…/` value, a leading `(?i)` dropped since every name pattern ignores case; `nil` when the value is not written that way.
+        ///
+        /// A body made of operator characters (`/.*/`, `/.+/`) is still a regex: an operator name never starts and ends with `/`.
         static func regexBody(_ value: String) -> String? {
-            guard value.count > 2, value.hasPrefix("/"), value.hasSuffix("/"), !isOperatorName(value) else { return nil }
+            guard value.count > 2, value.hasPrefix("/"), value.hasSuffix("/") else { return nil }
             let body = value.dropFirst().dropLast()
             return String(body.hasPrefix("(?i)") ? body.dropFirst(4) : body)
         }

@@ -85,7 +85,9 @@ public struct SiftUninstall {
         notes += servers.notes
         failures += servers.failures
 
-        if !bandSkipped {
+        if bandSkipped {
+            notes.append("the band step was skipped: --settings names a file other than the user's settings, which is what `claude plugin` edits")
+        } else {
             let bandStep = UninstallBand.settle(settings: locations.settings, claude: band)
             removed += bandStep.removed
             count += bandStep.removed.count

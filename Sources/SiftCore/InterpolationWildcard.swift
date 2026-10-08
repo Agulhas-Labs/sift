@@ -16,8 +16,8 @@ struct InterpolationWildcard {
     private let segments: [[Character]]
     /// States already explored without a match that lists.
     private var failed: Set<State> = []
-    /// The first match found that holds too few query words to list, returned when no alignment lists.
-    private var counted: Match?
+    /// The first match found for each query word that holds too few query words to list, in the order found, returned when no alignment lists.
+    private var counted: [Match] = []
 
     /// How `query` matched with at least one interpolation crossed, or `nil` when it matches no way around them.
     static func match(of query: Query, in segments: [String]) -> Match? {
@@ -41,13 +41,13 @@ struct InterpolationWildcard {
                 }
             }
         }
-        return counted
+        return counted.first.map { $0.crediting(Array(counted.dropFirst())) }
     }
 
     /// Reads the wildcard for the interpolation after segment `index` from query offset `position`, then what follows it.
     private mutating func throughInterpolation(after index: Int, from position: Int, matched: Matched) -> Match? {
         let characters = query.characters
-        let state = State(index: index, position: position, holdsAWord: matched.holdsAWord, words: matched.words)
+        let state = State(index: index, position: position, holdsAWord: matched.holdsAWord, words: matched.words, word: matched.words < Self.listedWordCount ? matched.firstWord : nil)
         guard position < characters.count, !failed.contains(state) else {
             return nil
         }
@@ -73,7 +73,7 @@ struct InterpolationWildcard {
         return nil
     }
 
-    /// A complete match that lists, or `nil` — keeping the first one that holds a word but too few query words to list, in case no alignment lists.
+    /// A complete match that lists, or `nil` — keeping the first one on each query word that holds a word but too few query words to list, in case no alignment lists.
     private mutating func settled(_ matched: Matched) -> Match? {
         guard matched.holdsAWord else {
             return nil
@@ -84,12 +84,15 @@ struct InterpolationWildcard {
             segment: matched.longestSegment,
             window: nil,
             isListed: isListed,
-            word: isListed ? nil : matched.firstWord.map { query.wordTexts[$0] }
+            word: isListed ? nil : matched.firstWord.map { query.wordTexts[$0] },
+            alternatives: []
         )
         if found.isListed {
             return found
         }
-        counted = counted ?? found
+        if !counted.contains(where: { $0.word == found.word }) {
+            counted.append(found)
+        }
         return nil
     }
 
@@ -167,30 +170,44 @@ extension InterpolationWildcard {
         let segment: Int
         /// The characters of the literal's written text the display window centres on, found within ``segment`` (``SwiftLiteralLexer/Literal``); `nil` when that segment spells none of ``anchor``, and the literal shows from its start.
         let window: Range<Int>?
-        /// Whether the site is listed: the literal text matched holds part of enough query words, or it matched on a word rare enough to list when nothing else lists (``listed()``); otherwise it is only counted.
+        /// Whether the site is listed: the literal text matched holds part of enough query words, or it matched on a word rare enough to list when nothing else lists (``listed(on:)``); otherwise it is only counted.
         let isListed: Bool
-        /// The one query word the literal text matched holds part of, `nil` for a match on two or more; the count of unlisted matches is broken down by it.
+        /// The one query word the literal text matched holds part of, `nil` for a match on two or more.
         let word: String?
+        /// For a match on one query word, the literal's other alignments on one query word, one per other word, each with its own anchor.
+        let alternatives: [Match]
 
-        /// This match listed although it holds one query word only, because that word is rare in the tree and nothing else lists.
-        func listed() -> Match {
-            Match(anchor: anchor, segment: segment, window: window, isListed: true, word: word)
+        /// Every query word an alignment on one word matched, this match's first: the line is credited to each in the count of unlisted matches and in choosing which to list.
+        var words: [String] {
+            ([self] + alternatives).compactMap(\.word)
         }
 
-        /// This match with its display window at `window` of the literal's written text.
-        func located(at window: Range<Int>?) -> Match {
-            Match(anchor: anchor, segment: segment, window: window, isListed: isListed, word: word)
+        /// The alignment on `word` listed although it holds one query word only, because that word is rare in the tree and nothing else lists.
+        func listed(on word: String) -> Match {
+            let alignment = ([self] + alternatives).first { $0.word == word } ?? self
+            return Match(anchor: alignment.anchor, segment: alignment.segment, window: alignment.window, isListed: true, word: word, alternatives: [])
+        }
+
+        /// This match with `alternatives` as the other words it is credited to.
+        func crediting(_ alternatives: [Match]) -> Match {
+            Match(anchor: anchor, segment: segment, window: window, isListed: isListed, word: word, alternatives: alternatives)
+        }
+
+        /// This match and each alternative with its display window where `window` places its anchor in the literal's written text.
+        func located(by window: (Match) -> Range<Int>?) -> Match {
+            Match(anchor: anchor, segment: segment, window: window(self), isListed: isListed, word: word, alternatives: alternatives.map { $0.located(by: window) })
         }
     }
 }
 
 private extension InterpolationWildcard {
-    /// A point in the search: the wildcard after segment `index` starting at query offset `position`, with what the literal text matched so far holds.
+    /// A point in the search: the wildcard after segment `index` starting at query offset `position`, with what the literal text matched so far holds — for a match on fewer query words than list, which word, so an alignment on another word is still explored.
     struct State: Hashable {
         let index: Int
         let position: Int
         let holdsAWord: Bool
         let words: Int
+        let word: Int?
     }
 
     /// The literal text matched so far, reduced to what the answer needs: whether it holds a word, how many query words it holds part of (enough to list at most) and the first of them, and its longest piece with the segment it came from.

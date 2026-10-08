@@ -602,8 +602,8 @@ extension RunOutputFilterTests {
         // Past testsCap, a signature names its top three tests by their own count rather than an
         // arbitrary one of the tests sharing it — everyBinLabelSignAeIsReadableAtEveryWidth (×12) sits
         // under "+6 more tests" now, while testOne (×20) leads its signature and is the one this answer
-        // actually names.
-        #expect(answer.contains(#"testOne(expected:) with expected → "Weight""#))
+        // actually names, its arguments sorted by their text.
+        #expect(answer.contains(#"testOne(expected:) with expected → "Aisle", expected → "Bay", expected → "Bin", and 17 more"#))
     }
 
     /// Every issue the log recorded is reported with the message the log printed for it, and none is reported as unexplained.

@@ -11,7 +11,7 @@ struct SiftCommand: AsyncParsableCommand {
     static var configuration: CommandConfiguration {
         CommandConfiguration(
             commandName: "sift",
-            abstract: "Compressed, structurally accurate views of Swift code for agents and humans.",
+            abstract: "A Swift toolkit for AI coding agents: an index of your code, builds and tests that tell the truth, and checks on every change.",
             version: SiftVersion.current,
             subcommands: [
                 InitCommand.self,

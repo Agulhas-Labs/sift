@@ -30,7 +30,7 @@ struct DigestFileBasenameFallback {
     ///
     /// Capped at `memberCap`, like the sibling suffix-ambiguity answer, with a truncation line rather than a list that reads as every match there is.
     func ambiguousAnswer(path: String, candidates: [String]) -> String {
-        var lines = ["no indexed file matches \(path) — \(candidates.count) indexed files share that basename; digest one of these exact targets:"]
+        var lines = ["\(DigestMiss.noIndexedFilePrefix)\(path) — \(candidates.count) indexed files share that basename; digest one of these exact targets:"]
         lines += candidates.prefix(DigestRenderer.memberCap).map { "  digest \($0)" }
         if candidates.count > DigestRenderer.memberCap {
             lines.append("  truncated: \(candidates.count - DigestRenderer.memberCap) more files")

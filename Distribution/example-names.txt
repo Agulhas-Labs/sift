@@ -729,7 +729,6 @@ failClosed
 failedMcpServers
 fatalError
 fetchValue
-filePath
 fileRef
 fileSystemSynchronizedGroups
 fileURLWithPath
@@ -787,7 +786,6 @@ isExecutable
 isFailure
 isFill
 isKnown
-isLink
 isLoading
 isMeta
 isMounted

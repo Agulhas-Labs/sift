@@ -116,8 +116,9 @@ extension HealedCallAttributionTests {
                 .appendingPathComponent("healed", isDirectory: true)
         }
 
+        /// On a clock that does not move, so the hook's slip and the server's claim are the same moment however long the call between them takes — a cold index build on a loaded machine can outlast the claim window, and a slip stale on the wall's clock is claimed by nobody.
         var callers: CallAttribution {
-            CallAttribution(directory: directory.appendingPathComponent("callers", isDirectory: true))
+            CallAttribution(directory: directory.appendingPathComponent("callers", isDirectory: true), now: { Date(timeIntervalSince1970: 0) })
         }
 
         var usage: URL {

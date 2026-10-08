@@ -99,7 +99,9 @@ struct SyntacticTypeUsage {
                 asked: "this \(kind)'s",
                 because: "as a qualifier read from the index alone may name another type in Swift"
             )
-            let caveats = [spelledAsAnother.clause(named: name, used: tally.used), readClause].compactMap(\.self)
+            tally.extendsAnother = try headersExtendingAnother(named: name, asked: named, sites: sites)
+            let placedClause = Self.placedClause(named: name, kind: kind, used: tally.used, headers: tally.extendsAnother)
+            let caveats = [spelledAsAnother.clause(named: name, used: tally.used), readClause, placedClause].compactMap(\.self)
             tally.caveat = caveats.isEmpty ? nil : caveats.joined(separator: "; ")
             lines += try verdict(for: name, tally: tally, ownerships: ownerships, owners: owners, deleted: deleted, paging: paging)
         }
@@ -117,7 +119,11 @@ struct SyntacticTypeUsage {
         var own = Ownership(spans: [row.path: [row.line ... max(row.line, row.endLine)]])
         // An extension written through a typealias extends the type it names, and deleting the alias breaks it: a use.
         guard row.kind.isTypeDeclaration else { return own }
-        for extended in try store.extensions(ofTypeNamed: row.name) where extended.name == path || extended.name == "\(row.module).\(path)" {
+        let placement = try ExtensionPlacement(of: row, in: store)
+        for written in try ExtensionPaths.written(endingIn: row.name, in: store) where written.path == path || written.path == "\(row.module).\(path)" {
+            // An extension the code places as another type's, such as a bare one in a module declaring its own type of the path, is neither its own nor a use of it.
+            guard try placement.place(written) != .another else { continue }
+            let extended = written.row
             let isVisible = declared.allSatisfy { $0.accessLevel >= .internalLevel || $0.path == extended.path }
                 && (row.ifConfigCondition == nil || row.ifConfigCondition == extended.ifConfigCondition)
             guard isVisible else { continue }
@@ -131,6 +137,33 @@ struct SyntacticTypeUsage {
             own.spans[extended.path, default: []].append(extended.line ... max(extended.line, extended.endLine))
         }
         return own
+    }
+
+    /// Per file and line, the header of each extension written bare through `name` that ``ExtensionPlacement`` places as another type's than the one `asked` declares, with what to call that type; none where `asked` is not one type at one path in one module.
+    ///
+    /// A qualified header is left to the qualifier's own caveat. The header is the first site in the extension, since its body follows it.
+    private func headersExtendingAnother(named name: String, asked: [SymbolRow], sites: [SyntacticCallSite]) throws -> [String: [Int: String]] {
+        guard asked.allSatisfy(\.kind.isTypeDeclaration) else { return [:] }
+        let placements = try asked.map { try ExtensionPlacement(of: $0, in: store) }
+        guard let placement = placements.first, placements.allSatisfy({ $0.module == placement.module && $0.path == placement.path }) else { return [:] }
+        var headers: [String: [Int: String]] = [:]
+        for written in try ExtensionPaths.written(endingIn: name, in: store) where !written.path.contains(".") {
+            guard try placement.place(written) == .another else { continue }
+            let extended = written.row
+            let span = extended.line ... max(extended.line, extended.endLine)
+            guard let header = sites.filter({ $0.path == extended.path && span.contains($0.line) }).map(\.line).min() else { continue }
+            headers[extended.path, default: [:]][header] = extended.module == placement.module ? "another \(name)" : "another module's \(name)"
+        }
+        return headers
+    }
+
+    /// The verdict's clause for the lines of `used` that are the header of a bare extension placed as another type's, or `nil` where there are none.
+    private static func placedClause(named name: String, kind: String, used: [String: Set<Int>], headers: [String: [Int: String]]) -> String? {
+        let count = headers.reduce(0) { total, file in total + file.value.keys.count { used[file.key]?.contains($0) == true } }
+        guard count > 0 else { return nil }
+        let writes = count == 1 ? "writes" : "write"
+        let extends = count == 1 ? "extends" : "extend"
+        return "\(count) of them \(writes) \"\(name)\" as the header of an extension the index places as another type's, so \(extends) that type rather than this \(kind) — counted all the same, as a placement read from the index alone is not proof"
     }
 
     /// Per asked name, the function-local typealiases a type use on their right-hand side shows to name it, by the fold rules of one declared where they are, with how their uses are counted.
@@ -250,7 +283,9 @@ struct SyntacticTypeUsage {
         if count <= WhereRenderer.siteTextLineCap {
             let rows = { (path: String) -> [String] in
                 let lines = (listed[path] ?? []).sorted()
-                return ["  \(path) (\(lines.count)):"] + lines.map { "    :\($0)" + NameMatchedSites.textSuffix(tally.texts[path]?[$0]) }
+                return ["  \(path) (\(lines.count)):"] + lines.map { line in
+                    "    :\(line)" + NameMatchedSites.textSuffix(tally.texts[path]?[line]) + (tally.extendsAnother[path]?[line].map { " — extends \($0)" } ?? "")
+                }
             }
             if let paging {
                 return block + paging.page(files: paths, indent: "  ", render: rows)
@@ -347,9 +382,9 @@ private extension SyntacticTypeUsage {
             // So is a dotted one (`extension Foundation.JSONDecoder`) beside a type or typealias of the name the bare query found: the one asked may be private, conditional, nested or another name for some other type, and the extension another's.
             // An alias the declaration's own path proves is folded in through that path whatever an extension of it reads as.
             for row in rows where row.kind.isTypeDeclaration || row.kind == .typealiasKind {
-                for extended in try store.extensions(ofTypeNamed: row.name) where (extended.name == row.name || extended.name.hasSuffix("." + row.name)) && !seen.contains(extended.id) {
-                    seen.insert(extended.id)
-                    let path = try WrittenPath(of: extended, store: store, guessedModulePaths: guessedModulePaths, reachedThrough: nil, mayExtendAnother: extended.name != row.name)
+                for written in try ExtensionPaths.written(endingIn: row.name, in: store) where !seen.contains(written.row.id) {
+                    seen.insert(written.row.id)
+                    let path = try WrittenPath(of: written.row, store: store, guessedModulePaths: guessedModulePaths, reachedThrough: nil, mayExtendAnother: written.path != row.name)
                     if path.unknownModule == .extendedOnly || path.mayExtendAnother {
                         frontier.append(path)
                     }
@@ -441,6 +476,8 @@ private extension SyntacticTypeUsage {
         var texts: [String: [Int: String]] = [:]
         /// A clause said first of the lines kept as uses, where some may be another type's.
         var caveat: String?
+        /// Per file and line, the header of a bare extension placed as another type's, with what to call that type.
+        var extendsAnother: [String: [Int: String]] = [:]
         /// The typealias declarations whose right-hand side a site has already been counted as, one site each, since a plain path writes the name once and a second site on the line is something else.
         private var declared: Set<Int64> = []
 
@@ -601,7 +638,8 @@ private extension SyntacticTypeUsage.AliasChain {
         init(of row: SymbolRow, store: IndexStore, guessedModulePaths: Set<String>, reachedThrough: Unproven?, mayExtendAnother: Bool = false) throws {
             self.mayExtendAnother = mayExtendAnother
             let chain = try store.parentChain(of: row) + [row]
-            let names = chain.map(\.name)
+            // An extension's generic arguments are no part of the path it extends, so `extension Shelf.Box<Int>` is read as `Shelf.Box`.
+            let names = chain.map { Self.extendedPath(of: $0) }
             module = row.module
             path = ([module] + names).joined(separator: ".")
             unknownModule = try Self.extendsUnseenType(chain[0], in: store) ? .extendedOnly : guessedModulePaths.contains(row.path) ? .guessedModule : nil
@@ -657,6 +695,11 @@ private extension SyntacticTypeUsage.AliasChain {
             return wholePaths.contains { target == $0 || target == module + "." + $0 }
         }
 
+        /// A row's name, an extension's with its generic arguments set aside.
+        private static func extendedPath(of row: SymbolRow) -> String {
+            row.kind == .extensionKind && row.name.contains("<") ? DeclaredTypeName.path(ofSpelling: row.name) : row.name
+        }
+
         private static func declaresTopLevelType(named name: String, in store: IndexStore) throws -> Bool {
             try store.symbols(named: name).contains { $0.parentID == nil && ($0.kind.isTypeDeclaration || $0.kind == .typealiasKind) }
         }
@@ -665,8 +708,9 @@ private extension SyntacticTypeUsage.AliasChain {
         ///
         /// A typealias of the name is no such proof, since it names some other type.
         private static func extendsUnseenType(_ outermost: SymbolRow, in store: IndexStore) throws -> Bool {
-            guard outermost.kind == .extensionKind, !outermost.name.contains(".") else { return false }
-            return try !store.symbols(named: outermost.name).contains { declared in
+            let name = extendedPath(of: outermost)
+            guard outermost.kind == .extensionKind, !name.contains(".") else { return false }
+            return try !store.symbols(named: name).contains { declared in
                 declared.parentID == nil && declared.kind.isTypeDeclaration && declared.module == outermost.module
                     && declared.accessLevel >= .internalLevel && declared.ifConfigCondition == nil
             }

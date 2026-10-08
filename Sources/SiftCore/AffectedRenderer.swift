@@ -206,9 +206,11 @@ extension AffectedRenderer {
                 location: "\(evidence?.path ?? "?"):\(evidence?.line ?? 0)\(evidence?.state.marker ?? "")"
             )
         }
-        if let probe = options.probe {
+        if !options.probes.isEmpty {
             let members = AffectedProbe.members(of: reached.keys, in: inventory)
-            lines.append(contentsOf: AffectedProbe.lines(for: probe, reached: listed, members: members, depth: options.depth, walkedTo: semanticWalk.walkedOn.furthest))
+            for probe in options.probes {
+                lines.append(contentsOf: AffectedProbe.lines(for: probe, reached: listed, members: members, depth: options.depth, walkedTo: semanticWalk.walkedOn.furthest))
+            }
         }
         return Output(body: lines.joined(separator: "\n"), axis: axis, reached: listed, limitCount: ways, depth: options.depth, walkedOn: semanticWalk.walkedOn.outcomes.count, walkedTo: semanticWalk.walkedOn.furthest, newerFiles: newerFiles)
     }

@@ -44,7 +44,7 @@ extension SymbolRow {
         if compact {
             return "  \(qualifiedName) — \(kind.rawValue) — \(located)"
         }
-        let line = "  \(qualifiedName) — \(kind.rawValue) — \(SourceSlicer.cut(signature, at: SourceSlicer.signatureCap)) — \(located)"
+        let line = "  \(qualifiedName) — \(kind.rawValue) — \(SourceSlicer.shown(signature)) — \(located)"
         return docSummary.map { line + "  /// " + $0 } ?? line
     }
 }

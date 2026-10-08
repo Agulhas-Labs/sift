@@ -5,5 +5,7 @@
 #
 # It is right here because entries are appended whole and independently. A merge where two
 # sides genuinely rewrite the *same* paragraph will keep both versions rather than conflict,
-# which is visible in review; nothing else in the tree gets this treatment for that reason.
+# which is visible in review. The fixture provenance log is the same shape: every branch that
+# records a capture appends its own section at the end, so two such branches always collide there.
 CHANGELOG.md merge=union
+Tests/SiftCoreTests/Fixtures/RunOutput/PROVENANCE.md merge=union

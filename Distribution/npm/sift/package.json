@@ -1,7 +1,7 @@
 {
   "name": "@agulhas-labs/sift",
   "version": "@VERSION@",
-  "description": "Compressed, structurally accurate views of Swift code — a CLI and an MCP stdio server for AI-assisted development.",
+  "description": "A Swift toolkit for AI coding agents: an index of your code, builds and tests that tell the truth, and checks on every change — a CLI and an MCP stdio server.",
   "keywords": ["mcp", "modelcontextprotocol", "claude", "swift", "code-index", "ai"],
   "homepage": "https://github.com/Agulhas-Labs/sift",
   "license": "Apache-2.0",

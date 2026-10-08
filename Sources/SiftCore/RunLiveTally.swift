@@ -17,6 +17,8 @@ public struct RunLiveTally: Sendable {
     private var startedIterations: [String: Int] = [:]
     /// How each counted test last ended, so a repeat moves its test between counts instead of adding one.
     private var endings: [String: RunTestOutcomes.Ending] = [:]
+    /// Every test a start line read from its own head has named, which a glued ending or issue must name to be split off (``RunGluedTestLine``).
+    private var startedNames: Set<String> = []
     private var seenErrors: Set<RunDiagnostic.Identity> = []
     private var seenWarnings: Set<RunDiagnostic.Identity> = []
 
@@ -36,9 +38,17 @@ public struct RunLiveTally: Sendable {
     public mutating func consume(line raw: String, now: Date) {
         let line = RunOutputLines.cleaned(raw)
         if let (notice, rest) = RunOutputFilter.splitLockNotice(line) {
-            read(notice, now: now)
+            consume(line: notice, now: now)
+            consume(line: rest, now: now)
+            return
+        }
+        if let (output, rest) = RunGluedTestLine.split(line, started: startedNames.contains) {
+            read(output, now: now)
             read(rest, now: now)
             return
+        }
+        if let name = RunGluedTestLine.startedTest(in: line) {
+            startedNames.insert(name)
         }
         read(line, now: now)
     }

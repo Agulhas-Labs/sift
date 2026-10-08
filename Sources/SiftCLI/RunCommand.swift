@@ -13,7 +13,7 @@ struct RunCommand: ParsableCommand {
             commandName: "run",
             abstract: "Run a Swift toolchain command and print only what failed.",
             // Written out because the generated line draws every array option as repeatable (`<file:line> ...`), and `--without-line` is one value, refused when given twice.
-            usage: "sift run [<command> ...] [--without <without> ...] [--without-line <file:line>] [--since <since>] [--restore] [--proved] [--coverage] [--from <from>]",
+            usage: "sift run [<command> ...] [--without <without> ...] [--without-line <file:line>] [--since <since>] [--keep-without-build] [--restore] [--proved] [--coverage] [--from <from>]",
             discussion: """
             Wraps `swift build`, `swift test` and `xcodebuild`, printing their errors, test failures, \
             deduplicated warnings and own summary line instead of the thousands of progress lines a \
@@ -56,7 +56,7 @@ struct RunCommand: ParsableCommand {
             while they are out of the tree, every `sift run` refuses, and `sift run --restore` puts back \
             a set-aside whose run is gone. The run without the change builds in a directory of its own \
             under .sift/without-build/, never in yours, so nothing compiled without the change is left \
-            for your next build to reuse. A test the change did not write that passes both ways is \
+            for your next build to reuse, and removes it once your changes are back, whichever way the run ends; the answer's last line says it was removed. A run that cannot put the changes back removes nothing, and the next one clears it. With --keep-without-build it is kept instead, and the next proof of the same package or scheme builds on it — for iterating on one proof. A test the change did not write that passes both ways is \
             counted rather than listed; which tests it wrote is read from the branch's merge-base with \
             the default branch (or from --since), commits and uncommitted work together, so a test \
             committed beside an uncommitted fix still counts as written. With --without-line <file>:<line> \
@@ -96,6 +96,9 @@ struct RunCommand: ParsableCommand {
 
     @Option(name: .customLong("since"), help: "Set aside what the commits since this revision changed under --without, rather than what is uncommitted: the fix is already committed. Refused when anything under the pathspec is uncommitted.")
     var since: String?
+
+    @Flag(name: .customLong("keep-without-build"), help: "With --without or --without-line: keep the build directory the run without the change built in, under .sift/without-build/, so the next proof of the same package or scheme builds on it rather than from nothing. Without it, that directory is removed when the run ends.")
+    var keepWithoutBuild = false
 
     @Flag(name: .customLong("restore"), help: "Put back the changes a `sift run --without` set aside and never restored, and check them by content hash.")
     var restore = false
@@ -179,6 +182,7 @@ struct RunCommand: ParsableCommand {
             throw ValidationError("sift run --without-line takes no --without, --since, --restore or --proved: it sets aside one line of the working tree, and nothing else.")
         }
         let line = try withoutLine.first.map(Self.line(named:))
+        try Self.validateKeepingTheBuild(keepWithoutBuild, setsAside: !without.isEmpty || line != nil, restoresOrProves: restore || proved)
         try RunCoverage.validate(arguments, coverage: coverage, from: from, setsAside: !without.isEmpty || line != nil, restoresOrProves: restore || proved)
         guard since == nil || !without.isEmpty else {
             throw ValidationError(RunWithoutError.sinceWithoutPathspec.description)
@@ -238,6 +242,7 @@ struct RunCommand: ParsableCommand {
                 pathspecs: without,
                 line: line,
                 since: since,
+                keepsBuild: keepWithoutBuild,
                 runKey: { runKey(in: $0, from: workingDirectory) },
                 file: { outcome, lines, milliseconds, startedOn in
                     record(outcome, answerLines: lines, milliseconds: milliseconds, startedOn: startedOn)
@@ -613,6 +618,14 @@ extension RunCommand {
         return (String(written[..<colon]), number)
     }
 
+    /// `--keep-without-build` keeps the build a set-aside's run without the change makes, so it is refused where no set-aside runs.
+    private static func validateKeepingTheBuild(_ keeps: Bool, setsAside: Bool, restoresOrProves: Bool) throws {
+        guard keeps, !setsAside || restoresOrProves else {
+            return
+        }
+        throw ValidationError("sift run --keep-without-build goes with --without or --without-line, and with no --restore or --proved: it keeps the build the run without the change made.")
+    }
+
     /// Only `command` comes off the command line.
     ///
     /// Spelled out because `ParsableCommand` is `Decodable` and its conformance is synthesized: a stored property that is not an argument would otherwise have to be `Decodable` too, and a log is not something a decoder can produce. Naming the keys leaves ``log`` to its default, which is exactly what the parse path wants.
@@ -621,6 +634,7 @@ extension RunCommand {
         case without
         case withoutLine
         case since
+        case keepWithoutBuild
         case restore
         case proved
         case guardSetAside

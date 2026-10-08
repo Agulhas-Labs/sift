@@ -20,6 +20,8 @@ struct RunWithoutCommand {
     let line: (path: String, number: Int)?
     /// What `--since` named, as the caller wrote it: the run then sets aside the change committed on top of it instead of the one in the tree.
     let since: String?
+    /// Whether `--keep-without-build` was given: the build directory the run without the change used is then kept, marked for the next proof to build on, rather than removed when the run ends.
+    var keepsBuild = false
     /// The tree and command a run starts on, taken the way `RunCommand` takes them, so the run with the change is keyed as a plain run would be.
     let runKey: (URL) -> TreeContentHash.RunKey?
     /// Files the run with the change in the per-user run log: `RunCommand`'s own filing, handed in so a run is filed one way whichever path ran it.
@@ -133,6 +135,9 @@ struct RunWithoutCommand {
             StandardStreams.emitError("sift run --without: \(build.shownDirectory) could not be cleared for the run without the change, so nothing was set aside and nothing was run: \(error.localizedDescription)")
             throw Exit.refused.code
         }
+        // What was built without the change goes once the changes are known to be back, unless the caller asked to
+        // keep it — never while they may still be out of the tree, when the restore, not a 2 GB removal, comes
+        // first. An exit that leaves them out leaves the build too, unmarked, for the next run's `prepare` to clear.
         let outcome: SetAside.Outcome
         do {
             guard let done = try session.setAsideTree() else {
@@ -146,7 +151,7 @@ struct RunWithoutCommand {
             if !session.hasFailed {
                 StandardStreams.emitError("\(error)")
             }
-            throw putBack(session, guardian: guardian, interruptions: interruptions).code
+            throw putBack(session, guardian: guardian, interruptions: interruptions, build: build).code
         }
         if case let .stopped(changed, restored) = outcome {
             let watched = guardian.handle?.release() ?? true
@@ -160,6 +165,10 @@ struct RunWithoutCommand {
             }
             if !watched {
                 StandardStreams.emitError(RunWithoutAnswer.watcherLostLine)
+            }
+            // What was set aside is back, so this ends like any other refusal.
+            if !keepsBuild {
+                build.discard()
             }
             session.close()
             throw Exit.refused.code
@@ -177,12 +186,12 @@ struct RunWithoutCommand {
         } catch {
             interruptions.checkpoint()
             StandardStreams.emitError("sift run --without: the command could not be started: \(error)")
-            throw putBack(session, guardian: guardian, interruptions: interruptions).code
+            throw putBack(session, guardian: guardian, interruptions: interruptions, build: build).code
         }
         // Whatever the run without the change left running could go on writing into the tree once the changes
         // are back, so it is ended first.
         let stragglers = first.pid.map { session.children.settle($0) } ?? 0
-        if stragglers == 0, before.report?.testOutcomes.isEmpty == false {
+        if keepsBuild, stragglers == 0, before.report?.testOutcomes.isEmpty == false {
             // Reaching its tests is the one sign the build finished and recorded what it wrote, and with nothing
             // left running nothing is still writing into it.
             build.keep()
@@ -210,14 +219,22 @@ struct RunWithoutCommand {
             interruptions.checkpoint()
             interruptions.claimOrPark()
             StandardStreams.emitError("\(error)")
+            sayBuildLeft(build)
             throw Exit.notBack.code
         }
         let watched = guardian.handle?.release() ?? true
         interruptions.checkpoint()
+        // Measured, then removed, with the changes back and before the run with them: never while they are out
+        // of the tree, and the disk is free again before the second build needs it.
+        let buildSize = build.sizeOnDisk
+        let built = !build.isRemoved
+        if !keepsBuild {
+            build.discard()
+        }
         if let unresolved = RunWithoutBuild.unresolvedAnswer(to: before, without: session.record.named) {
             interruptions.claimOrPark()
             // What a resolution that failed left behind is a partial fetch, never a build to build on.
-            try? FileManager.default.removeItem(at: build.directory)
+            build.discard()
             let pathspecs = session.record.named
             var lines = [unresolved]
             // Nothing ran with the change, but the set-aside itself still happened — the same receipt the
@@ -261,8 +278,10 @@ struct RunWithoutCommand {
             headNow: restored.headNow ?? session.headNow(),
             retriesFailures: RunWithoutArguments.retriesFailures(arguments),
             watcherLost: !watched,
-            buildDirectory: build.directory.path,
-            buildDirectorySize: build.sizeOnDisk,
+            // Named only when there is something to say: a build this run removed, or one still there.
+            buildDirectory: built || !build.isRemoved ? build.directory.path : nil,
+            buildDirectorySize: buildSize,
+            buildDirectoryRemoved: built && build.isRemoved,
             changedTests: changedTests,
             selector: selector
         )
@@ -279,7 +298,9 @@ struct RunWithoutCommand {
     }
 
     /// After a set-aside that failed part-way, or a command that could not start: put back whatever was set aside, say which way that went, and answer the exit that says so.
-    private func putBack(_ session: SetAsideSession, guardian: GuardianSlot, interruptions: RunInterruptions) -> Exit {
+    ///
+    /// `build` goes only once the changes are back; otherwise it is left, and said to be.
+    private func putBack(_ session: SetAsideSession, guardian: GuardianSlot, interruptions: RunInterruptions, build: RunWithoutBuild) -> Exit {
         do {
             try session.finish()
             let watched = guardian.handle?.release() ?? true
@@ -288,12 +309,24 @@ struct RunWithoutCommand {
             if !watched {
                 StandardStreams.emitError(RunWithoutAnswer.watcherLostLine)
             }
+            if !keepsBuild {
+                build.discard()
+            }
             return .refused
         } catch {
             interruptions.claimOrPark()
             StandardStreams.emitError("\(error)")
+            sayBuildLeft(build)
             return .notBack
         }
+    }
+
+    /// After an exit that leaves the changes out of the tree, which removes nothing: names the build without the change that was left, unmarked, so the next run clears it rather than building on it.
+    private func sayBuildLeft(_ build: RunWithoutBuild) {
+        guard !keepsBuild, !build.isRemoved else {
+            return
+        }
+        StandardStreams.emitError("  ⚠ the build without the change was left at \(build.shownDirectory): nothing is removed while the changes may be out of the tree, and the next `sift run --without` clears it")
     }
 
     /// Moves the raw log of either run that did not build out of the count later runs prune, into the pool `run` keeps such a log in, so the path the answer names for it still resolves.

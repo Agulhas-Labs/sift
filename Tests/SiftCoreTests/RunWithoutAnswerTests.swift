@@ -1019,6 +1019,7 @@ extension RunWithoutAnswerTests {
         retries: Bool = false,
         buildDirectory: String? = nil,
         buildDirectorySize: Int64? = nil,
+        buildDirectoryRemoved: Bool = false,
         changedTests: Set<String>? = nil,
         alsoSetAside: [String] = [],
         newFiles: [String] = [],
@@ -1060,6 +1061,7 @@ extension RunWithoutAnswerTests {
             retriesFailures: retries,
             buildDirectory: buildDirectory,
             buildDirectorySize: buildDirectorySize,
+            buildDirectoryRemoved: buildDirectoryRemoved,
             changedTests: changedTests,
             selector: selector
         )

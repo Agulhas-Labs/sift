@@ -123,7 +123,10 @@ private extension SessionStartCommandTests {
             cwd: nil,
             event: nil,
             runLedgerURL: ledger,
-            resumptionDeadline: deadline
+            resumptionDeadline: deadline,
+            // Only `deadline` is under test here. The declaration comparison's own quarter-second budget is lifted,
+            // so a loaded machine cannot turn the names into a bare count.
+            declarationParseBudget: .infinity
         )
     }
 }

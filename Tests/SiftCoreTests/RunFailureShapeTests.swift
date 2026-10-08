@@ -316,12 +316,15 @@ struct RunFailureShapeTests {
         // Twenty distinct tests sharing one message is one signature past `testsCap`: the lead names
         // its own single failure — never the signature's whole count — the next two are named beside
         // it, and the other seventeen are counted on their own line and again in the block's own
-        // accounting, since nothing past the first three was ever named.
+        // accounting, since nothing past the first three was ever named. Every one of them failed once, so
+        // the three named are the first three by name, not the first three the run printed.
         #expect(block.count == 8)
         #expect(!block.contains { !$0.hasPrefix("  ↳ top:") && $0.contains("×\(Self.repeated)") })
-        #expect(block.contains("  testOne()"))
-        #expect(block.contains("    also: testTwo()"))
-        #expect(block.contains("    also: testThree()"))
+        let firstByName = Array(names.sorted().prefix(3))
+        #expect(firstByName != Array(names.prefix(3)))
+        #expect(block.contains("  \(firstByName[0])"))
+        #expect(block.contains("    also: \(firstByName[1])"))
+        #expect(block.contains("    also: \(firstByName[2])"))
         #expect(block.contains("    +17 more tests under this signature (17 failures)"))
         #expect(block.last == "  +17 more failures under the signatures above, not named here — see the raw log")
     }

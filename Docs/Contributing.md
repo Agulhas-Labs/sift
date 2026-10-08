@@ -35,7 +35,11 @@ swiftlint lint --strict             # the form the hook runs: a warning fails th
 `sh Distribution/cut-public-repo.sh [--at <rev>] <target-dir>` makes a new one-commit repository from
 `git archive` at a commit, authored as `Agulhas Labs <developer@agulhaslabs.dev>` (`--author` to change).
 It refuses unless `verify-tree.sh` passes in a detached worktree over exactly the files committed, and
-re-cuts an earlier unpublished cut by amending. It pushes nothing; it prints the publish commands.
+re-cuts an earlier unpublished cut by amending. A release after the first goes into a fresh clone of the
+published repository (fetched, on `main` at `origin/main`, clean): the new tree lands as one more commit
+on top, never an amend, a tree the clone already carries is refused, and a check that fails after
+it began writing puts the clone back at what was published. It pushes nothing; it prints the
+publish commands.
 
 ## Running a server by hand
 

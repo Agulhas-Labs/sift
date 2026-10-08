@@ -80,12 +80,13 @@ private extension StopBuildGate {
 
     /// The repositories the edited files the index would take fall in, each with its files, the one edited last first.
     ///
-    /// A file the index's inclusion rule keeps out, an ignored path or one under a build directory among them, is no edit, and one outside every repository has none to build.
+    /// A file the index's inclusion rule keeps out, an ignored path or one under a build directory among them, is no edit, one outside every repository has none to build, and one no longer on disk — deleted, or checked out away with the branch that holds it — has nothing to build either.
     static func repositories(of edited: [String]) -> [(root: String, files: [String])] {
         var order: [String] = []
         var filesByRoot: [String: [String]] = [:]
         for file in edited.reversed() {
-            guard let root = CallerRoot.root(forCallerIn: URL(fileURLWithPath: file).deletingLastPathComponent().path),
+            guard FileManager.default.fileExists(atPath: file),
+                  let root = CallerRoot.root(forCallerIn: URL(fileURLWithPath: file).deletingLastPathComponent().path),
                   CanonicalPath.of(file).hasPrefix(CanonicalPath.of(root) + "/"),
                   EditParseCheck.indexCovers(file, under: root)
             else {

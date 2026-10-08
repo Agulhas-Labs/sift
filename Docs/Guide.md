@@ -8,6 +8,7 @@ the short version; this is the one to search when something surprises you.
 ## 1. Requirements
 
 - **macOS 13+ on Apple silicon.** The binary is arm64 only.
+- **Swift 6.2+** (Xcode 26, or the matching toolchain) to build it from source (§2).
 - **Node 18+**, only if you install it through `npx` (§2).
 - A **git repository** to point it at: it answers about checked-out source, and says so rather than
   guessing anywhere else.
@@ -15,6 +16,21 @@ the short version; this is the one to search when something surprises you.
 It makes **no network calls**, ever. See [§10](#10-what-it-touches) for everything it writes.
 
 ## 2. Install
+
+Today you build it from source, which needs Swift 6.2 or later. Put `~/.local/bin` on your `PATH` first:
+agents run `sift` from the shell, and `sift install` registers the binary you run it from.
+
+```sh
+git clone https://github.com/Agulhas-Labs/sift.git
+cd sift
+swift build -c release
+mkdir -p ~/.local/bin
+cp .build/release/sift ~/.local/bin/sift.new && mv -f ~/.local/bin/sift.new ~/.local/bin/sift
+sift --version
+```
+
+Copy to a new name and then rename, as above: macOS kills a binary rewritten in place, with exit 137 and no
+message. To upgrade, `git pull` and repeat the last four lines.
 
 The Homebrew tap and the npm package are not published yet: the lines marked so show how installing will
 work once they are.
@@ -207,9 +223,11 @@ Glob("**/*.swift")          → denied: digest .
 Glob("**/*Store.swift")     → denied: search path:Store
 ```
 
-A read is only interrupted when interrupting it could save something. A **ranged** read passes
-untouched, and so does any file below the compression floor and a whole read of a file the same
-context has already had digested. A Read that is really the precondition for an Edit or Write is answered
+A read is only interrupted when interrupting it could save something. A **ranged** read of a file
+whose digest the same context already holds passes untouched, and so does any file below the compression
+floor and a whole read of a file the same context has already had digested. Any other window (a ranged
+`Read`, `sed -n 95,215p`) is answered only where the answer saves at least 4 KiB against the lines it
+asks for; when that answer leaves out the lines you needed, the identical re-run goes through. A Read that is really the precondition for an Edit or Write is answered
 like any other Read, and the identical re-run the answer invites is allowed: it costs a round trip and the file it reads.
 A `grep -n` for a name in files it names is answered with that name's `where` only where every line the grep
 prints spells the name in code; a line spelling it only in a comment or a string literal, a file holding a lone
@@ -222,7 +240,10 @@ or `bypassPermissions`, or where the allow rules in your settings already cover 
 statement the wrapping prefixes (a `Bash(swift test:*)` rule does not cover `sift run -- swift test`).
 Everywhere else — and wherever an ask or deny rule matches a wrapped statement — the build is refused once
 with the wrapped form named, and the identical re-run goes through. Where an ask or deny rule of yours
-matches anything on the line as you wrote it, the hook stands aside. Either way the whole log is kept under
+matches anything on the line as you wrote it, the hook stands aside, and it stands aside from a line the shell
+could not run as written too (`swift test &&`), naming no wrapping of it. It stands aside from every build
+while a settings file of yours has something in it the hook cannot read as JSON (a Latin-1 byte, say), since a
+rule there is one it cannot see. Either way the whole log is kept under
 `.sift/runs/`. `install-hook` offers four allow rules — `Bash(sift run -- swift build:*)`, `swift test`,
 `xcodebuild` and `swiftlint`, never `Bash(sift run:*)` — and four for the read-only lookups, `Bash(sift digest:*)`,
 `where`, `search` and `strings`, so a context whose sift tools are deferred can use the CLI without a prompt: asking
@@ -840,10 +861,10 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `sift test --sweep` | Delete the simulators this checkout's dead runs left behind, and run nothing |
 | `sift run [--coverage [--from R]] -- <command>` | Run `swift build` / `swift test` / `xcodebuild` and print only what failed. `--coverage` runs `swift test` or `xcodebuild test` with coverage on and says which lines of each changed declaration ran and which did not, measured from `--from` (default `HEAD`) to the working tree |
 | `sift run --proved -- <command>` | Run nothing: answer whether this command already passed on this tree's exact content. Exit 0 proved, 1 no such run on record (running it would fix that) or a later run on this content failed, 2 the question cannot be put (the ledger is off, or no repository, tree or toolchain to name) |
-| `sift run --without <pathspec>… [--since <rev>] -- <tests>` | Run the named tests with your uncommitted changes under the pathspec set aside, then with them back: one line per test on whether it fails without the change and passes with it. The flag repeats, one pathspec per flag, and everything it names is set aside as one unit; `--since` sets aside what the commits since that revision changed under it instead, for a fix already committed |
+| `sift run --without <pathspec>… [--since <rev>] [--keep-without-build] -- <tests>` | Run the named tests with your uncommitted changes under the pathspec set aside, then with them back: one line per test on whether it fails without the change and passes with it. The flag repeats, one pathspec per flag, and everything it names is set aside as one unit; `--since` sets aside what the commits since that revision changed under it instead, for a fix already committed. The build made without the change is removed once your changes are back; a run that could not put them back leaves it (and says so), for the next run to clear. `--keep-without-build` keeps it for the next proof to build on |
 | `sift run --without-line <file:line> -- <tests>` | The same proof for a fix that cannot build without its own change: comment out that one line, run, put it back, run again |
 | `sift run --restore` | Put back a set-aside whose run was killed along with its watcher, checked by content hash |
-| `sift affected [--from R [--to R]] [--depth N] [--reached NAME]` | Which tests reference what a diff changed, with the `-only-testing:` and `--filter` arguments — it reports, it never runs and never decides what to skip |
+| `sift affected [--from R [--to R]] [--depth N] [--reached NAME]...` | Which tests reference what a diff changed, with the `-only-testing:` and `--filter` arguments — it reports, it never runs and never decides what to skip |
 | `sift diff [<range>] [--member <Type.member>] [--offset N] [--coverage]` | A structural digest of a change for review, in place of the raw `git diff`: every touched file, declarations added/removed/changed with before → after signatures, what changed outside them, callers of changed signatures, test names, and the tests reaching the changed files. `<range>` is a single commit (its own change), `A..B`, `A...B` (against the merge-base), or omitted for the working tree vs `HEAD`. `--member` prints one declaration's before/after; its header ends in an address `path#Type.member:line` (the file, the declaration's label, and its line after the change; `path#Type.member:before:line` for a declaration the range removed, which has no after side), and that whole address can be passed back to `--member`, as the ambiguity refusal's list does. `--coverage` adds what the last `sift run --coverage` measured, where it measured this very tree, and says so where it is stale or absent |
 | `sift usage [--since W] [--root R] [--unredact] [--all-roots] [--include-scratch] [--file P] [--run-file P]` | Summarise the index usage log — calls by tool, root and day, latency, top targets; `--all-roots` lists every root rather than the top five; `--file`/`--run-file` read other copies of `usage.jsonl` and `run.jsonl` |
 | `sift flakes [--since W] [--root R] [--unredact] [--file P]` | For every test that has both failed and passed across wrapped runs: how many named it, out of how many, and when one last did; `--file` reads another copy of `run.jsonl` |
@@ -1272,6 +1293,13 @@ sift run: 212 lines in, 11 out — raw output at .sift/runs/run-20260818-102214Z
 - **A fix that adds a new file is set aside by removing it**, staged or untracked alike, and the answer
   says so (on stderr before the first run too). It also says what that leaves unanswered: whether a test
   pins what the file *does* rather than merely naming it.
+- **The run without the change builds apart, and that build is removed once your changes are back** — it is
+  under `.sift/without-build/`, as large as a build of the repository, and the receipt says
+  `built without the change in a scratch build (… GB, removed)`. Iterating on one proof, add
+  `--keep-without-build`: the next proof of the same package or scheme builds on it, and the receipt
+  names it with the `rm -rf` that removes it. A run that could not put your changes back removes nothing
+  and says the build was left; the next run clears it. A `.sift` or `.sift/without-build` that is a
+  symbolic link is refused before anything is set aside.
 
 - **Name the tests** — `--filter`, or `-only-testing:` for `xcodebuild test`. `--skip-build` and
   `test-without-building` are refused: they run what was built with the change in it. So are

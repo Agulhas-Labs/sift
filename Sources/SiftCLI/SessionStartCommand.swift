@@ -57,7 +57,8 @@ struct SessionStartCommand: ParsableCommand {
         runLedgerURL: URL,
         serverLogURL: URL = ServerLifecycleLog.standard().fileURL,
         permission: (_ directory: String?) -> WrappedRunPermission = WrappedRunPermission.standard(in:),
-        resumptionDeadline: TimeInterval = SessionResumeGatherer.defaultDeadline
+        resumptionDeadline: TimeInterval = SessionResumeGatherer.defaultDeadline,
+        declarationParseBudget: TimeInterval = SessionResumeGatherer.defaultDeclarationParseBudget
     ) -> String? {
         // Resolved once, for the repository below as well as the primer, so the "where you left off" block
         // reads the same repository the primer names.
@@ -92,10 +93,15 @@ struct SessionStartCommand: ParsableCommand {
             hookEvent: hookEvent,
             source: payload["source"] as? String,
             context: context,
-            repository: repository,
-            runLedgerURL: runLedgerURL,
-            deadline: resumptionDeadline
-        )
+            repository: repository
+        ) { root in
+            SessionResumeGatherer.gather(
+                repositoryRoot: root,
+                runLedgerURL: runLedgerURL,
+                deadline: resumptionDeadline,
+                declarationParseBudget: declarationParseBudget
+            )
+        }
 
         let combined = [primer, resumeBlock].compactMap(\.self).joined(separator: "\n\n")
         guard !combined.isEmpty else { return nil }
@@ -104,22 +110,17 @@ struct SessionStartCommand: ParsableCommand {
 
     /// The "where you left off" block — only after a `/clear` or `/compact`, the two moments the conversation's own history was just thrown away.
     ///
-    /// Strictly read-only: gathers facts about the working tree from git, the run ledger and blob content, and never opens the index. Bounded as a whole by `deadline`: a gather still going when it passes leaves the block out, and the primer goes out on its own.
+    /// Strictly read-only: gathers facts about the working tree from git, the run ledger and blob content, and never opens the index. `gather` is called only where the block applies, and is bounded as a whole by its deadline: a gather still going when it passes returns `nil`, which leaves the block out, and the primer goes out on its own.
     private static func resumptionBlock(
         hookEvent: String?,
         source: String?,
         context: SessionContext,
         repository: String?,
-        runLedgerURL: URL,
-        deadline: TimeInterval
+        gather: (_ repositoryRoot: URL) -> SessionResumeFacts?
     ) -> String? {
         guard SessionResumeBlock.applies(hookEvent: hookEvent, source: source, context: context),
               let repository,
-              let facts = SessionResumeGatherer.gather(
-                  repositoryRoot: URL(fileURLWithPath: repository),
-                  runLedgerURL: runLedgerURL,
-                  deadline: deadline
-              )
+              let facts = gather(URL(fileURLWithPath: repository))
         else { return nil }
         return SessionResumeBlock.render(facts, now: Date())
     }

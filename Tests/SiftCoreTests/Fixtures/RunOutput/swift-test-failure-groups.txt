@@ -1,0 +1,54 @@
+Building for debugging...
+[Computing dependencies]
+[1 / 5]
+Build complete! (0.95 secs)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.000.
+Test Suite 'All tests' passed at 2000-01-01 12:00:00.000.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.006) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite ProbeTests started.
+◇ Test anObjCRenamedXCTestIsNotJudged(patterns:) started.
+◇ Test aSingleFilterIsNotJudged() started.
+◇ Test case passing 1 argument patterns → ["SwiftNamedTests"] to anObjCRenamedXCTestIsNotJudged(patterns:) started.
+◇ Test case passing 1 argument patterns → ["SwiftNamedTests", "ProbeTests.XCAlphaTests/testA$"] to anObjCRenamedXCTestIsNotJudged(patterns:) started.
+✘ Test anObjCRenamedXCTestIsNotJudged(patterns:) recorded an issue with 1 argument patterns → ["SwiftNamedTests"] at ProbeTests.swift:22:9: Expectation failed: judged(patterns).isEmpty
+↳ judged(patterns).isEmpty → false
+↳   judged(patterns) → ["SwiftNamedTests"]
+↳   isEmpty → false
+◇ Test case passing 1 argument patterns → ["Third", "Fourth", "Fifth"] to anObjCRenamedXCTestIsNotJudged(patterns:) started.
+✘ Test anObjCRenamedXCTestIsNotJudged(patterns:) recorded an issue with 1 argument patterns → ["Third", "Fourth", "Fifth"] at ProbeTests.swift:22:9: Expectation failed: judged(patterns).isEmpty
+↳ judged(patterns).isEmpty → false
+↳   judged(patterns) → ["Third", "Fourth", "Fifth"]
+↳   isEmpty → false
+✘ Test aSingleFilterIsNotJudged() recorded an issue at ProbeTests.swift:9:9: Expectation failed: judged(patterns).isEmpty
+↳ judged(patterns).isEmpty → false
+↳   judged(patterns) → ["NothingLikeThis"]
+↳   isEmpty → false
+✘ Test aSingleFilterIsNotJudged() recorded an issue at ProbeTests.swift:10:9: Expectation failed: exitCode(patterns) == nil
+↳ exitCode(patterns) == nil → false
+↳   exitCode(patterns) → 1
+↳     some → 1
+✘ Test aSingleFilterIsNotJudged() failed after 0.001 seconds with 2 issues.
+✘ Test anObjCRenamedXCTestIsNotJudged(patterns:) recorded an issue with 1 argument patterns → ["Third", "Fourth", "Fifth"] at ProbeTests.swift:26:9: Expectation failed: exitCode(patterns) == nil
+↳ exitCode(patterns) == nil → false
+↳   exitCode(patterns) → 3
+↳     some → 3
+✘ Test anObjCRenamedXCTestIsNotJudged(patterns:) recorded an issue with 1 argument patterns → ["SwiftNamedTests", "ProbeTests.XCAlphaTests/testA$"] at ProbeTests.swift:22:9: Expectation failed: judged(patterns).isEmpty
+↳ judged(patterns).isEmpty → false
+↳   judged(patterns) → ["SwiftNamedTests", "ProbeTests.XCAlphaTests/testA$"]
+↳   isEmpty → false
+✘ Test anObjCRenamedXCTestIsNotJudged(patterns:) recorded an issue with 1 argument patterns → ["SwiftNamedTests", "ProbeTests.XCAlphaTests/testA$"] at ProbeTests.swift:26:9: Expectation failed: exitCode(patterns) == nil
+↳ exitCode(patterns) == nil → false
+↳   exitCode(patterns) → 2
+↳     some → 2
+✘ Test anObjCRenamedXCTestIsNotJudged(patterns:) recorded an issue with 1 argument patterns → ["SwiftNamedTests"] at ProbeTests.swift:26:9: Expectation failed: exitCode(patterns) == nil
+↳ exitCode(patterns) == nil → false
+↳   exitCode(patterns) → 1
+↳     some → 1
+✘ Test anObjCRenamedXCTestIsNotJudged(patterns:) with 3 test cases failed after 0.055 seconds with 6 issues.
+✘ Suite ProbeTests failed after 0.055 seconds with 8 issues.
+✘ Test run with 2 tests in 1 suite failed after 0.055 seconds with 8 issues.
+Note: Some test targets reported failures:
+  - ProbeTests (Swift Testing)

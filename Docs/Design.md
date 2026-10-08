@@ -787,7 +787,27 @@ when nothing else resolves it, and by that final component alone when nothing de
 (`where JSONDecoder` beside only `extension Foundation.JSONDecoder`, answered as that extension), and swept
 by its final component. An extension written with generic arguments (`extension Dictionary<String, Net.URL>`)
 is found the same way by its path with those arguments set aside, never by a name written inside them: `where
-URL` does not reach it. An extension written through sugar (`extension [Net.URL]`, `extension Net.URL?`) is
+URL` does not reach it. One rule (in `ExtensionPaths`) reads every extension's path this
+way, so a type the tree declares lists `extension Box<Int>` and `extension App.Box<String>` under `extensions
+of Box` and counts their lines as its own, as it does `extension Box`. A query led by a name the tree
+neither declares, aliases or extends as a type at the top level nor has as a module (`where Swift.Dictionary`)
+is read as led by an imported module, so it reaches what the bare query does: the extensions written without
+that name too, except one in a module that declares its own type at that path, which extends that type, and one
+written through another qualifier; led by `Swift`, the sugar as well. A leading name the tree never writes may
+still be another module's type (`UIView.ContentMode`); the bare extensions it reaches are then kept, not
+dropped on that guess. (#592, #593) Where the type asked is one type, at one path in one module, each of those
+extensions is placed against it (`ExtensionPlacement`): a leading name that is a module of the tree and no type
+is that module, else the path is the extension's own module's type where it declares one, else a leading name
+that module declares at the top level is read through that declaration and never an import's (a typealias is
+followed to its target: `typealias Box = Int` makes `extension Box` Int's), else the one type of
+the tree at that path among the modules its file imports. One placed as another type (`extension Other.Box` or
+a bare one in `Other`, under `App.Box`) is not listed, not counted as its own, and not counted as another module's
+use of it; nor is one whose path is a shorter tail of a nested asked type's (a bare `extension Box` under
+`Outer.Box`). One that cannot be placed (`extension Shelf.Box`) is listed marked `may extend another module's Box`
+and counted as before. The no-store use sweep keeps the header of a bare extension placed as another type's,
+marked `— extends another module's Box` on its line (`— extends another Box` in the asked type's own module) and
+noted beside the count; a typealias of no plain path (`[Int]`, `Int?`) makes it another type's too. A bare query with several owners
+keeps its per-owner answer. (#592) An extension written through sugar (`extension [Net.URL]`, `extension Net.URL?`) is
 found by `Array`, `Dictionary` or `Optional`, read by its outermost sugar, also beside extensions the name
 resolved to, since its line never spells the name. An alias writing such an extension's path without its leading name is kept, never
 folded in: the leading name may be a type of another module (`extension UIView.ContentMode`), not a
@@ -1114,7 +1134,8 @@ import, never the path`:
   both types keeps the refused one's use.
 
 **With a store, a protocol's conformers are one list.** `where <Protocol>` prints one block, headed
-`conformers of X (N: d direct, i indirect[, k inherited][, k through a typealias][, k in a deleted file] — direct
+`conformers of X (N: d direct, i indirect[, k inherited][, k through a typealias][, k resolved to another
+declaration][, k in a deleted file][, k in a changed file without its clause] — direct
 is every inheritance clause in this tree's source that writes the name, so a grep for the name finds the same
 lines; a typealias to it is not followed, or, where a conformer is listed through one, through a typealias is a
 clause writing a typealias of it; indirect is from the index store[; inherited is reached through a listed
@@ -1135,7 +1156,10 @@ itself is called `indirect`, and
 `direct; the index store does not have it` where a clause writes the name and the store recorded no
 conformance — `direct; the index store has it through another type` where the store records none there but
 records the row inheriting from the protocol through a chain of clauses, as `Ember: Answer` does where that
-`Answer` is a class conforming to it. Where another protocol or class of the same name is declared (`Log.Shelf.Answer` beside a
+`Answer` is a class conforming to it. Where the store records neither, and resolves the name the clause writes, by line and column in
+a file unchanged since the build, to another declaration of it in the tree (`typealias P2 = P` in a library beside
+the app's own `protocol P2`), the row is marked `writes P2, which the index store resolves to Lib.P2` and counted
+as `resolved to another declaration`, not direct: kept and labelled, since the clause does write the name. Where another protocol or class of the same name is declared (`Log.Shelf.Answer` beside a
 top-level `Answer`), the scan by written name also finds that type's conformers or subclasses, and a clause
 the store records as inheriting from it is the other type's: a row the store records no conformance of the
 asked protocol for, whose declaration holds a conformance the store records to another protocol or class of
@@ -1148,7 +1172,9 @@ the tree no longer backs as built keep their mark and sort last among the rows t
 only of the inherited rows below — except a conformer only the store has, in a
 file deleted since the build, which carries no mark (its clause cannot be read, so `indirect` would claim
 what is not known) and is counted in the heading as `in a deleted file`, beside the `(file deleted since last
-build)` label, so the cap
+build)` label, and likewise one in a file changed since the build whose declaration no longer writes an entry
+where the store recorded the conformance, nor anywhere the name the store recorded there, counted as `in a changed file without its clause` (one that still does
+keeps its mark), so the cap
 (`truncated: N more conformers`) is spent on the rows that still stand. It replaces two blocks, the store's
 and the scan's by written name, which listed the same conformers twice and never said which conform directly;
 the store's caption also claimed indirect conformers it does not hold, since the store records a conformance
@@ -1707,11 +1733,14 @@ Traces display text to its localization key and back, across `.xcstrings` and le
 then lists where each matched key is **spelled as a string literal** in Swift source. Values match
 case-insensitively in any language, keys exactly or by substring; catalogs are few and small, so this
 reads the working tree and has no staleness axis. The echo line (`strings "<query>"`) and a catalog
-value or key write each control character as an escape (`\n`, `\r`, `\t`, `\0`, else `\u{…}`) and a value's
-`"` as `\"`, and so does a key on the literal-occurrence and accessor lines, where it sits between quotes, so neither can split its line or end its quotes early. A key holding format specifiers (`%@`, `%lld`, `%1$@`, `%.2f`) is also **spelled by an interpolated
+value or key write each backslash as `\\` and each control character as an escape (`\n`, `\r`, `\t`, `\0`, else `\u{…}`), and the echo and a value write `"` as `\"`, as a Swift literal spells them, and so does a key on the literal-occurrence and accessor lines, where it sits between quotes, so neither can split its line or end its quotes early, and a backslash-n in the text never reads as a newline. A key holding format specifiers (`%@`, `%lld`, `%1$@`, `%.2f`) is also **spelled by an interpolated
 literal** whose text between interpolations is the key's text between specifiers, one interpolation per
 specifier (`"Hello \(name)"` for `Hello %@`), and that literal's `file:line` is listed like a plain spelling;
-the match is by position and text, since an interpolation's type is not known to a syntactic read. A `%%` in a key is one literal `%` of that text (`%lld%% done` is spelled `"\(n)% done"`), and a `%` before a space is text, so `50% off` is a plain key. A key made only of specifiers (`%@`, Xcode's key for `Text("\(x)")`) has no text to match, so no interpolated literal is its call site. A key referenced only through a generated accessor has
+the match is by position and text, since an interpolation's type is not known to a syntactic read, and the
+text is the text the literal prints, so `"Say \"\(x)\""` and the raw `#"Say "\#(x)""#` both spell `Say "%@"`.
+A file is read for these only where it may hold such a literal: it writes an interpolation (`\(` or a raw
+literal's `\#`), and each run of the key's text free of the characters an escape can stand for (quotes,
+backslashes, control characters) appears in it, unless it writes a `\u{…}` escape, which can stand for any. A `%%` in a key is one literal `%` of that text (`%lld%% done` is spelled `"\(n)% done"`), and a `%` before a space is text, so `50% off` is a plain key. A key made only of specifiers (`%@`, Xcode's key for `Text("\(x)")`) has no text to match, so no interpolated literal is its call site. A key referenced only through a generated accessor has
 no literal spelling, so **the answer follows the accessor** rather than letting an empty site list read as
 "unused" or handing the gap back as advice, for the reason `where`'s sites carry their text: a trace that
 took `strings`, `where` and a read is one call. The key's last dot-separated component, where it is a Swift
@@ -1754,18 +1783,27 @@ one word is what a query shares with most literals of the tree around their inte
 against "more member lines"), and listing those buried the real site past the cap. A piece holds part of a
 word only when it holds at least three of its characters, or the whole of a shorter word ("in", "of"): a
 letter glued to an interpolation (`P\(index).swift` against "Package.swift") is not part of the query's
-word, so it never makes the second word a match lists on. The rest are counted on
+word, so it never makes the second word a match lists on. A literal is credited to every query word some
+one-word alignment of it matches (`"mike \(i) zzz \(j) oscar"` matches "mike foo oscar" on "mike" one way
+and on "oscar" another), each word's alignment kept with its own window, so a rare word is never hidden
+behind a common one the same literal also matches. The rest are counted on
 one line, tests included, with each word and its count in query order — `36 lines match it on only one
 word of literal text, tests included, not listed — "more" 6, "lines" 30; add a word to narrow` — so the
-answer accounts for what it omits. **When that leaves nothing listed** — no plain production site and no
-two-word match — the one-word matches whose word has at most `fallbackSiteLimit` (8) production sites are
-listed after all, production only, in path order, under a heading that says they matched on one word that
-matched this way on at most 8 production lines (the count is of these one-word matches, not of every line
-that holds the word): a word that rare is the query's distinctive one, where a common word
+answer accounts for what it omits; a line credited to two words counts under both. **When that leaves
+nothing listed** — no catalog entry, no plain production site and no two-word match — the one-word
+matches on the query's rarest words are listed after all, at most `fallbackSiteLimit` (8) production lines
+in all: words are taken rarest first, words on equally many lines together or not at all, while the lines
+they hold stay within the limit, so five words of five lines each list nothing rather than whichever came
+first. Stop words (the, a, an, to, of, at, in, on, is, it, and, or, that, this, for, with, be, compared
+case-insensitively) are never taken, so a query that shares only "the" with the tree lists nothing and
+keeps its `no Swift string literal contains it either` line. The sites are production only, in path
+order, each shown on the rarest word taken that it holds, under a heading that says they matched on one
+word that matched this way on at most 8 production lines (the count is of these one-word matches, not of
+every line that holds the word): a word that rare is the query's distinctive one, where a common word
 ("lines", "file") still names too many sites to list. The limit is a threshold, not a ranking; measured
-on 240 queries drawn from this tree's literals it listed the target in 92% of them against 79% for the
-two-word floor alone, with 1.6 other production sites on average and none over the cap. These rules were
-set from probes of this tree (#338).
+under an earlier rule, a limit of 8 per word rather than in all, on 240 queries drawn from this tree's
+literals it listed the target in 92% of them against 79% for the two-word floor alone, with 1.6 other
+production sites on average and none over the cap. These rules were set from probes of this tree (#338).
 Within a literal, the search prefers an alignment that lists, tries the longest run of literal text first,
 and remembers the states that failed, so a long pasted query against a literal of many interpolations stays
 polynomial; the query is prepared once, not per literal. Listed sites appear in path order, under their own
@@ -1908,6 +1946,16 @@ can `print` the same text to standard output, which reaches the log out of step 
 and the trap share, so it lands before or after the trap and even after its own test's ending line; and the event stream records no printed text, so no test id
 says whose line it is (#523, measured on a probe package: of 60 runs the look-alike landed after the real trap in 34
 and after its own test ended in 2).
+Traps are ranked on one piece of evidence, the event stream's. The stream records no printed text and nothing at the crash (no
+issue, no ending: the crashed test's last record is its `testStarted`), but it records where each test is declared
+(`sourceLocation`: `fileID`, `filePath`, line) and which tests started and never ended. A trap whose `File.swift:N`
+names, in either spelling, a line from such a test's declaration up to the next test or suite the stream declares in
+that file is listed first; several such keep the unranked order among themselves. The stretch is an upper bound, since the stream records no end: a helper written below a
+test falls in that test's. Every other trap inside the span follows, unranked as above, which covers the usual
+crash, a trap raised in library code or the standard library, whose location names no test's source, and every run
+with no stream (XCTest). (#523, on a probe package whose crashed test calls `fatalError` in its own body while three
+tests print look-alikes beside it: the real trap led in 7 of 16 runs before and 8 of 8 after; with the trap raised in
+library code instead, 6 of 16 before and 2 of 8 after, unranked as before.)
 Where no crashed test's start is in the log, every trap is kept in log order.
 A Swift Testing process's never-started count is its own bundle's: SwiftPM writes every bundle's stream into the one
 file, so the declarations counted are those whose target is the bundle the signal line's `--test-bundle-path` names,
@@ -2634,9 +2682,22 @@ place of any the command named, and the second run builds exactly where the call
 `xcodebuild` build settings that name where products or intermediates land (`SYMROOT`, `OBJROOT`,
 `BUILD_DIR`, `MODULE_CACHE_DIR`, and the rest of that family, with or without a `[condition]`) are refused
 on the command line for the same reason, and so is a file of settings that can set any of them: `-xcconfig`,
-or `XCODE_XCCONFIG_FILE`, which `xcodebuild` honours and `swift build` does not (both observed). That
-directory is built on again only after a first run for the same package, project, workspace and scheme,
-from the same directory, that reached its tests with nothing it started left running. A build directory is
+or `XCODE_XCCONFIG_FILE`, which `xcodebuild` honours and `swift build` does not (both observed). **That
+directory is removed when the run ends, by default**, once the changes are back — a proof, a test that
+passes either way, a build that failed, a refusal after the set-aside — and before the run with them, and the
+receipt says so in one clause (`built without the change in a scratch build (1.95 GB, removed)`), which it
+leaves out when nothing was built. It is as large as a build of the repository, and only a second proof in
+the same checkout ever reads it, which a gate never makes. **Nothing is removed while the changes may be out
+of the tree**: a run that exits saying they are not back leaves the build, unmarked, says so, and the next
+run clears it — the restore comes first, not a 2 GB removal. Only that one directory and its mark go, and
+nothing is removed or built through a symbolic link: `prepare` and `discard` remove through one guard, which
+refuses while `.sift`, `.sift/without-build` or the directory itself is a link, asked of each item rather
+than of a resolved path, since a path not yet built has nothing to resolve. A link there is left whole, the
+receipt then names it and how to remove it, and the next run refuses before setting anything aside, naming
+the link. An interrupted run leaves it for the next run, which clears it. `--keep-without-build` keeps it,
+for iterating on one proof: it is then built on again only after a first run for the same package,
+project, workspace and scheme, from the same directory, that reached its tests with nothing it started
+left running, and the receipt names it with `remove it any time with rm -rf …`. A build directory is
 laid out by package and target name, not by path, so a run for anything else clears it rather than trusting
 another package's build, as does a run after any other, so a proof never rests on what a stopped build left.
 The first `run --without` in a checkout, the first after one whose tests did not compile, and the first for
@@ -3308,7 +3369,7 @@ always was. Only `flakes` widens: `usage` and `report` scope `usage.jsonl` and `
 argument, and a lookup line carries no `repo`, so widening their runs would put two populations under one
 header.
 
-### `affected [--from <rev> [--to <rev>]] [--depth N] [--reached <name>]`
+### `affected [--from <rev> [--to <rev>]] [--depth N] [--reached <name>]...`
 
 The test targets and test symbols that reference the symbols a diff changed, plus the exact runner
 arguments a caller could pass — a full gate on a large app is thousands of tests and minutes of wall
@@ -3380,7 +3441,8 @@ inventory (the tests that suite runs, nested Swift Testing suites included), mat
 listed or its dotted spelling, and said to be run by that suite, and a
 name under such a suite that the inventory does not list said to be no known test rather than covered; and for a name
 never reached "not reached within N hops", which is not evidence that it is unaffected. Matches are capped at the
-per-test cap and the rest counted.
+per-test cap and the rest counted. The option repeats: the answer carries one such block per name, in the order
+given, and a name given twice is answered once.
 
 ### `diff [<range>] [--member <Type.member>] [--offset N]`
 
@@ -4154,22 +4216,33 @@ same turn, its whole log kept under `.sift/runs/`. Claude Code checks its permis
 rewritten command, so a `Bash(swift test:*)` allow rule does not cover `sift run -- swift test`, and a
 rewrite that turned an allowed build into a prompt would cost more than the refusal it replaces. So the
 rewrite is made only when `permission_mode` is `auto` or `bypassPermissions`, or when an allow rule covers
-every statement the wrapping prefixes (`WrappedRunPermission`), and never for a line the shell would not run
-as written (`swift test &&`). The rules are read from the user's, the project's shared and local, and the
-managed settings files; an allow rule counts only where Claude Code would apply it (a project file's only
-once the workspace trust dialog was accepted, and only the managed files' where those set
-`allowManagedPermissionRulesOnly`), while ask and deny rules are read from every file, since an extra veto
-only withholds a rewrite. **An ask or deny rule on anything the line runs as written** — any statement or
-pipeline stage, a substitution's included, matched past leading variable assignments and the wrappers Claude
+every statement the wrapping prefixes (`WrappedRunPermission`). **A line the shell would not run as written**
+(`swift test &&`, an unclosed quote, `$(`, backtick or parenthesis, a stray `)`: `ShellSyntax.isIncomplete`) is
+neither rewritten nor refused: the hook cannot know what the finished line will be, so any wrapping it named
+would be a guess at a command nobody wrote. It is let through (`allowed`, rule `incomplete`), and Claude Code,
+which cannot split it either, prompts as it would have (#303). The rules are read from the user's, the
+project's shared and local, and the managed settings files; an allow rule counts only where Claude Code would
+apply it (a project file's only once the workspace trust dialog was accepted, only the managed files' where
+those set `allowManagedPermissionRulesOnly`, and none from a file that is not strict JSON — a trailing comma,
+which Claude Code documents as a syntax error and skips the file for, a byte order mark, or UTF-16 or UTF-32,
+where Claude Code reads settings as UTF-8), while ask and deny rules are read from every file Foundation can
+read, malformed or not, and so is `allowManagedPermissionRulesOnly`, since an extra veto only withholds a
+rewrite. **A settings file with something in it that Foundation reads no JSON object from** — a Latin-1 byte,
+a lone surrogate escape, both of which Claude Code reads — or whose object names a key twice (Foundation keeps
+the first, Claude Code may keep the last) could hold a deny rule the hook cannot see, so
+while one is in the chain every build is let through untouched (`allowed`, rule `unreadable-settings`); an
+absent file, or one holding nothing but whitespace, withholds nothing. **An ask or deny rule on
+anything the line runs as written** — any statement or pipeline stage, a substitution's, a group's, a loop
+or conditional body's, a function body's and a `case` arm's included (read after every unquoted `)` and `{`), matched past leading variable assignments and the wrappers Claude
 Code strips, and with its redirections set aside as well as kept — makes the hook stand aside altogether: no
 rewrite and no refusal naming the wrapping, since both hand the model a command that rule, written for the
 original, does not match. The call is let through (`allowed`, rule `vetoed`) for Claude Code to apply the
-rule. **The stated limit is the rules the hook cannot read** (passed with `--settings`, granted for the
+rule. **The stated limit is the rules in no file the hook reads** (passed with `--settings`, granted for the
 session, MDM or server-delivered policy, `/etc/claude-code`): one that allows only ever withholds a rewrite;
 one that asks or denies can meet a rewrite it did not foresee, which is no worse than the refusal this
 replaced, but not a guarantee. Nor is `auto` strictly prompt-free: its classifier can still block a
 rewritten build. A rewrite interrupts nothing, so it neither consults nor spends the ledger, and every run of
-the build is rewritten. Everywhere else the offer is a refusal, closing on the identical re-run as the way to
+the build is rewritten. Everywhere else, an incomplete line aside, the offer is a refusal, closing on the identical re-run as the way to
 the raw output: it says the re-run is allowed and returns the command's whole output, and never that it is
 free, since it costs a round trip and that output (#470). **The answer is one-shot: re-running the
 identical command is allowed and costs nothing against the advice**, which is what makes refusing defensible
@@ -4302,8 +4375,11 @@ answers for the checkout (a linked worktree is its own) holding the directory it
 moved by each plain `cd` before it that `&&` joins to it, or what a `swift --package-path`/`-C` or an
 `xcodebuild -project`/`-workspace` names — and only where the call's result vouches for the run's: it ends
 its pipeline (`sift run … | tail` has `tail`'s status), no `||` stands just before it, and only `&&`
-follows it. A subshell or other compound statement, a `pushd`, a `cd` a `;` separates from the run, or a
-relative path with no `cwd` places no run, and the edits stand (#318). That transcript reading is the
+follows it. A subshell or other compound statement, a `pushd`, a `cd` a `;` or a newline separates from the
+run (a newline joins statements as `;` does), or a relative path with no `cwd` places no run, and the edits
+stand (#318). The line is read as the shell reads it: comments out first, then each backslash-newline joined
+away, and a statement of blanks alone is none, so `cd P && \`, a newline and the run, or a run followed by
+`# check` or by `;` and spaces, is placed as its one-line form is (#321). That transcript reading is the
 fallback. The main route is the record a green `sift run` build or test writes itself, in
 `<checkout>/.sift/green-builds.json` (`RunLedger.greenBuilds(inCheckout:)`): exit 0, the command ran what it
 named, and the tree key the same after the run as before it. The checkout is the one the command built,
@@ -4322,7 +4398,9 @@ another's. It is kept apart from `proved-runs.json`, so a build never answers `-
 pre-push. With any left, each repository they fall in
 (the one edited last first) is keyed with `TreeKey` — the key `sift run --proved` uses — and any
 `RunLedger` record of that tree, whatever its command, answers it; the ledger is that check and no source
-of a command. For the first repository left unanswered the hook prints `{"decision":"block","reason":…}`
+of a command. An edited file no longer on disk — deleted, or checked out away with the branch it was committed on — asks nothing; an
+edit committed on a branch, validated there, and then checked out away from is no reason to build `main`
+(#672). For the first repository left unanswered the hook prints `{"decision":"block","reason":…}`
 naming a build, never a test: `sift run -- swift build` where `Package.swift` is at the repository root,
 else the `sift run -- xcodebuild … build` Bash command this context last ran (failed or not), as the agent
 wrote it, else no block: an `xcodebuild` is never spelled here. It
@@ -5842,9 +5920,9 @@ record was written takes its copies with it; `.sift/set-aside.lock` is left in p
 that is removed excludes nobody, holding one line naming its last holder's pid and role, which is read only
 while the lock is held, and `.sift/set-aside.watch` beside it, empty, held by each watcher while it lives;
 `.sift/without-build/` holds the build directory the run without the change builds in, one per tool — as
-large as a build of the repository, kept so the next proof of the same package or scheme builds
-incrementally, and removed before a run whenever the last one's build did not reach its tests or was for
-another; `.sift/test-durations.json` holds the per-test history the shard planner bins by (§3), bounded twice
+large as a build of the repository, removed when the run ends unless `--keep-without-build` kept it so the
+next proof of the same package or scheme builds incrementally, and removed before a run whenever the last
+one's build did not reach its tests or was for another; `.sift/test-durations.json` holds the per-test history the shard planner bins by (§3), bounded twice
 over — the last five observations per test, and no entry unseen for 90 days, both applied when the file is
 written, so a suite that is renamed away stops costing anything within the quarter; the proved-run ledger holds the green runs the repository's content has been proved by (§3), and is the one file here that
 is not under `.sift` at all: it is `<git-common-dir>/sift/proved-runs.json`, shared by every worktree of the

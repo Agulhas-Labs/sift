@@ -588,13 +588,13 @@ public extension HelpTopics {
         answer for, not one it missed. A linter run carrying `--quiet` draws none: the flag already drops \
         the progress lines, so there is no log for the wrapping to spare.
 
-        **A build the user's own rules speak for runs as written.** Where an ask or deny rule of theirs \
-        matches anything the line runs — any statement of it, one inside a subshell, a loop body or a \
-        command substitution included — the hook neither rewrites the build nor refuses it with the \
-        wrapping named, since either would hand you a command that rule, written for the original, does \
-        not match. It is let through, and Claude Code applies the rule to it. A line the shell could not \
-        run as written (an operator with nothing beside it, a quote or parenthesis left open) is never \
-        rewritten either.
+        **A build the user's own rules speak for runs as written.** Where an ask or deny rule of theirs matches anything the line \
+        runs — any statement of it, one inside a subshell, a loop body, a function body, a `case` arm or a command substitution included — the \
+        hook neither rewrites the build nor refuses it with the wrapping named, since either would hand you a command that rule, \
+        written for the original, does not match. It is let through, and Claude Code applies the rule to it. So is every build \
+        while a settings file has something in it the hook cannot read as JSON, since a rule there is one it cannot see. A line \
+        the shell could not run as written (an operator with nothing beside it, a quote or parenthesis left open) is let through \
+        the same way, neither rewritten nor refused, since no wrapping of it is a command you meant to run.
         """
     }
 

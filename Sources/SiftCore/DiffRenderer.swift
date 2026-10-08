@@ -301,7 +301,7 @@ private extension DiffRenderer {
     /// What an entry names: the kind and the written name — for an extension, its whole header, since `extension Array` alone does not say which one.
     static func subject(_ change: DeclarationChange) -> String {
         if change.symbolKind == .extensionKind, let signature = change.newSignature ?? change.oldSignature {
-            return SourceSlicer.cut(signature, at: SourceSlicer.signatureCap)
+            return SourceSlicer.shown(signature)
         }
         return "\(change.symbolKind.rawValue) \(change.name)"
     }
@@ -312,7 +312,7 @@ private extension DiffRenderer {
         let subject = subject(change)
         // A changed signature prints both sides below anyway; everything else carries its one signature inline.
         let inline = showSignature && !(change.kind == .changed && change.signatureChanged)
-        let signature = inline ? (change.newSignature ?? change.oldSignature).map { " — \(SourceSlicer.cut($0, at: SourceSlicer.signatureCap))" } ?? "" : ""
+        let signature = inline ? (change.newSignature ?? change.oldSignature).map { " — \(SourceSlicer.shown($0))" } ?? "" : ""
         switch change.kind {
         case .added:
             return ["    + \(subject)  \(change.newRange?.described ?? "")\(condition)\(members)\(signature)"]
@@ -341,8 +341,20 @@ private extension DiffRenderer {
                 lines.append("        before: \(shown.old)")
                 lines.append("        after:  \(shown.new)")
                 if shown.old == shown.new {
-                    // Swift calls them equal and a terminal prints them alike; the bytes are what differ.
-                    lines.append("        (the same characters in another Unicode normalization — alike on screen, different bytes)")
+                    let rawOld = change.oldSignature ?? ""
+                    let rawNew = change.newSignature ?? ""
+                    let old = SourceSlicer.tidyingBrackets(in: rawOld)
+                    let new = SourceSlicer.tidyingBrackets(in: rawNew)
+                    // Swift's `==` ignores normalization, so a raw difference it sees is spacing the tidy removed.
+                    let spacingDiffered = rawOld != rawNew
+                    let bytesDiffered = !old.unicodeScalars.elementsEqual(new.unicodeScalars)
+                    if spacingDiffered {
+                        lines.append("        (only whitespace or line breaks changed)")
+                    }
+                    if bytesDiffered || !spacingDiffered {
+                        // Swift calls them equal and a terminal prints them alike; the bytes are what differ.
+                        lines.append("        (the same characters in another Unicode normalization — alike on screen, different bytes)")
+                    }
                 }
             } else {
                 lines.append("    ~ \(subject)  \(location)\(condition)\(noteText)\(signature)")
@@ -355,7 +367,9 @@ private extension DiffRenderer {
     }
 
     /// Two signatures as printed: whole when short, cut when long — and where cutting both at the same place would print two identical lines over a difference past the cut, both are shown from shortly before the first character that differs.
-    static func displayed(old: String, new: String) -> (old: String, new: String) {
+    static func displayed(old rawOld: String, new rawNew: String) -> (old: String, new: String) {
+        let old = SourceSlicer.tidyingBrackets(in: rawOld)
+        let new = SourceSlicer.tidyingBrackets(in: rawNew)
         let cap = SourceSlicer.signatureCap
         let cut = (old: SourceSlicer.cut(old, at: cap), new: SourceSlicer.cut(new, at: cap))
         guard SourceText.same(cut.old, cut.new), !SourceText.same(old, new) else { return cut }

@@ -34,13 +34,19 @@ struct StopCommand: ParsableCommand {
     /// Everything the hook does with one payload: the block, printed to `output`, or nothing.
     ///
     /// Judged off the calling thread and waited on for `timeBudget` at most, so a slow git or a huge transcript lets the stop go through rather than holding the session.
+    ///
+    /// One ``RootDiscovery`` serves the whole judgement — the one the caller bound, else a fresh one — so the transcript's reading and the repositories it names ask git about each directory once between them, rather than once per directory and again per file.
     static func answer(to payload: [String: Any], output: CommandOutput = .standard, marks: ReuseNudgeMarks = .standard(), timeBudget: TimeInterval = StopBuildGate.timeBudget, now: Date = Date()) {
         let input = ResultBox<[String: Any]>()
         input.value = payload
         let result = ResultBox<String>()
         let finished = DispatchSemaphore(value: 0)
+        // A task-local does not cross onto a dispatch queue, so the discovery is carried across by hand.
+        let roots = RootDiscovery.current ?? RootDiscovery()
         DispatchQueue.global().async {
-            result.value = input.value.flatMap { StopBuildGate.reason(for: $0, marks: marks, now: now) }
+            result.value = RootDiscovery.$current.withValue(roots) {
+                input.value.flatMap { StopBuildGate.reason(for: $0, marks: marks, now: now) }
+            }
             finished.signal()
         }
         guard finished.wait(timeout: .now() + timeBudget) == .success,

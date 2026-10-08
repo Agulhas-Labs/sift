@@ -200,20 +200,22 @@ private extension RunFailureShape {
             // there the names are standing in for one repeated problem, and naming every one of them is
             // the listing this block exists to replace. Past ``Self/testsCap`` only the tests with the
             // most of the signature's failures keep their own line — most failures first, ties broken
-            // by whichever failed first — and what is left past that is counted, not named, on its own
-            // line rather than folded into any one test's count.
+            // by name — and what is left past that is counted, not named, on its own line rather than
+            // folded into any one test's count.
+            // The example is the lead's first case in ``rankedTests(in:)``'s argument order rather than the
+            // first the run printed, so its message and note are the same case's from one run to the next.
+            let lead = ranked[0]
             guard ranked.count > 1 else {
                 lines.append(contentsOf: described(
-                    failures[example.representative],
-                    at: example.representative,
+                    failures[lead.positions[0]],
+                    at: lead.positions[0],
                     standingFor: example.count,
                     everywhere: example.positions
                 ).lines)
                 named += example.count
-                namedTests.insert(failures[example.representative].name)
+                namedTests.insert(lead.name)
                 continue
             }
-            let lead = ranked[0]
             lines.append(contentsOf: described(
                 failures[lead.positions[0]],
                 at: lead.positions[0],
@@ -221,8 +223,11 @@ private extension RunFailureShape {
                 everywhere: lead.positions
             ).lines)
             let others = ranked.dropFirst().prefix(Self.testsCap - 1)
+            // A test an earlier line already named in full is referred back to here rather than named again:
+            // its arguments are in the answer once, and its count and location under this signature still
+            // are too, so the lines beneath every signature add up to its `×N`.
+            lines.append(contentsOf: otherTests(others, namedAbove: namedTests))
             namedTests.formUnion([lead.name] + others.map(\.name))
-            lines.append(contentsOf: otherTests(others))
             // Only the lead's own count and each named other's own count are accounted here — never the
             // signature's total — so a test past the cap is never credited to one that stayed named.
             named += lead.positions.count + others.reduce(0) { $0 + $1.positions.count }
@@ -329,7 +334,9 @@ private extension RunFailureShape {
         3
     }
 
-    /// Every distinct test among `positions`, grouped with its own membership and ranked most failures first — ties broken by whichever of them failed first — so a signature past ``Self/testsCap`` names the tests that matter most rather than however many the run happened to print first.
+    /// Every distinct test among `positions`, grouped with its own membership and ranked most failures first — ties broken by name, never by whichever of them the run printed first — so a signature past ``Self/testsCap`` names the tests that matter most rather than however many the run happened to print first.
+    ///
+    /// Each test's own membership is in argument order, not the order the run printed it: parallel cases of one parameterised test finish in a different order every run, and the first of them is the case the example line prints.
     func rankedTests(in positions: [Int]) -> [(name: String, positions: [Int])] {
         var order: [String] = []
         var grouped: [String: [Int]] = [:]
@@ -341,8 +348,19 @@ private extension RunFailureShape {
             grouped[name, default: []].append(position)
         }
         return order
-            .map { (name: $0, positions: grouped[$0] ?? []) }
-            .sorted { $0.positions.count > $1.positions.count }
+            .map { (name: $0, positions: inArgumentOrder(grouped[$0] ?? [])) }
+            .sorted { $0.positions.count == $1.positions.count ? $0.name < $1.name : $0.positions.count > $1.positions.count }
+    }
+
+    /// `positions` sorted by the arguments each failure carries, a failure with none first, then by location, and failures carrying the same arguments at the same location in the order the run printed them.
+    func inArgumentOrder(_ positions: [Int]) -> [Int] {
+        positions.enumerated()
+            .sorted { left, right in
+                let leftKey = (failures[left.element].arguments ?? "", failures[left.element].location ?? "")
+                let rightKey = (failures[right.element].arguments ?? "", failures[right.element].location ?? "")
+                return leftKey == rightKey ? left.offset < right.offset : leftKey < rightKey
+            }
+            .map(\.element)
     }
 
     /// The `with …` fragment of a failure's label, naming what its own words were where a signature covers only one, or every distinct argument its `×N` stands for where it covers several.
@@ -364,32 +382,38 @@ private extension RunFailureShape {
         return " with \(listed)"
     }
 
-    /// Every distinct argument, in the order first seen, that `positions` carries under `name` — empty where fewer than two positions share it, since one position (or none) has nothing to distinguish.
+    /// Every distinct argument that `positions` carries under `name`, sorted by its text — empty where fewer than two positions share it, since one position (or none) has nothing to distinguish.
+    ///
+    /// **Sorted, because the order the run printed them in is not the test's.** Swift Testing runs a parameterised test's cases in parallel, so the order they fail in changes from run to run and from one signature to the next within a run; the source order of the arguments is nowhere in the log. Sorted before ``Self/argumentsCap`` takes its prefix, so which arguments are named, and not only their order, is the same every run.
     func distinctArguments(sharing name: String, everywhere positions: [Int]) -> [String] {
         guard positions.count > 1 else {
             return []
         }
-        var seen: [String] = []
+        var seen: Set<String> = []
         for position in positions {
             let candidate = failures[position]
-            guard candidate.name == name, let arguments = candidate.arguments, !seen.contains(arguments) else {
+            guard candidate.name == name, let arguments = candidate.arguments else {
                 continue
             }
-            seen.append(arguments)
+            seen.insert(arguments)
         }
-        return seen
+        return seen.sorted()
     }
 
     /// One nested line for every other named test a shown signature covers, so a test the lead's own line never names still appears by name — its own location and, where it failed more than once, its own count.
     ///
     /// A signature is normalised message text, and two different tests sharing one wording can be two different faults wearing the same words: naming only the lead would let every other test the signature covers vanish from the answer entirely. Nested beneath the lead's message rather than printed at its indent, so the expectation text above reads as what the signature means rather than as belonging only to the first name.
-    func otherTests(_ groups: some Sequence<(name: String, positions: [Int])>) -> [String] {
+    ///
+    /// A test in `namedAbove` already has a line of its own under an earlier signature, so here it gets a back-reference — its name, location and count, without its arguments — rather than a second full line: still a line, because its failures under this signature are this signature's to account for.
+    func otherTests(_ groups: some Sequence<(name: String, positions: [Int])>, namedAbove: Set<String>) -> [String] {
         groups.map { group in
             let failure = failures[group.positions[0]]
-            let arguments = argumentsLabel(for: failure, everywhere: group.positions)
+            let isNamedAbove = namedAbove.contains(group.name)
+            let arguments = isNamedAbove ? "" : argumentsLabel(for: failure, everywhere: group.positions)
             let location = failure.location.map { " — \(paths.shown($0))" } ?? ""
             let shared = group.positions.count > 1 ? "  ×\(group.positions.count)" : ""
-            return "    also: \(failure.name)\(arguments)\(location)\(shared)"
+            let reference = isNamedAbove ? " (named above)" : ""
+            return "    also: \(failure.name)\(arguments)\(location)\(reference)\(shared)"
         }
     }
 

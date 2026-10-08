@@ -17,6 +17,13 @@ struct CallAttributionTests {
         return (CallAttribution(directory: directory, now: { instant }), directory)
     }
 
+    /// The server's own reading of a store's slips, on the same clock as ``store(at:)``'s default rather than the wall's.
+    ///
+    /// A call through a real server builds a cold index first, which on a loaded machine can outlast the claim window: on the wall's clock the slip would be stale by the time the server claims it, and the line would go out with no agent for a reason this suite is not about.
+    private static func server(_ directory: URL) -> CallAttribution {
+        CallAttribution(directory: directory, now: { Date(0) })
+    }
+
     private static func payload(agent: String?, tool: String = "mcp__sift__digest", target: String = "Alpha") -> [String: Any] {
         var payload: [String: Any] = ["tool_name": tool, "tool_input": ["target": target]]
         if let agent {
@@ -272,7 +279,7 @@ struct CallAttributionTests {
     @Test
     func aLoggedCallCarriesTheSubagentThatMadeIt() async throws {
         let root = try MCPTestRepo.make()
-        let (callers, directory) = try Self.store(at: Date())
+        let (callers, directory) = try Self.store()
         defer { try? FileManager.default.removeItem(at: directory) }
         let log = try TemporaryDirectory.make("usage")
             .appendingPathComponent("usage.jsonl")
@@ -281,7 +288,7 @@ struct CallAttributionTests {
         let lines = try await Self.callDigest(
             on: root,
             logging: log,
-            callers: CallAttribution(directory: directory),
+            callers: Self.server(directory),
             session: "s1"
         )
         let entry = try #require(JSONSerialization.jsonObject(with: Data(lines[0].utf8)) as? [String: Any])
@@ -294,7 +301,7 @@ struct CallAttributionTests {
     @Test
     func aCallAnsweredAfterAnotherContextsHookRunStillCarriesItsCaller() async throws {
         let root = try MCPTestRepo.make()
-        let (callers, directory) = try Self.store(at: Date())
+        let (callers, directory) = try Self.store()
         defer { try? FileManager.default.removeItem(at: directory) }
         let log = try TemporaryDirectory.make("usage")
             .appendingPathComponent("usage.jsonl")
@@ -309,7 +316,7 @@ struct CallAttributionTests {
         let lines = try await Self.callDigest(
             on: root,
             logging: log,
-            callers: CallAttribution(directory: directory),
+            callers: Self.server(directory),
             session: "s1"
         )
         let entry = try #require(JSONSerialization.jsonObject(with: Data(lines[0].utf8)) as? [String: Any])
@@ -329,7 +336,7 @@ struct CallAttributionTests {
         let lines = try await Self.callDigest(
             on: root,
             logging: log,
-            callers: CallAttribution(directory: directory),
+            callers: Self.server(directory),
             session: "s1"
         )
         let entry = try #require(JSONSerialization.jsonObject(with: Data(lines[0].utf8)) as? [String: Any])

@@ -6,6 +6,12 @@
 #
 # Usage:  sh Distribution/make-dist.sh [output-directory]     (default: .build/bundle)
 #
+# Environment:  SIFT_PUBLIC_COMMIT=<sha>   the commit of the PUBLIC repository this release is cut as, when
+#               it exists yet. The bundle and the tarball name are stamped with what a stranger can
+#               verify: that public commit when given, otherwise the hash of the source tree (identical
+#               in the private and public repositories, since the public tree is an archive of it).
+#               The private repository's own commit is never written into the artifact.
+#
 # ARM64 ONLY, deliberately. Every Mac this ships to is Apple Silicon, and a universal
 # `--arch arm64 --arch x86_64` build doubles the download for a slice that will never execute.
 # Add the second arch back only if an Intel Mac genuinely enters the picture.
@@ -22,6 +28,16 @@ OUT_DIR="${1:-$REPO/.build/bundle}"
 # relative argument on the repository and put the bundle somewhere the caller never named.
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
+# A public commit is a hex sha, and one this repository also has is the private commit passed by mistake
+# (the public history has none of these commits) — the leak this stamp exists to prevent.
+if [ -n "${SIFT_PUBLIC_COMMIT:-}" ]; then
+    printf '%s' "$SIFT_PUBLIC_COMMIT" | grep -Eqx '[0-9a-f]{7,40}' \
+        || { echo "error: SIFT_PUBLIC_COMMIT must be a hex commit sha (7 to 40 characters), not '$SIFT_PUBLIC_COMMIT'"; exit 1; }
+    if git -C "$REPO" cat-file -e "$SIFT_PUBLIC_COMMIT^{commit}" 2>/dev/null; then
+        echo "error: SIFT_PUBLIC_COMMIT=$SIFT_PUBLIC_COMMIT is a commit of this (private) repository; pass the public repository's commit"
+        exit 1
+    fi
+fi
 STAGE="$(mktemp -d)/sift-dist"
 
 cd "$REPO"
@@ -59,14 +75,20 @@ BIN="$(swift build -c release --arch arm64 --scratch-path "$SCRATCH" $REMAP --sh
 [ -f "$BIN" ] || { echo "error: built binary not found at $BIN"; exit 1; }
 
 VERSION="$("$BIN" --version)"
-COMMIT="$(git rev-parse --short HEAD)"
+if [ -n "${SIFT_PUBLIC_COMMIT:-}" ]; then
+    STAMP="$(printf '%s' "$SIFT_PUBLIC_COMMIT" | cut -c1-8)"
+    STAMP_LABEL="public commit"
+else
+    STAMP="$(git rev-parse --short 'HEAD^{tree}')"
+    STAMP_LABEL="source tree"
+fi
 DATE="$(git log -1 --format=%cd --date=short)"
 ARCHS="$(lipo -archs "$BIN")"
 SWIFT_VERSION="$(swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p' | head -1)"
 MACOS_VERSION="$(sw_vers -productVersion)"
 
 if [ -n "$(git status --porcelain)" ]; then
-    echo "warning: working tree is dirty — the bundle will claim commit $COMMIT but contain uncommitted changes"
+    echo "warning: working tree is dirty — the bundle will claim $STAMP_LABEL $STAMP but contain uncommitted changes"
 fi
 
 echo "==== Staging ===="
@@ -93,7 +115,7 @@ sh "$REPO/Distribution/third-party-notices.sh" "$REPO" "$SCRATCH/checkouts" > "$
 
 # The provenance line is generated, never hand-maintained: a bundle that misstates which build it
 # carries is worse than one that says nothing, and hand-edited version strings always drift.
-PROVENANCE="**Build provenance:** \`sift\` $VERSION, commit \`$COMMIT\` ($DATE), built with Apple Swift $SWIFT_VERSION on macOS $MACOS_VERSION. Architecture: \`$ARCHS\` (Apple Silicon only)."
+PROVENANCE="**Build provenance:** \`sift\` $VERSION, $STAMP_LABEL \`$STAMP\` ($DATE), built with Apple Swift $SWIFT_VERSION on macOS $MACOS_VERSION. Architecture: \`$ARCHS\` (Apple Silicon only)."
 awk -v line="$PROVENANCE" '{ if ($0 == "<!-- PROVENANCE -->") print line; else print }' \
     "$REPO/Distribution/INSTALL.md" > "$STAGE/INSTALL.md"
 
@@ -103,7 +125,7 @@ echo "==== Verifying ===="
 sh "$REPO/Distribution/verify-private.sh" "$STAGE"
 
 echo "==== Packaging ===="
-TARBALL="$OUT_DIR/sift-$VERSION-$COMMIT-arm64.tar.gz"
+TARBALL="$OUT_DIR/sift-$VERSION-$STAMP-arm64.tar.gz"
 rm -f "$TARBALL"
 tar -czf "$TARBALL" -C "$(dirname "$STAGE")" sift-dist
 rm -rf "$(dirname "$STAGE")"
@@ -121,7 +143,7 @@ INSTALL="$(sh "$REPO/Distribution/unpack-bundle.sh" "$TARBALL" "$OUT_DIR")"
 # After the unpack, deliberately: a build that fails earlier leaves the last good bundle standing,
 # which is the one a rollback would need most. Only the names this script itself writes, only in the
 # directory it was given, and never a recursive sweep — the caller may keep its own files beside
-# these. Those names carry a version, a commit and an architecture, so none of them can hold a space
+# these. Those names carry a version, a stamp and an architecture, so none of them can hold a space
 # or a newline, which is what makes reading them a line at a time safe.
 KEEP_BUNDLES=3
 PRUNED=0

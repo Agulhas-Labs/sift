@@ -93,8 +93,8 @@ private extension DiffMemberRenderer {
             // A container matched on both sides whose own line changed carries no body on either side by
             // design: its members are diffed separately, so this request has landed on the type's own
             // declaration line rather than on one of its members.
-            lines.append("before: \(change.oldSignature ?? "")")
-            lines.append("after:  \(change.newSignature ?? "")")
+            lines.append("before: \(SourceSlicer.shown(change.oldSignature ?? ""))")
+            lines.append("after:  \(SourceSlicer.shown(change.newSignature ?? ""))")
             lines.append("")
             lines.append("this is the container's own declaration line — the summary (`sift diff` without --member) lists its members' changes one by one, and `sift digest \(change.label)` shows the type whole.")
             return lines.joined(separator: "\n")

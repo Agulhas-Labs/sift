@@ -20,8 +20,8 @@ struct SourceLiteralSearch {
 
     /// Every line holding a literal that contains `query`, or starting the part of a run of literals a `+` joins that holds it (``ConcatenatedLiteralRuns``), or failing that one that matches it around its interpolations, sorted by path then line, the first ``siteCap`` production sites of each kind with their declarations; a site matched around interpolations on one query word only is never resolved, since the answer only counts it.
     ///
-    /// A site is a test site when its file imports a test framework, the judgement `where` uses for a type's usage (``TestFileRecognition/isTestFile(imports:)``); a kind matching only test sites resolves the first ``siteCap`` of those instead.
-    func run(query: String) -> [Site] {
+    /// A site is a test site when its file imports a test framework, the judgement `where` uses for a type's usage (``TestFileRecognition/isTestFile(imports:)``); a kind matching only test sites resolves the first ``siteCap`` of those instead. A catalog entry listed for the query keeps every one-word match counted, never listed.
+    func run(query: String, catalogAnswered: Bool) -> [Site] {
         guard !query.isEmpty else {
             return []
         }
@@ -61,36 +61,49 @@ struct SourceLiteralSearch {
             let isTest = TestFileRecognition.isTestFile(imports: imports)
             sites += found.map { Site(path: path, line: $0.line, literal: $0.literal, around: $0.around, window: $0.window, declaration: nil, isTest: isTest) }
         }
-        sites = Self.listingRareOneWordMatches(in: sites)
+        sites = Self.listingRareOneWordMatches(in: sites, catalogAnswered: catalogAnswered)
         // Each section, plain and matched around interpolations, lists its own production sites, or its test sites when it has none; a site matched on one query word is only counted.
         let listable = sites.filter(\.isListable)
         let listsTests = [false, true].filter { around in !listable.contains { !$0.isTest && $0.isAroundInterpolation == around } }
         return resolvingDeclarations(of: sites, listing: { $0.isListable && $0.isTest == listsTests.contains($0.isAroundInterpolation) })
     }
 
-    /// Production sites a word matched on in one-word matches around interpolations, at most, for those matches to be listed when nothing else lists.
+    /// Production sites the one-word matches around interpolations listed when nothing else lists may number, at most, all words together.
     static var fallbackSiteLimit: Int {
         8
     }
 
-    /// `sites` with the production one-word matches listed whose word has at most ``fallbackSiteLimit`` of them, when no plain production site and no match on two query words lists; otherwise `sites` unchanged.
+    /// Query words a one-word match is never listed on: words so common in English wording that a literal sharing one says nothing about the query.
+    static var stopWords: Set<String> {
+        ["the", "a", "an", "to", "of", "at", "in", "on", "is", "it", "and", "or", "that", "this", "for", "with", "be"]
+    }
+
+    /// `sites` with the production one-word matches on the query's rarest words listed, at most ``fallbackSiteLimit`` of them in all, when no catalog entry, no plain production site and no match on two query words lists; otherwise `sites` unchanged.
     ///
-    /// A word that rare is the query's distinctive one, where a common word names more sites than a listing helps with; the limit is a threshold, and the sites keep their path order.
-    private static func listingRareOneWordMatches(in sites: [Site]) -> [Site] {
-        guard !sites.contains(where: { $0.around == nil ? !$0.isTest : $0.isListable }) else {
+    /// Each line is credited to every query word an alignment of it matched on, stop words aside (``stopWords``). Words are taken rarest first, those on equally many lines together or not at all, while the lines they hold stay within the limit; each line listed is shown on the rarest word taken that it holds. A word that rare is the query's distinctive one, where a common word names more sites than a listing helps with; the limit is a threshold, and the sites keep their path order.
+    private static func listingRareOneWordMatches(in sites: [Site], catalogAnswered: Bool) -> [Site] {
+        guard !catalogAnswered, !sites.contains(where: { $0.around == nil ? !$0.isTest : $0.isListable }) else {
             return sites
         }
-        var production: [String: Int] = [:]
-        for site in sites where !site.isTest {
-            if let word = site.around?.word {
-                production[word, default: 0] += 1
+        var lines: [String: Set<Int>] = [:]
+        for (index, site) in sites.enumerated() where !site.isTest {
+            for word in site.around?.words ?? [] where !stopWords.contains(word.lowercased()) {
+                lines[word, default: []].insert(index)
             }
         }
-        return sites.map { site in
-            guard !site.isTest, let around = site.around, let word = around.word, production[word, default: 0] <= fallbackSiteLimit else {
+        var taken: [String] = []
+        var listed: Set<Int> = []
+        for group in Dictionary(grouping: lines.keys, by: { lines[$0, default: []].count }).sorted(by: { $0.key < $1.key }) {
+            let holding = group.value.reduce(listed) { $0.union(lines[$1, default: []]) }
+            guard holding.count <= fallbackSiteLimit else { break }
+            listed = holding
+            taken += group.value.sorted()
+        }
+        return sites.enumerated().map { index, site in
+            guard listed.contains(index), let around = site.around, let word = taken.first(where: around.words.contains) else {
                 return site
             }
-            return Site(path: site.path, line: site.line, literal: site.literal, around: around.listed(), window: site.window, declaration: nil, isTest: false)
+            return Site(path: site.path, line: site.line, literal: site.literal, around: around.listed(on: word), window: site.window, declaration: nil, isTest: false)
         }
     }
 

@@ -68,13 +68,18 @@ struct DigestTargetsTests {
         #expect(MCPServer.spacedTargetNote(arguments: ["target": "Gizmo"], missed: true) == nil)
     }
 
-    /// A path-shaped target never gets the note, missed or not: a gitignored file with a space in its path answers correctly (the exclusion, not a miss) and the note above it would second-guess a right answer; a mistyped spaced path is still one path wrongly spelled, not several names run together.
+    /// A spaced path that missed is noted as read as one path, never with its words offered as targets: a mistyped spaced path is still one path wrongly spelled, not several names run together.
+    ///
+    /// A string with no `/` is read as names, a file name among them, and gets the note any split string does.
     @Test
-    func thePathShapedTargetNeverGetsTheSpacedNoteEvenOnAMiss() {
-        #expect(MCPServer.spacedTargetNote(arguments: ["target": "Sources/My App/Ignored.swift"], missed: true) == nil)
-        #expect(MCPServer.spacedTargetNote(arguments: ["target": "My App.swift"], missed: true) == nil)
-        // No `/` and no `.swift` suffix (it ends in the range instead) — only the line-range check catches this one.
-        #expect(MCPServer.spacedTargetNote(arguments: ["target": "My File.swift:12-40"], missed: true) == nil)
+    func aSpacedPathMissIsNotedAsOnePath() {
+        let onePath = MCPServer.spacedTargetNote(arguments: ["target": "Sources/My App/Ignored.swift"], missed: true)
+
+        #expect(onePath?.contains("as one path") == true)
+        #expect(onePath?.contains("\"Sources/My\"") == false)
+        #expect(MCPServer.spacedTargetNote(arguments: ["target": "My App.swift"], missed: true)?.contains("\"App.swift\"") == true)
+        // No `/` and no `.swift` suffix (it ends in the range instead): names, as the split reads it.
+        #expect(MCPServer.spacedTargetNote(arguments: ["target": "My File.swift:12-40"], missed: true)?.contains("\"File.swift:12-40\"") == true)
     }
 
     // MARK: - The records

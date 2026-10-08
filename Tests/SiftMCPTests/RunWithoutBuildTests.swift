@@ -78,24 +78,25 @@ struct RunWithoutBuildTests {
 
     // MARK: - Where the run without the change builds
 
-    /// The run without the change builds in a directory of its own, never where the caller's builds do, and builds on it again only after a build that reached its tests.
+    /// The run without the change builds in a directory of its own, never where the caller's builds do, and — kept with `--keep-without-build` — builds on it again only after a build that reached its tests.
     @Test
     func theRunWithoutTheChangeBuildsApartAndOnlyOnABuildThatFinished() throws {
         let fixture = try Fixture()
         let builds = ["SIFT_TEST_BUILDS": "1"]
         let own = ".sift/without-build/swiftpm/built"
+        let keeping = ["run", "--without", "Sources/", "--keep-without-build", "--", "swift", "test", "--filter", "WidgetTests"]
 
-        let first = try fixture.sift(Fixture.proof, environment: builds)
+        let first = try fixture.sift(keeping, environment: builds)
         #expect(first.status == 0, "\(first.stdout)\(first.stderr)")
         #expect(fixture.contents(of: ".build/built") == "with\n", "only the run with the change builds where the caller's builds do")
         #expect(fixture.contents(of: own) == "without\n")
 
-        #expect(try fixture.sift(Fixture.proof, environment: builds).status == 0)
+        #expect(try fixture.sift(keeping, environment: builds).status == 0)
         #expect(fixture.contents(of: own) == "without\nwithout\n", "a build that reached its tests is built on")
 
-        let silent = try fixture.sift(Fixture.proof, environment: builds.merging(["SIFT_TEST_SILENT": "1"]) { _, new in new })
+        let silent = try fixture.sift(keeping, environment: builds.merging(["SIFT_TEST_SILENT": "1"]) { _, new in new })
         #expect(silent.status == 1, "\(silent.stdout)")
-        #expect(try fixture.sift(Fixture.proof, environment: builds).status == 0)
+        #expect(try fixture.sift(keeping, environment: builds).status == 0)
         #expect(fixture.contents(of: own) == "without\n", "a build that never reached its tests is started afresh")
     }
 

@@ -14,7 +14,9 @@ struct CLICallAttributionTests {
     private static func store() throws -> (CallAttribution, URL) {
         let directory = try TemporaryDirectory.make("callers")
             .appendingPathComponent("callers")
-        return (CallAttribution(directory: directory), directory)
+        // A clock that does not move: what is claimed here is a slip by its face and argv, never by how long the
+        // machine took between the hook's run and the lookup's.
+        return (CallAttribution(directory: directory, now: { Date(timeIntervalSince1970: 0) }), directory)
     }
 
     private static func bash(_ command: String, agent: String?) -> [String: Any] {

@@ -68,20 +68,18 @@ public extension RunWithoutBuild {
     }
 
     /// Readies ``directory`` for the run without the change: built on when the last build in it was for the same ``subject`` and reached its tests, removed otherwise — and either way no longer marked as finished, since the build about to run in it may not be.
+    ///
+    /// Throws ``Linked``, having removed nothing, when `.sift`, `.sift/without-build` or ``directory`` is a symbolic link: what is there would be emptied, and the build written, wherever the link points.
     func prepare() throws {
-        let fileManager = FileManager.default
-        if fileManager.fileExists(atPath: finished.path) {
+        if FileManager.default.fileExists(atPath: finished.path) {
             let same = (try? String(contentsOf: finished, encoding: .utf8)) == subject
-            try fileManager.removeItem(at: finished)
+            try remove(finished)
             if same {
                 return
             }
         }
-        do {
-            try fileManager.removeItem(at: directory)
-        } catch let error as CocoaError where error.code == .fileNoSuchFile {
-            // Nothing was ever built here.
-        }
+        // Asked even with nothing there to remove, so a link is refused before the build writes through it.
+        try remove(directory)
     }
 
     /// Marks ``directory`` as holding a build of ``subject`` that reached its tests, so the next run for the same one builds on it rather than from nothing.
@@ -89,6 +87,19 @@ public extension RunWithoutBuild {
     /// Best effort: a mark that cannot be written costs the next run a build from nothing, never a wrong one.
     func keep() {
         FileManager.default.createFile(atPath: finished.path, contents: Data(subject.utf8))
+    }
+
+    /// Removes ``directory`` and the mark that would have it built on, once the run is over and unless the caller asked to keep it: a build directory is as large as a build of the repository, and nothing but a second proof in the same checkout ever reads it.
+    ///
+    /// Only the one directory this run built in, and only while nothing on the way to it — `.sift`, `.sift/without-build` or the directory itself — is a symbolic link, so a link to somewhere else is left, and so is what it points at. Best effort and safe to call again: whether it went is read off the disk afterwards, by ``isRemoved``.
+    func discard() {
+        try? remove(finished)
+        try? remove(directory)
+    }
+
+    /// Whether nothing is left at ``directory``, a symbolic link included.
+    var isRemoved: Bool {
+        (try? FileManager.default.attributesOfItem(atPath: directory.path)) == nil
     }
 
     /// ``directory``'s size on disk, in bytes — `nil` while nothing has been built there.
@@ -181,7 +192,48 @@ public extension RunWithoutBuild {
     }
 }
 
+public extension RunWithoutBuild {
+    /// Why ``prepare()`` refused: a symbolic link on the way to ``directory``, which nothing here removes or builds through.
+    struct Linked: LocalizedError, Sendable {
+        /// The link, as the caller would name it from where the command runs.
+        public let link: String
+
+        public var errorDescription: String? {
+            "\(link) is a symbolic link, and the build without the change is never removed or written through one — make it a directory, or remove it"
+        }
+    }
+}
+
 private extension RunWithoutBuild {
+    /// The one way anything here is removed, ``directory`` or its mark, by ``prepare()`` and ``discard()`` alike: refused with ``Linked`` while ``linkOnTheWay`` finds a link, and a no-op when nothing is there.
+    func remove(_ url: URL) throws {
+        if let link = linkOnTheWay {
+            throw Linked(link: RunAnswerPaths.read(in: workingDirectory).shown(link.path))
+        }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            // Nothing was ever there.
+        }
+    }
+
+    /// The first of ``directory``, `.sift/without-build` and `.sift` that is a symbolic link — `nil` while each is a directory, or not there yet.
+    ///
+    /// Asked of each item itself rather than of a resolved path: a canonical path resolves only what exists, so it cannot tell a link above a directory not yet built from a checkout reached through a link of its own.
+    var linkOnTheWay: URL? {
+        if Self.isLink(directory) {
+            return directory
+        }
+        let cache = SiftPaths.cache(in: repositoryRoot)
+        return [cache.appendingPathComponent("without-build"), cache].first(where: Self.isLink)
+    }
+
+    /// Whether the item at `url` is itself a symbolic link, read without following it.
+    static func isLink(_ url: URL) -> Bool {
+        let type = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType
+        return type == .typeSymbolicLink
+    }
+
     /// What a build of `arguments`, run in `workingDirectory`, is for: that directory, then each package, project, workspace or scheme the command names, sorted — the arguments that choose what is built, and none of those that only choose which tests run.
     static func subject(of arguments: [String], kind: RunCommandKind, in workingDirectory: URL) -> String {
         let options: Set<String> = kind == .xcodebuild ? ["-project", "-workspace", "-scheme"] : ["--package-path"]

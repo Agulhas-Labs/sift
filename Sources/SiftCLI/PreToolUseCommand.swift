@@ -713,11 +713,13 @@ extension PreToolUseCommand {
         return true
     }
 
-    /// A build rewritten in place to its `sift run --` wrapping, a build let through untouched because the user's own ask or deny rule speaks for the line, or `nil` where `lookup` is no build or the rewrite could cost the user a prompt.
+    /// A build rewritten in place to its `sift run --` wrapping, a build let through untouched because the user's own ask or deny rule speaks for the line or the shell would not run the line as written, or `nil` where `lookup` is no build or the rewrite could cost the user a prompt.
     ///
-    /// The command runs wrapped in the same turn, with no permission decision made here, so the user's own rules still apply — to the rewritten command, which is why the rewrite waits on ``SiftMCP/WrappedRunPermission``. It interrupts nothing, so it neither consults nor spends the ledger, and every run of the build is rewritten, the loop's repeats included. A line the shell would not run as written is never rewritten.
+    /// The command runs wrapped in the same turn, with no permission decision made here, so the user's own rules still apply — to the rewritten command, which is why the rewrite waits on ``SiftMCP/WrappedRunPermission``. It interrupts nothing, so it neither consults nor spends the ledger, and every run of the build is rewritten, the loop's repeats included.
     ///
-    /// Where an ask or deny rule matches anything the line runs as written, the build is neither rewritten nor refused with its wrapping named: either would hand the model a command that rule, written for the original, does not match. It is let through, so Claude Code applies the rule to the command it was written for.
+    /// A line the shell would not run as written (``SiftMCP/ShellSyntax/isIncomplete(_:)``) is neither rewritten nor refused: the hook cannot know what the finished command will be, so a wrapping it named would be a guess at a line nobody wrote. It is let through as written.
+    ///
+    /// Where an ask or deny rule matches anything the line runs as written, the build is neither rewritten nor refused with its wrapping named: either would hand the model a command that rule, written for the original, does not match. It is let through, so Claude Code applies the rule to the command it was written for. So is every build while a settings file the hook cannot read is in the chain, since such a rule may be in it unseen.
     private static func rewrite(
         _ lookup: Lookup,
         command: String?,
@@ -728,13 +730,14 @@ extension PreToolUseCommand {
     ) -> (json: String?, verdict: Verdict)? {
         guard lookup.rule == "RunAdvice", let shell = shellText(command: command, payload: payload) else { return nil }
         let permission = permission()
-        if permission.vetoes(line: shell) {
-            suppressions.note(symbol: nil, directory: directory, rule: "vetoed")
-            return (nil, Verdict(token: "allowed", rule: "vetoed"))
+        let standAside = permission.hasUnreadableSettings ? "unreadable-settings"
+            : permission.vetoes(line: shell) ? "vetoed"
+            : ShellSyntax.isIncomplete(shell) ? "incomplete" : nil
+        if let standAside {
+            suppressions.note(symbol: nil, directory: directory, rule: standAside)
+            return (nil, Verdict(token: "allowed", rule: standAside))
         }
-        guard !ShellSyntax.isIncomplete(shell),
-              permission.addsNoPrompt(legs: RunAdvice.wrappedLegs(of: shell), mode: payload["permission_mode"] as? String)
-        else { return nil }
+        guard permission.addsNoPrompt(legs: RunAdvice.wrappedLegs(of: shell), mode: payload["permission_mode"] as? String) else { return nil }
         var input = payload["tool_input"] as? [String: Any] ?? [:]
         input["command"] = lookup.suggestion.call
         return (

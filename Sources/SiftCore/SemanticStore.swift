@@ -298,6 +298,34 @@ final class SemanticStore: @unchecked Sendable {
         usr(for: row).map { inherits($0, from: base) } ?? false
     }
 
+    /// Whether the store records the declaration `row`, or the type it extends where it is an extension, as inheriting from `base` through any chain of clauses: the type the compiler resolved the extension to, never another type of its name.
+    func inheritsThroughExtendedType(_ row: SymbolRow, from base: String) -> Bool {
+        inherits(row, from: base) || row.kind == .extensionKind && extendedTypes(of: row).contains { inherits($0, from: base) }
+    }
+
+    /// The types the extension `row` extends as the store resolved it: each type of its name the store records as extended at the row's header, in the row's file.
+    ///
+    /// The store holds no canonical occurrence of an extension by its name, so the extension is found from the type's side, by the header the store records extending it.
+    private func extendedTypes(of row: SymbolRow) -> [String] {
+        let lines = row.line ... max(row.line, row.endLine)
+        return Set(database.canonicalOccurrences(ofName: Self.asTheStoreSpellsIt(DeclaredTypeName.last(ofPath: row.name))).map(\.symbol.usr)).filter { usr in
+            database.occurrences(ofUSR: usr, roles: .extendedBy).contains { occurrence in
+                (occurrence.location.path == row.path || occurrence.location.path.hasSuffix("/" + row.path)) && lines.contains(occurrence.location.line)
+            }
+        }.sorted()
+    }
+
+    /// Whether the store records a declaration named `name` written where `hit` starts: the name a clause wrote there when the store was built, which still tells what that clause wrote once its file is edited and the store's line and column no longer place it.
+    ///
+    /// Only a reference that is no base counts: a clause writing a typealias of a composition is recorded as conforming to each of its members at the alias's token, and none of those is the name written there.
+    func records(_ name: String, writtenAt hit: Hit) -> Bool {
+        Set(database.canonicalOccurrences(ofName: Self.asTheStoreSpellsIt(name)).map(\.symbol.usr)).contains { usr in
+            database.occurrences(ofUSR: usr, roles: .reference).contains { occurrence in
+                !occurrence.roles.contains(.baseOf) && occurrence.location.path == hit.path && occurrence.location.line == hit.line && occurrence.location.utf8Column == hit.column
+            }
+        }
+    }
+
     /// Whether the store records `usr` as inheriting from `base` through any chain of clauses, each written as an occurrence of the base with `baseOf` relating it to the inheritor, or to an extension of it where the extension declares the conformance.
     private func inherits(_ usr: String, from base: String) -> Bool {
         var seen: Set<String> = [usr]

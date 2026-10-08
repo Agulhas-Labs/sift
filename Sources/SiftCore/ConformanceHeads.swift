@@ -78,12 +78,26 @@ extension ConformanceHeads {
 
         /// Whether `row`'s own inheritance clause, or its underlying type where it is a typealias, writes `name` with its token starting at `line`:`column` in the working tree's copy of the row's file.
         mutating func declaration(_ row: SymbolRow, writes name: String, atLine line: Int, column: Int) -> Bool {
+            (heads(of: row)[name] ?? []).contains(Start(line: line, column: column))
+        }
+
+        /// Whether `row`'s own inheritance clause, or its underlying type where it is a typealias, writes any name with its token starting at `line`:`column` in the working tree's copy of the row's file.
+        mutating func declaration(_ row: SymbolRow, writesAHeadAtLine line: Int, column: Int) -> Bool {
+            heads(of: row).values.contains { $0.contains(Start(line: line, column: column)) }
+        }
+
+        /// The names `row`'s own inheritance clause, or its underlying type where it is a typealias, writes in the working tree's copy of the row's file, wherever each stands in the clause.
+        mutating func names(writtenBy row: SymbolRow) -> Set<String> {
+            Set(heads(of: row).keys)
+        }
+
+        /// The heads `row`'s own clause writes, by name, its file parsed on first use.
+        private mutating func heads(of row: SymbolRow) -> [String: Set<Start>] {
             if parsed[row.path] == nil {
                 let source = try? String(contentsOf: root.appendingPathComponent(row.path), encoding: .utf8)
                 parsed[row.path] = source.map(ConformanceHeads.declarations(in:)) ?? [:]
             }
-            let heads = parsed[row.path]?[Start(line: row.line, column: row.column)]?[name] ?? []
-            return heads.contains(Start(line: line, column: column))
+            return parsed[row.path]?[Start(line: row.line, column: row.column)] ?? [:]
         }
     }
 }

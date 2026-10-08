@@ -2,7 +2,7 @@
 # fills in the version and the checksum of the release it is cutting — never edit those by hand.
 #
 # The URL is built from the artifact being released, not from a filename pattern: `make-dist.sh`
-# stamps the commit into the name it produces, so a pattern here would point at a file that is never
+# stamps a public-commit or source-tree hash into the name it produces, so a pattern here would point at a file that is never
 # uploaded under that name.
 #
 # The formula installs the binary and the agent rule and stops there. Registering the MCP server and
@@ -11,11 +11,11 @@
 # manager does to you. `sift install` is that explicit command: it finds Claude Code, Cursor and Codex
 # and sets sift up in the ones you accept.
 class Sift < Formula
-  desc "Compressed, structurally accurate views of Swift code — CLI and MCP server"
+  desc "Swift code index and truthful build/test runner for AI coding agents"
   homepage "https://github.com/Agulhas-Labs/sift"
   url "@URL@"
-  sha256 "@SHA256@"
   version "@VERSION@"
+  sha256 "@SHA256@"
   license "Apache-2.0"
 
   depends_on arch: :arm64

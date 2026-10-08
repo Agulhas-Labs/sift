@@ -30,19 +30,21 @@ struct RangeInsideMemberAnswer {
         else {
             return nil
         }
-        let window = single
+        let plain = single
             ? max(memberStart, range.start - Self.lineWindowContext) ... min(row.endLine, range.end + Self.lineWindowContext)
             : range.start ... range.end
+        let signatureEnd = single && plain.upperBound >= row.line ? SignatureExtent(of: row, in: source)?.lastLine ?? row.line : row.line
+        let window = Self.holdingAllOrNone(of: row.line ... signatureEnd, plain)
         let target = try renderer.qualifiedTarget(of: row)
         let asked = single
-            ? "lines \(window.lowerBound)-\(window.upperBound) (line \(range.start) with up to \(Self.lineWindowContext) lines either side)"
+            ? "lines \(window.lowerBound)-\(window.upperBound) (line \(range.start) with \(window == plain ? "" : "the declaration and ")up to \(Self.lineWindowContext) lines either side)"
             : range.spoken
         let header = "\(row.path) \(asked), in \(target) — \(row.kind.rawValue) — \(row.rangeDescription) (\(memberLines) lines; digest \(target) for all of it)"
         let all = Array(source[(window.lowerBound - 1) ..< window.upperBound])
         let cap = DigestRenderer.bodyLineCap
         let offset = min(max(0, options.offset), all.count)
         var body = Array(all.dropFirst(offset).prefix(cap))
-        if offset > 0 {
+        if offset > 0, !single {
             body.insert("(…\(offset) lines skipped)", at: 0)
         }
         let remaining = all.count - offset - min(cap, all.count - offset)
@@ -51,7 +53,7 @@ struct RangeInsideMemberAnswer {
             body.append("… truncated: \(remaining) more lines — \(resume), or Read \(row.path) from line \(window.lowerBound + offset + cap)")
         }
         if single {
-            body = Self.framed(body, of: row, lines: window, source: source)
+            body = Self.framed(body, skipped: offset, of: row, through: signatureEnd, lines: window, source: source)
         }
         let preamble = try renderer.parseErrorBanner(touching: [row.path]) + renderer.guessedModuleBanner(touching: [row.path])
         return (preamble + [header, ""] + body).joined(separator: "\n")
@@ -59,19 +61,36 @@ struct RangeInsideMemberAnswer {
 }
 
 private extension RangeInsideMemberAnswer {
-    /// A single line's window beneath the member's declaration, where the window does not already show the declaration's first line, and above the range that reads the rest.
+    /// A single line's window with the member's declaration and the range that reads the rest: the declaration beneath the window where it ends in the doc comment above the declaration, above it where the page starts below the declaration's first line, and not again where it already shows it.
     ///
-    /// The declaration is laid out as the member's digest line lays it out, so a long parameter list wraps at its parameters rather than running off the line.
-    static func framed(_ window: [String], of row: SymbolRow, lines: ClosedRange<Int>, source: [String]) -> [String] {
-        var framed = window
-        if lines.lowerBound > row.line {
-            let indent = String(source[row.line - 1].prefix { $0 == " " || $0 == "\t" })
-            let declaration = DigestSignatureLayout(row.signature)?.lines ?? [SourceSlicer.cut(row.signature, at: SourceSlicer.signatureCap)]
-            let skipped = lines.lowerBound - row.line - 1
-            framed = declaration.map { indent + $0 }
-                + (skipped > 0 ? ["(…\(skipped) lines skipped)"] : [])
-                + framed
+    /// The declaration is laid out as the member's digest line lays it out, so a long parameter list wraps at its parameters rather than running off the line. It stands for the member's lines through `signatureEnd`, so a page offset never cuts it short; the page offset and the gap to the declaration are one marker where they meet.
+    static func framed(_ window: [String], skipped offset: Int, of row: SymbolRow, through signatureEnd: Int, lines: ClosedRange<Int>, source: [String]) -> [String] {
+        func marker(_ count: Int) -> [String] {
+            count > 0 ? ["(…\(count) lines skipped)"] : []
+        }
+        let indent = String(source[row.line - 1].prefix { $0 == " " || $0 == "\t" })
+        let declaration = (DigestSignatureLayout(SourceSlicer.tidyingBrackets(in: row.signature))?.lines ?? [SourceSlicer.shown(row.signature)]).map { indent + $0 }
+        var framed: [String]
+        let first = lines.lowerBound + offset
+        if lines.upperBound < row.line {
+            let gap = row.line - lines.upperBound - 1
+            framed = window.isEmpty
+                ? marker(offset + gap) + declaration
+                : marker(offset) + window + marker(gap) + declaration
+        } else if first > row.line {
+            let resumed = max(first, signatureEnd + 1)
+            framed = marker(row.line - lines.lowerBound) + declaration + marker(resumed - signatureEnd - 1) + window.dropFirst(resumed - first)
+        } else {
+            framed = marker(offset) + window
         }
         return framed + ["lines \(row.line)-\(row.endLine); read it by range"]
+    }
+
+    /// `window` widened to hold all of `head`, the lines of the member's declaration, where it holds part of it; as it is where it holds all or none.
+    static func holdingAllOrNone(of head: ClosedRange<Int>, _ window: ClosedRange<Int>) -> ClosedRange<Int> {
+        guard window.overlaps(head) else {
+            return window
+        }
+        return min(window.lowerBound, head.lowerBound) ... max(window.upperBound, head.upperBound)
     }
 }

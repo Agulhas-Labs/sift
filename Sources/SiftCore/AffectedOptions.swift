@@ -8,13 +8,16 @@ public struct AffectedOptions: Sendable {
     public var range: CommitRange?
     /// How many reference hops to follow out from the changed declarations.
     public var depth: Int
-    /// A test or suite name to ask about by itself, answered under the list whether or not its caps hid it, or `nil` to ask nothing.
-    public var probe: String?
+    /// The test or suite names to ask about by themselves, each answered under the list whether or not its caps hid it, in the order given; empty to ask nothing.
+    ///
+    /// A name given twice is kept once.
+    public let probes: [String]
 
-    public init(range: CommitRange? = nil, depth: Int = AffectedOptions.defaultDepth, probe: String? = nil) {
+    public init(range: CommitRange? = nil, depth: Int = AffectedOptions.defaultDepth, probes: [String] = []) {
         self.range = range
         self.depth = max(1, depth)
-        self.probe = probe
+        var seen: Set<String> = []
+        self.probes = probes.filter { seen.insert($0).inserted }
     }
 }
 

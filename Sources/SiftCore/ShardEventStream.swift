@@ -29,6 +29,8 @@ public struct ShardEventStream: Sendable, Equatable {
     ///
     /// A suite's is not among them: a pattern only its suite's id matches, `AlphaSuite$`, runs none of its tests.
     public private(set) var recordedIDs: Set<String> = []
+    /// Where each test function the stream started and never ended, in any iteration, was declared: the tests a process that died was running.
+    public private(set) var unfinishedSources: [DeclaredTestSource] = []
 
     public init() {}
 
@@ -46,6 +48,8 @@ public struct ShardEventStream: Sendable, Equatable {
         var ends: [String: Double] = [:]
         var skipped: Set<String> = []
         var endings: [(id: String, iteration: Int)] = []
+        var sites: [DeclaredTestSource.Site] = []
+        var running: [String: String] = [:]
         for line in stream.split(whereSeparator: \.isNewline) {
             guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
                   let payload = object["payload"] as? [String: Any]
@@ -53,6 +57,7 @@ public struct ShardEventStream: Sendable, Equatable {
                 continue
             }
             if object["kind"] as? String == "test" {
+                sites += [DeclaredTestSource.Site(payload)].compactMap(\.self)
                 if payload["kind"] as? String == "function", let id = payload["id"] as? String {
                     recorded.insert(id)
                     let test = identifier(of: id)
@@ -81,6 +86,7 @@ public struct ShardEventStream: Sendable, Equatable {
             case "testStarted":
                 starts[key(id, iteration)] = instant
                 started.insert(id)
+                running[key(id, iteration)] = id
             case "issueRecorded":
                 let issue = payload["issue"] as? [String: Any]
                 if issue?["isFailure"] as? Bool ?? !(issue?["isKnown"] as? Bool ?? false), failing.insert(key(id, iteration)).inserted {
@@ -90,9 +96,11 @@ public struct ShardEventStream: Sendable, Equatable {
             case "testEnded":
                 ends[key(id, iteration)] = instant
                 endings += iterations.map { (id: id, iteration: $0) }
+                iterations.forEach { running[key(id, $0)] = nil }
             case "testSkipped":
                 skipped.formUnion(iterations.map { key(id, $0) })
                 endings += iterations.map { (id: id, iteration: $0) }
+                iterations.forEach { running[key(id, $0)] = nil }
             default:
                 break
             }
@@ -105,6 +113,7 @@ public struct ShardEventStream: Sendable, Equatable {
         read.declared = Set(functions.values.compactMap(\.self))
         read.printedNames = printed
         read.recordedIDs = recorded
+        read.unfinishedSources = DeclaredTestSource.stretches(of: Set(running.values), among: sites)
         for failure in unstarted {
             if let listed = functions[failure.id], let test = listed, read.failedBeforeStarting[test] == nil {
                 read.failedBeforeStarting[test] = messages[key(failure.id, failure.iteration)] ?? "recorded a failing issue without starting"

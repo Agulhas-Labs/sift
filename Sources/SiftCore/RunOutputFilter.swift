@@ -101,6 +101,10 @@ public struct RunOutputFilter {
     private var heldBlank: (index: Int, line: String)?
     /// A `recorded an issue with 1 argument …` line whose argument value broke across lines, held until the line carrying its location arrives.
     private var openIssue: OpenIssue?
+    /// Every test a start line read from its own head has named, which a glued ending or issue must name to be split off (``RunGluedTestLine``).
+    private var startedFromHead: Set<String> = []
+    /// Whether the line being read is the framework's line split off a glued one, whose start, if it is one, opens no test for a later glued line.
+    private var readingGluedRest = false
     /// Every test the run started and finished, passes included — what `run --without` compares two runs by.
     private var outcomes = RunTestOutcomes()
     /// The compiler crash the log reports, read before any other reader sees a line of it.
@@ -109,6 +113,8 @@ public struct RunOutputFilter {
     private var testCrash = RunTestCrash.Reader()
     /// The Swift Testing tests the run's event stream declared, by the name the console prints, under the test target that holds them, or `nil` where no stream was read.
     private var declaredSwiftTesting: [String: [String]]?
+    /// Where each Swift Testing test the run's event stream started and never ended was declared.
+    private var unfinishedSources: [DeclaredTestSource] = []
 
     public init(expecting contract: RunVerdict.Contract) {
         self.init(expecting: contract, quiet: false, parallelSwiftTest: false)
@@ -149,6 +155,7 @@ public extension RunOutputFilter {
             consume(line: trailing)
         }
         streamedTestIDs = stream.recordedIDs
+        unfinishedSources = stream.unfinishedSources
         declaredSwiftTesting = Dictionary(grouping: stream.declared, by: \.target).mapValues { $0.map { stream.printedNames[$0] ?? $0.function } }
         guard let fold = RunEventStreamFold.of(stream, console: outcomes, named: failedTestNames.union(reportedTestNames)) else {
             return
@@ -173,6 +180,16 @@ public extension RunOutputFilter {
             consume(line: notice)
             consume(line: rest)
             return
+        }
+        if let (output, rest) = RunGluedTestLine.split(line, started: startedFromHead.contains) {
+            consume(line: output)
+            readingGluedRest = true
+            consume(line: rest)
+            readingGluedRest = false
+            return
+        }
+        if !readingGluedRest, let name = RunGluedTestLine.startedTest(in: line) {
+            startedFromHead.insert(name)
         }
         totalLines += 1
         let trimmedForMarkers = line.trimmingCharacters(in: .whitespaces)
@@ -332,6 +349,7 @@ public extension RunOutputFilter {
             return testCrash.unsignalled(exitCode: exitCode, outcomes: outcomes, xctestUnclosed: xctestProcessOpenings > xctestOuterSuiteEndings)
         }
         crash.declaredSwiftTesting = declaredSwiftTesting
+        crash.unfinishedSources = unfinishedSources
         return crash.settled(by: outcomes)
     }
 

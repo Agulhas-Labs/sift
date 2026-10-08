@@ -59,7 +59,7 @@ struct AffectedReachedMemberTests {
         let freshness = try await engine.ensureFresh()
         var answers: [String] = []
         for name in names {
-            try await answers.append(engine.affected(options: AffectedOptions(probe: name), freshness: freshness))
+            try await answers.append(engine.affected(options: AffectedOptions(probes: [name]), freshness: freshness))
         }
         return answers
     }

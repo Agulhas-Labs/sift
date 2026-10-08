@@ -140,7 +140,7 @@ extension SwiftLiteralLexer {
 
         /// How `query` matched around this literal's interpolations, read against the text it prints, `nil` when it does not match (``InterpolationWildcard``).
         func match(around query: InterpolationWildcard.Query) -> InterpolationWildcard.Match? {
-            InterpolationWildcard.match(of: query, in: printedSegments).map { $0.located(at: writtenRange(of: $0.anchor, inSegment: $0.segment)) }
+            InterpolationWildcard.match(of: query, in: printedSegments).map { $0.located { writtenRange(of: $0.anchor, inSegment: $0.segment) } }
         }
 
         /// Where segment `index` of `text` spells `anchor`, text it prints: the whole of it, or else its longest run free of the characters an escape spells differently or the segment lacks; `nil` when the segment spells no run of it.

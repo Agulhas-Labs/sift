@@ -45,7 +45,7 @@ struct AffectedReachedProbeTests {
         try await engine.awaitSemanticStore()
         let freshness = try await engine.ensureFresh()
         let plain = try await engine.affected(options: AffectedOptions(), freshness: freshness)
-        let probed = try await engine.affected(options: AffectedOptions(probe: name), freshness: freshness)
+        let probed = try await engine.affected(options: AffectedOptions(probes: [name]), freshness: freshness)
         return (plain, probed)
     }
 

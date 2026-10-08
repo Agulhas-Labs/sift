@@ -30,11 +30,11 @@ struct StringsAroundSection {
         return "literals with interpolations, matched around them\(how) (each \\(…) read as some of the query's text, or none):"
     }
 
-    /// `"more" 6, "lines" 30`: how many of `sites` matched on each query word, words in query order.
+    /// `"more" 6, "lines" 30`: how many of `sites` matched on each query word, words in query order; a line an alignment matched on each of two words counts for both.
     private static func tally(_ sites: [SourceLiteralSearch.Site], query: String) -> String {
         var counts: [String: Int] = [:]
         for site in sites {
-            if let word = site.around?.word {
+            for word in site.around?.words ?? [] {
                 counts[word, default: 0] += 1
             }
         }

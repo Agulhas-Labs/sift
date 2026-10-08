@@ -10,7 +10,7 @@ import Testing
 struct AffectedReachedOptionTests {
     @Test
     func theOptionIsReadAndIsAbsentByDefault() throws {
-        #expect(try AffectedCommand.parse(["--reached", "LibTests.GadgetTests/uses3()"]).reached == "LibTests.GadgetTests/uses3()")
-        #expect(try AffectedCommand.parse([]).reached == nil)
+        #expect(try AffectedCommand.parse(["--reached", "LibTests.GadgetTests/uses3()"]).reached == ["LibTests.GadgetTests/uses3()"])
+        #expect(try AffectedCommand.parse([]).reached.isEmpty)
     }
 }

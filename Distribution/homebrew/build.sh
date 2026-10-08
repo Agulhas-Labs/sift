@@ -25,7 +25,7 @@ rm -rf "$STAGE"
 
 SHA256="$(shasum -a 256 "$TARBALL" | cut -d' ' -f1)"
 
-# The release asset keeps the name the bundle was cut under, commit stamp and all — so the formula
+# The release asset keeps the name the bundle was cut under, public-commit or source-tree stamp and all — so the formula
 # points at the bytes this checksum is of, rather than at a name someone has to remember to rename to.
 URL="${SIFT_RELEASE_URL:-https://github.com/Agulhas-Labs/sift/releases/download/v$VERSION/$(basename "$TARBALL")}"
 

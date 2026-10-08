@@ -12,7 +12,7 @@ struct StringsRenderer {
     }
 
     static func render(answer: StringCatalogSearch.Answer, query: String) -> String {
-        var lines = ["strings \"\(escapingControlCharacters(query))\""]
+        var lines = ["strings \"\(escapedValue(query))\""]
         if answer.catalogsSearched == 0 {
             lines.append("no string catalogs (.xcstrings / .strings) in this repo")
         } else if answer.hits.isEmpty {
@@ -112,7 +112,7 @@ struct StringsRenderer {
             }
             let value = hit.value.map { "\"\(escapedValue(truncated($0)))\"" } ?? "(no value — key is its own display text)"
             let languages = hit.languageCount > 1 ? "  (\(hit.languageCount) languages)" : ""
-            lines.append("  \(escapingControlCharacters(hit.key)) = \(value)\(languages)")
+            lines.append("  \(escapingBackslashesAndControlCharacters(hit.key)) = \(value)\(languages)")
         }
         if answer.hits.count > StringCatalogSearch.hitCap {
             lines.append("  truncated: \(answer.hits.count - StringCatalogSearch.hitCap) more keys — narrow the query")
@@ -165,11 +165,12 @@ struct StringsRenderer {
         return lines
     }
 
-    /// `text` with each control character written as an escape (`\n`, `\r`, `\t`, `\0`, else `\u{…}`), so a query or value holding one stays on its own line.
-    static func escapingControlCharacters(_ text: String) -> String {
+    /// `text` with each backslash written as `\\` and each control character as an escape (`\n`, `\r`, `\t`, `\0`, else `\u{…}`), as a Swift literal spells them, so a query or value holding one stays on its own line and a backslash it holds is never read as the start of an escape.
+    static func escapingBackslashesAndControlCharacters(_ text: String) -> String {
         var escaped = ""
         for scalar in text.unicodeScalars {
             switch scalar {
+            case "\\": escaped += "\\\\"
             case "\n": escaped += "\\n"
             case "\r": escaped += "\\r"
             case "\t": escaped += "\\t"
@@ -185,14 +186,14 @@ struct StringsRenderer {
         return escaped
     }
 
-    /// A key between quotes, as a literal-occurrence or accessor line prints it: control characters and quotes escaped, so the key cannot split its line or end its quotes early.
+    /// A key between quotes, as a literal-occurrence or accessor line prints it: backslashes, control characters and quotes escaped, so the key cannot split its line or end its quotes early.
     private static func quotedKey(_ key: String) -> String {
         "\"\(escapedValue(key))\""
     }
 
-    /// A catalog value as written between quotes: control characters escaped, and each `"` as `\"`, so the closing quote is the one that ends the value.
+    /// A catalog value, key or query as written between quotes, the way a Swift literal spells it: backslashes and control characters escaped, and each `"` as `\"`, so the closing quote is the one that ends the value and no two texts print alike.
     private static func escapedValue(_ value: String) -> String {
-        escapingControlCharacters(value).replacingOccurrences(of: "\"", with: "\\\"")
+        escapingBackslashesAndControlCharacters(value).replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     private static func truncated(_ value: String) -> String {

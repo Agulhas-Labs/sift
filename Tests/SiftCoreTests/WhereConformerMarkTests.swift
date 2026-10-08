@@ -289,4 +289,188 @@ struct WhereConformerMarkTests {
             #expect(!output.contains("through typealias App.Dim"), "\(output)")
         }
     }
+
+    /// A conformer whose file changed since the build and no longer writes the clause the store recorded carries the stale-file label, not an indirect mark; one whose changed file still writes it keeps its mark.
+    @Test
+    func aConformerWhoseChangedFileDroppedTheClauseIsNotCalledIndirect() async throws {
+        let root = try TestSources.makeTempRepo()
+        try TestSources.write(Self.manifest, to: "Package.swift", in: root)
+        try TestSources.write("public protocol Greeter {}\n", to: "Sources/Lib/Greeter.swift", in: root)
+        try TestSources.write("public struct Soldier: Greeter {}\n", to: "Sources/Lib/Soldier.swift", in: root)
+        try TestSources.write("public struct Medic: Greeter {}\n", to: "Sources/Lib/Medic.swift", in: root)
+        try TestSources.write("public struct Nurse: Greeter {}\n", to: "Sources/Lib/Nurse.swift", in: root)
+        try TestSources.commitAll(in: root, message: "changed conformer fixture")
+        try TestSources.swiftBuild(packageAt: root)
+        let engine = try SiftEngine(directory: root)
+        try await engine.awaitSemanticStore()
+        _ = try await engine.ensureFresh()
+        try TestSources.write("public struct Medic {}\n", to: "Sources/Lib/Medic.swift", in: root)
+        try TestSources.write("// edited\npublic struct Nurse: Greeter {}\n", to: "Sources/Lib/Nurse.swift", in: root)
+
+        let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh())
+
+        #expect(output.contains("(3: 2 direct, 0 indirect, 1 in a changed file without its clause — "), "\(output)")
+        #expect(output.contains("  Lib.Medic — struct — Sources/Lib/Medic.swift:1  (file changed since last build)\n") || output.hasSuffix("  Lib.Medic — struct — Sources/Lib/Medic.swift:1  (file changed since last build)"), "\(output)")
+        #expect(!output.contains("indirect  (file changed"), "\(output)")
+        #expect(output.contains("  Lib.Nurse — struct — Sources/Lib/Nurse.swift:2 — direct  (file changed since last build)"), "\(output)")
+        #expect(output.contains("  Lib.Soldier — struct — Sources/Lib/Soldier.swift:1 — direct\n"), "\(output)")
+    }
+
+    /// A package whose app declares a protocol of the name of a library alias of the library's protocol, with a conformer to each in the app and one in a module that imports only the library.
+    private static func resolvedElsewhereFixture() async throws -> SharedBuiltFixture {
+        try await SharedBuiltFixtures.process.fixture(for: Self.self, named: "where-conformer-resolved-elsewhere") { root in
+            try TestSources.write(
+                """
+                // swift-tools-version: 6.0
+                import PackageDescription
+
+                let package = Package(
+                    name: "Lib",
+                    targets: [
+                        .target(name: "Lib"),
+                        .target(name: "App", dependencies: ["Lib"]),
+                        .target(name: "Use", dependencies: ["Lib"]),
+                    ]
+                )
+                """,
+                to: "Package.swift",
+                in: root
+            )
+            try TestSources.write("public protocol Beacon {}\n\npublic typealias Lamp = Beacon\n", to: "Sources/Lib/Beacons.swift", in: root)
+            try TestSources.write(
+                """
+                import Lib
+
+                public protocol Lamp {}
+
+                public struct Wide: Lamp {}
+
+                public struct Inner: Lib.Lamp {}
+                """,
+                to: "Sources/App/Lamps.swift",
+                in: root
+            )
+            try TestSources.write("import Lib\n\npublic struct Model: Lamp {}\n", to: "Sources/Use/Models.swift", in: root)
+            try TestSources.commitAll(in: root, message: "resolved elsewhere fixture")
+            try await TestSources.swiftBuildSuspending(packageAt: root)
+        }
+    }
+
+    /// A clause that writes the protocol's name, which the store resolves to another declaration of that name, is not counted direct and says what the store resolved it to.
+    @Test
+    func aClauseTheStoreResolvesElsewhereIsNotCountedDirect() async throws {
+        try await Self.resolvedElsewhereFixture().withEngine { engine in
+            let output = try await engine.lookup(symbol: "App.Lamp", freshness: engine.ensureFresh())
+
+            #expect(output.contains("conformers of Lamp (3: 1 direct, 0 indirect, 2 resolved to another declaration — "), "\(output)")
+            #expect(output.contains("  App.Wide — struct — Sources/App/Lamps.swift:5 — direct\n"), "\(output)")
+            #expect(output.contains("  App.Inner — struct — Sources/App/Lamps.swift:7 — writes Lamp, which the index store resolves to Lib.Lamp"), "\(output)")
+            #expect(output.contains("  Use.Model — struct — Sources/Use/Models.swift:3 — writes Lamp, which the index store resolves to Lib.Lamp"), "\(output)")
+            #expect(!output.contains("the index store does not have it"), "\(output)")
+        }
+    }
+
+    /// The row a clause resolved to another declaration ends on is read back to the line it names.
+    @Test
+    func theResolvedElsewhereMarkIsReadBackToItsLine() {
+        let row = "  Use.Model — struct — Sources/Use/Models.swift:3 — writes Lamp, which the index store resolves to Lib.Lamp"
+
+        #expect(ExactAnswer.locations(inWhereAnswer: row).map(\.line) == [3])
+    }
+}
+
+extension WhereConformerMarkTests {
+    /// A conformer only the store has, in a file changed since the build, keeps its mark wherever the edit moved its clause — down a line, down several, along its line, or below an edited type above it — and carries the stale-file label once its clause was removed.
+    @Test
+    func aMovedClauseKeepsItsMarkAndADroppedOneIsLabelled() async throws {
+        let root = try TestSources.makeTempRepo()
+        try TestSources.write(Self.manifest, to: "Package.swift", in: root)
+        try TestSources.write("public protocol Marker {}\n\npublic typealias Badge = Marker & Sendable\n", to: "Sources/Lib/Marker.swift", in: root)
+        try TestSources.write("public struct Pin: Badge {}\n", to: "Sources/Lib/Pin.swift", in: root)
+        try TestSources.write("public struct Tag: Badge {}\n", to: "Sources/Lib/Tag.swift", in: root)
+        try TestSources.write("public struct Seal: Badge {}\n", to: "Sources/Lib/Seal.swift", in: root)
+        try TestSources.write("public struct Pole {}\n\npublic struct Flag: Badge {\n    public init() {}\n}\n", to: "Sources/Lib/Flag.swift", in: root)
+        try TestSources.write("public struct Crest: Badge {}\n", to: "Sources/Lib/Crest.swift", in: root)
+        try TestSources.commitAll(in: root, message: "moved clause fixture")
+        try TestSources.swiftBuild(packageAt: root)
+        let engine = try SiftEngine(directory: root)
+        try await engine.awaitSemanticStore()
+        _ = try await engine.ensureFresh()
+        try TestSources.write("// edited\npublic struct Pin: Badge {}\n", to: "Sources/Lib/Pin.swift", in: root)
+        try TestSources.write("// one\n// two\n// three\npublic struct Tag: Badge {}\n", to: "Sources/Lib/Tag.swift", in: root)
+        try TestSources.write("public struct Seal: Sendable, Badge {}\n", to: "Sources/Lib/Seal.swift", in: root)
+        try TestSources.write(
+            "public struct Pole {\n    public let size = 1\n}\n\npublic struct Flag: Badge {\n    public let size = 1\n    public init() {}\n}\n",
+            to: "Sources/Lib/Flag.swift",
+            in: root
+        )
+        try TestSources.write("// edited\npublic struct Crest {}\n", to: "Sources/Lib/Crest.swift", in: root)
+
+        let output = try await engine.lookup(symbol: "Marker", freshness: engine.ensureFresh())
+
+        #expect(output.contains("(5: 0 direct, 4 indirect, 1 in a changed file without its clause — "), "\(output)")
+        #expect(output.contains("  Lib.Pin — struct — Sources/Lib/Pin.swift:2 — indirect  (file changed since last build)"), "\(output)")
+        #expect(output.contains("  Lib.Tag — struct — Sources/Lib/Tag.swift:4 — indirect  (file changed since last build)"), "\(output)")
+        #expect(output.contains("  Lib.Seal — struct — Sources/Lib/Seal.swift:1 — indirect  (file changed since last build)"), "\(output)")
+        #expect(output.contains("  Lib.Flag — struct — Sources/Lib/Flag.swift:5-8 — indirect  (file changed since last build)"), "\(output)")
+        #expect(output.contains("  Lib.Crest — struct — Sources/Lib/Crest.swift:2  (file changed since last build)"), "\(output)")
+    }
+
+    /// A package whose library has an alias of its protocol under the name of the app's protocol: the app has a type conforming to the app's protocol beside an extension of it writing the library's alias, and an unrelated type of the same name conforming to the app's protocol, while a module that imports only the library extends its own type of that name with the alias.
+    private static func extendedTypeFixture() async throws -> SharedBuiltFixture {
+        try await SharedBuiltFixtures.process.fixture(for: Self.self, named: "where-conformer-extended-type") { root in
+            try TestSources.write(
+                """
+                // swift-tools-version: 6.0
+                import PackageDescription
+
+                let package = Package(
+                    name: "Lib",
+                    targets: [
+                        .target(name: "Lib"),
+                        .target(name: "App", dependencies: ["Lib"]),
+                        .target(name: "Use", dependencies: ["Lib"]),
+                    ]
+                )
+                """,
+                to: "Package.swift",
+                in: root
+            )
+            try TestSources.write("public protocol Beacon {}\n\npublic typealias Lamp = Beacon\n", to: "Sources/Lib/Beacons.swift", in: root)
+            try TestSources.write(
+                """
+                import Lib
+
+                public protocol Lamp {}
+
+                public struct Gear: Lamp {}
+
+                public struct Hub: Lamp {}
+
+                extension Hub: Lib.Lamp {}
+                """,
+                to: "Sources/App/Lamps.swift",
+                in: root
+            )
+            try TestSources.write("import Lib\n\npublic struct Gear {}\n\nextension Gear: Lamp {}\n", to: "Sources/Use/Gears.swift", in: root)
+            try TestSources.commitAll(in: root, message: "extended type fixture")
+            try await TestSources.swiftBuildSuspending(packageAt: root)
+        }
+    }
+
+    /// An extension whose clause writes the name the store resolves to another declaration is marked so unless the type the store resolves it to extend conforms: another module's type of the same name that conforms does not speak for it.
+    @Test
+    func anExtensionIsVouchedForOnlyByTheTypeItExtends() async throws {
+        try await Self.extendedTypeFixture().withEngine { engine in
+            let output = try await engine.lookup(symbol: "App.Lamp", freshness: engine.ensureFresh())
+
+            let rows = output.split(separator: "\n")
+            let gear = rows.first { $0.contains("Sources/Use/Gears.swift:5") }
+            let hub = rows.first { $0.contains("Sources/App/Lamps.swift:9") }
+
+            #expect(gear?.hasSuffix(" — writes Lamp, which the index store resolves to Lib.Lamp") == true, "\(output)")
+            #expect(hub.map { !$0.contains("resolves to") } == true, "\(output)")
+            #expect(output.contains("conformers of Lamp (4: 3 direct, 0 indirect, 1 resolved to another declaration — "), "\(output)")
+        }
+    }
 }

@@ -48,7 +48,7 @@ public struct ClaudeMcpInstall {
                 return outcome
             }
             guard removed.succeeded else {
-                outcome.failures.append("mcp: not replaced — `\(SiftUninstall.serverRemovalCommand)` failed: \(CodexMcpServer.firstLine(of: removed)); run it, then: \(manual(binary: binary))")
+                outcome.failures.append("mcp: not replaced — `\(SiftUninstall.serverRemovalCommand)` failed: \(CodexMcpServer.failureReason(of: removed)); run it, then: \(manual(binary: binary))")
                 return outcome
             }
             outcome.lines.append("mcp: replaced stale registration (\(previous))")
@@ -60,7 +60,7 @@ public struct ClaudeMcpInstall {
             return outcome
         }
         guard added.succeeded else {
-            outcome.failures.append("mcp: not registered — `claude mcp add` failed: \(CodexMcpServer.firstLine(of: added)); run: \(manual(binary: binary))")
+            outcome.failures.append("mcp: not registered — `claude mcp add` failed: \(CodexMcpServer.failureReason(of: added)); run: \(manual(binary: binary))")
             return outcome
         }
         guard Self.plan(config: config, binary: binary) == .current else {

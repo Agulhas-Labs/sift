@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+- `sift install` no longer hangs on `claude mcp add` until its 60-second deadline: every child sift spawns
+  reads the null device instead of the terminal the install asked its questions on. A failed `claude` or
+  `codex` call is reported with its `Caused by:` chain, not only the line above it.
+
 ## 0.1.2
 
 - `sift run` lists a build's or test run's warnings that repeat one signature once, with `×N`, at the first

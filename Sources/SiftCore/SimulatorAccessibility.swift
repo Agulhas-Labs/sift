@@ -122,6 +122,19 @@ public struct SimulatorAccessibility {
         enableArguments(udid: udid ?? "<udid>").map { "\(xcrunName) \($0.joined(separator: " "))" }.joined(separator: " && ")
     }
 
+    /// The child ``spawn(_:_:deadline:in:environment:)`` starts, its standard input the null device.
+    ///
+    /// **Never this process's own standard input.** `sift install` asks its questions on the terminal and then spawns `claude mcp add`; a child handed that terminal, in a process group that is not the terminal's foreground one, is stopped the moment it touches it, and waited on until its deadline. Every child here is asked a question by its arguments, never by a person.
+    static func process(_ executable: String, _ arguments: [String], in directory: URL?, environment: [String: String]?) -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.currentDirectoryURL = directory
+        process.environment = environment
+        process.standardInput = FileHandle.nullDevice
+        return process
+    }
+
     /// Spawns a child and returns what it said — the live runner, and the default of every entry point above.
     ///
     /// **Bounded, on every path out.** The wait for exit is a deadline rather than a `waitUntilExit`, the child is ended when it expires, and the pipes are drained on the reader's own queue rather than by a `readDataToEndOfFile` on this thread — because a grandchild that inherited the write end holds the pipe open long after the child is gone, and a read of it would extend a bounded wait into an unbounded one. What comes back from an expired call is a failed ``Output`` whose standard error says it timed out, which every caller above reads as a read or a write that did not succeed.
@@ -137,11 +150,7 @@ public struct SimulatorAccessibility {
         in directory: URL? = nil,
         environment: [String: String]? = nil
     ) throws -> Output {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.currentDirectoryURL = directory
-        process.environment = environment
+        let process = process(executable, arguments, in: directory, environment: environment)
         let output = Pipe()
         let errors = Pipe()
         process.standardOutput = output

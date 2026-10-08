@@ -69,7 +69,7 @@ public struct CodexInstall {
             if let removal, removal.succeeded {
                 outcome.lines.append("mcp: removed \(CursorMcpFile.serverName) — \(command) \(CursorMcpFile.arguments.joined(separator: " "))")
             } else {
-                let reason = removal.map(CodexMcpServer.firstLine(of:)) ?? "`codex` is no longer on PATH"
+                let reason = removal.map(CodexMcpServer.failureReason(of:)) ?? "`codex` is no longer on PATH"
                 outcome.failures.append("mcp: not removed — `codex \(CodexMcpServer.removeArguments.joined(separator: " "))` failed: \(reason); run: \(manual(CodexMcpServer.removeArguments, home: home))")
             }
         case let .foreign(existing):
@@ -108,7 +108,7 @@ public struct CodexInstall {
         }
         let added = try runner.run(arguments, home: home.directory)
         guard let added, added.succeeded else {
-            let reason = added.map(CodexMcpServer.firstLine(of:)) ?? "`codex` is no longer on PATH"
+            let reason = added.map(CodexMcpServer.failureReason(of:)) ?? "`codex` is no longer on PATH"
             return outcome.failures.append("mcp: not registered — `codex \(arguments.prefix(3).joined(separator: " "))` failed: \(reason); run: \(manual(arguments, home: home))")
         }
         outcome.lines.append("mcp: registered \(name) — \(registered)")

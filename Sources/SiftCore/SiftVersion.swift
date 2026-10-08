@@ -6,6 +6,6 @@
 public struct SiftVersion {
     /// The semantic version of the `sift` binary.
     public static var current: String {
-        "0.1.2"
+        "0.1.3"
     }
 }

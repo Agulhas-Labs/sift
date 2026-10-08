@@ -30,7 +30,7 @@ public struct CodexMcpServer {
             if (output.standardError + output.standardOutput).contains("No MCP server named") {
                 return .absent
             }
-            throw refusal(home, "could not be read by `codex \(getArguments.joined(separator: " "))`: \(firstLine(of: output))")
+            throw refusal(home, "could not be read by `codex \(getArguments.joined(separator: " "))`: \(failureReason(of: output))")
         }
         guard let shown = try? JSONSerialization.jsonObject(with: Data(output.standardOutput.utf8)) as? [String: Any],
               let transport = shown["transport"] as? [String: Any]
@@ -42,11 +42,19 @@ public struct CodexMcpServer {
         return CursorMcpFile.isOurs(transport) ? .ours(command) : .foreign(described)
     }
 
-    /// The first line a failed `codex` run said, its error before its output.
-    static func firstLine(of output: SimulatorAccessibility.Output) -> String {
-        [output.standardError, output.standardOutput]
-            .compactMap { $0.split(separator: "\n").first.map(String.init) }
-            .first ?? "no output"
+    /// What a failed `codex` or `claude` run said, its error before its output: the first line, then each line of a `Caused by:` chain after it.
+    ///
+    /// `codex` puts the reason under its first line (`Error: failed to load configuration`, then `Caused by:` and a revoked login), so the first line alone names a failure without its cause.
+    static func failureReason(of output: SimulatorAccessibility.Output) -> String {
+        guard let said = [output.standardError, output.standardOutput].first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            return "no output"
+        }
+        let lines = said.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        var reason = [lines[0]]
+        if let causes = lines.firstIndex(of: "Caused by:") {
+            reason += lines[(causes + 1)...]
+        }
+        return reason.joined(separator: ": ")
     }
 
     private static func refusal(_ home: URL, _ reason: String) -> CursorInstall.Refused {

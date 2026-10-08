@@ -1170,3 +1170,16 @@ to standard error, so the framework's next line arrives glued behind that text. 
 The edits: the package's path became `/Users/dev/Pallet`, the DerivedData path `/Users/dev/DerivedData`, the
 result bundle's directory `/Users/dev/Results`, the Mac's identifier `id:00000000-0000000000000000`, and every
 timestamp moved by one whole-second shift to open at `2000-01-01 12:00:00`.
+## A release build's unlocated `.pcm` warnings
+
+A trim of the raw log `sift run` kept for Sift's own release build, `swift build -c release … -Xcc
+-ffile-prefix-map=…`, as `Distribution/make-dist.sh` runs it (8 Oct 2026, #681). The log carried 73 warnings,
+none naming a line, each `warning: <dir>/<Module>-<hash>.pcm: No such file or directory` with a note beneath it,
+across two directories and about two dozen modules, each module more than once with a different hash.
+
+| Fixture | Command | Exit | What it is here for |
+| --- | --- | --- | --- |
+| `swift-build-release-pcm-warnings.txt` | `swift build -c release …` | 0 | 23 of those warnings, every one different text saying one thing: they list as one line with `×23`, not twenty lines and a `+3 more` |
+
+The one edit: only the warnings (and their notes) about `CoreFoundation`, `_Builtin_stdarg`, `ptrauth`, `Darwin`,
+`Dispatch`, `Security` and `XPC` were kept, in their order; every other line is as the log had it.

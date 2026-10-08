@@ -107,8 +107,8 @@ claude mcp server: fail — answered nothing (exit 127) — ~/.local/bin/sift mc
 
 Put `sift` back where the registration says, or run `sift install` again from the binary you want the hooks
 to use; it is idempotent and it is the upgrade path. If `sift` is not on your `PATH`, fix that first so the
-install records a path that exists. Keep the binary in a fixed place on your `PATH` (see <doc:GettingStarted>; Homebrew and npm will do
-that once they are published), and not run it from `npx`, which the install refuses.
+install records a path that exists. Keep the binary in a fixed place on your `PATH` (see <doc:GettingStarted>; Homebrew and npm put it
+there), and not run it from `npx`, which the install refuses.
 
 ### Other entries
 

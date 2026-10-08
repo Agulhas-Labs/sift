@@ -11,20 +11,20 @@ through `xcrun`.
 
 ### Install
 
-The public repository, the Homebrew tap and the npm package are not published yet: the lines marked so show
-how installing will work once they are, and nothing else here (a release bundle included) is available to
-download.
+With Homebrew:
 
 ```sh
-brew install agulhas-labs/tap/sift   # not published yet
+brew install agulhas-labs/tap/sift
 sift --version
 ```
 
-Until then, build it from source with Swift 6.2 or later. The clone URL is the repository's future address,
-so it does not resolve yet; run the same steps in any checkout of the source:
+Give the full name: homebrew-core has an unrelated formula called `sift` (a grep alternative), so
+asking Homebrew for plain `sift` installs the wrong tool.
+
+Or build it from source with Swift 6.2 or later:
 
 ```sh
-git clone https://github.com/Agulhas-Labs/sift.git   # not published yet
+git clone https://github.com/Agulhas-Labs/sift.git
 cd sift
 swift build -c release
 .build/release/sift --version

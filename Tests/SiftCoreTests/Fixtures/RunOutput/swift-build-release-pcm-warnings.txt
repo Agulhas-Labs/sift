@@ -1,0 +1,61 @@
+Building for production...
+[Computing dependencies]
+[Constructing description]
+[Pre-planning 1 / 924]
+[Planning deferred tasks]
+[4 / 11]
+[5 / 9] SiftCore
+[6 / 10] SiftCore
+[13 / 13] SiftCore-product
+[17 / 20] SiftMCP
+[19 / 21] SiftMCP
+[27 / 29] sift-product
+[29 / 29] sift-product
+[30 / 31] sift-product
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/CoreFoundation-3QQ9KF0POLJUJTHGEB1BW495J.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/CoreFoundation-3QQ9KF0POLJUJTHGEB1BW495J.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/_Builtin_stdarg-15MM08EYPH94QQW758C7E8E66.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/_Builtin_stdarg-15MM08EYPH94QQW758C7E8E66.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/ptrauth-BY4DDE6D6PSU5LSST6ZZM6WG6.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/ptrauth-BY4DDE6D6PSU5LSST6ZZM6WG6.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Darwin-Q8V9J2H3LUDJIYZSYYY9488P.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Darwin-Q8V9J2H3LUDJIYZSYYY9488P.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Dispatch-AJS5BT0EVS7QPD5VP76UQM0DD.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Dispatch-AJS5BT0EVS7QPD5VP76UQM0DD.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Security-DHBU42WL6KBRQ9SZA6I7FYHK6.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Security-DHBU42WL6KBRQ9SZA6I7FYHK6.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/XPC-B6KCQXQ4625W3PONPO92PXTZ2.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/XPC-B6KCQXQ4625W3PONPO92PXTZ2.pcm
+warning: /sift/.build/dist/out/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-DR7934GQMOJ0QF46VIKZJFJAX.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-DR7934GQMOJ0QF46VIKZJFJAX.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/CoreFoundation-2ZX9CANU9POAZN49OI2IYIZ9L.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/CoreFoundation-2ZX9CANU9POAZN49OI2IYIZ9L.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/_Builtin_stdarg-3U2Q6KEULJITVNWFS9MK72MOS.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/_Builtin_stdarg-3U2Q6KEULJITVNWFS9MK72MOS.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/ptrauth-1TOITG9Z1VTPI4F0X2VE8G1MF.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/ptrauth-1TOITG9Z1VTPI4F0X2VE8G1MF.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Darwin-7VRF3Z0RM044MB810OHJB5RTO.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Darwin-7VRF3Z0RM044MB810OHJB5RTO.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Dispatch-EMV75CF4EN7PB26ZTYHY184RN.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Dispatch-EMV75CF4EN7PB26ZTYHY184RN.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Security-DCZK2XI0QJ64Q5LQCVZS6PR3Q.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Security-DCZK2XI0QJ64Q5LQCVZS6PR3Q.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/XPC-3LW4MCFFODSARPOY4THKUKKEC.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/XPC-3LW4MCFFODSARPOY4THKUKKEC.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/CoreFoundation-CXE4B5EJ44TTXVJ2RTVS897IT.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/CoreFoundation-CXE4B5EJ44TTXVJ2RTVS897IT.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/_Builtin_stdarg-90GHIVEQR3A44UXUB30907QS5.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/_Builtin_stdarg-90GHIVEQR3A44UXUB30907QS5.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/ptrauth-63RX9G9NBAF0PVY3UI9RRETKF.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/ptrauth-63RX9G9NBAF0PVY3UI9RRETKF.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Darwin-BVANCTSTY3XDLQ5CN70FSSM4Q.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Darwin-BVANCTSTY3XDLQ5CN70FSSM4Q.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Dispatch-5RI712VAH5I8FSVM1MD0VK23S.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Dispatch-5RI712VAH5I8FSVM1MD0VK23S.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/Security-BS2PBM79XGGKC5QR5ZTCS7091.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/Security-BS2PBM79XGGKC5QR5ZTCS7091.pcm
+warning: /sift/.build/dist/out/SDKExplicitPrecompiledModules/XPC-A5YL9T2Y49B5O9NXCRB1VB7CH.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/SDKExplicitPrecompiledModules/XPC-A5YL9T2Y49B5O9NXCRB1VB7CH.pcm
+warning: /sift/.build/dist/out/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-EZS6N1YUVD6ZQ6YC8CN9SL9ZR.pcm: No such file or directory
+note: while processing /sift/.build/dist/out/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-EZS6N1YUVD6ZQ6YC8CN9SL9ZR.pcm
+Build complete! (155.10 secs)

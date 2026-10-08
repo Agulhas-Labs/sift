@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.2
+
+- `sift run` lists a build's or test run's warnings that repeat one signature once, with `×N`, at the first
+  occurrence: a release build's 73 `<Module>-<hash>.pcm: No such file or directory` warnings are one line, not
+  twenty and `+53 more`. Warnings at different lines whose text differs never merge, an unlocated warning
+  reported against a file groups only with others against that file, and a run where nothing repeats lists
+  as before.
+- Sift installs with Homebrew (`brew install agulhas-labs/tap/sift`, in full: homebrew-core's `sift` is an
+  unrelated tool) and npm (`npm install -g @agulhas-labs/sift`, or `npx -y @agulhas-labs/sift`), and the
+  documentation says so.
+- The release scripts: the Homebrew formula has no redundant `version` line, `homebrew/build.sh` runs
+  `brew audit --strict` on the formula it generates (in a throwaway local tap), and `release-notes.sh` writes
+  the GitHub release notes from a version's CHANGELOG section and prints the `gh release create` command.
+
 ## 0.1.1
 
 - `sift run --without` removes the build it made without your change once the change is back, and says so;

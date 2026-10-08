@@ -306,6 +306,7 @@ if [ "$MODE" = update ]; then
     else
         echo "  CHANGELOG.md at $SHA names no version, so no tag is suggested."
     fi
+    echo "  Then the release: sh Distribution/release-notes.sh writes its notes and prints the gh release create command."
 else
     echo "    git -C $(shquote "$TARGET") remote add origin git@github.com:Agulhas-Labs/sift.git && git -C $(shquote "$TARGET") push -u origin main"
 fi

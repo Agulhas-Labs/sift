@@ -32,21 +32,21 @@ sift --version
 Copy to a new name and then rename, as above: macOS kills a binary rewritten in place, with exit 137 and no
 message. To upgrade, `git pull` and repeat the last four lines.
 
-The Homebrew tap and the npm package are not published yet: the lines marked so show how installing will
-work once they are.
-
 Homebrew puts it on your `PATH`, which is what you want for the CLI:
 
 ```sh
-brew install agulhas-labs/tap/sift   # not published yet
+brew install agulhas-labs/tap/sift
 sift --version
 ```
+
+Give the full name: homebrew-core has an unrelated formula called `sift` (a grep alternative), so
+asking Homebrew for plain `sift` installs the wrong tool.
 
 npm is the other half, and the better one for the MCP server: `npx` resolves the package when the
 server starts, so it is always the current release and there is no upgrade to remember.
 
 ```sh
-npx -y @agulhas-labs/sift --version   # not published yet
+npx -y @agulhas-labs/sift --version
 ```
 
 Both carry the same binary and both faces of it. They differ only in who does the updating — you, or
@@ -124,7 +124,7 @@ MCP server starts and lists every tool. A registration missing says which `sift 
 From the root of each Swift repository:
 
 ```sh
-claude mcp add --transport stdio --scope local sift -- npx -y @agulhas-labs/sift mcp   # not published yet
+claude mcp add --transport stdio --scope local sift -- npx -y @agulhas-labs/sift mcp
 claude mcp list        # expect: sift ✓ connected
 ```
 

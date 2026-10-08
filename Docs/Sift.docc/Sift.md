@@ -41,10 +41,8 @@ The semantic half also needs Xcode or the Command Line Tools. Building from sour
 
 ### Not published yet
 
-The public repository (`Agulhas-Labs/sift`), the Homebrew tap, the npm package and the Claude Code plugin do
-not exist yet. Until the release, every link into that repository from these articles, and the clone URL in
-<doc:GettingStarted>, leads nowhere, and so does the Homebrew and npm install. The source tree is the only
-way to get `sift` today.
+The Claude Code plugin does not exist yet, so `sift install` is the route that sets `sift` up in Claude Code
+today.
 
 ### The full reference
 

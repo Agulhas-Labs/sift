@@ -8,7 +8,7 @@ import Foundation
 ///
 /// Line-oriented and single-pass by design: the input is a stream that arrives while the build runs and can reach tens of megabytes, so nothing is held but the diagnostics themselves and one partial line. The shapes it reads are `swift build`, `swift test` and `xcodebuild`; which of those it was handed is the launcher's business, not this type's, because the parsing is the same for all three.
 public struct RunOutputFilter {
-    /// How many distinct warnings are listed before the rest are counted instead.
+    /// How many lines of warnings are listed before the rest are counted instead — one per warning, or one per signature a warning repeats.
     ///
     /// A build that warns three hundred times is telling the caller one thing, not three hundred; the cap keeps that from crowding out the errors standing next to it.
     public static let warningCap = 20

@@ -14,7 +14,6 @@ class Sift < Formula
   desc "Swift code index and truthful build/test runner for AI coding agents"
   homepage "https://github.com/Agulhas-Labs/sift"
   url "@URL@"
-  version "@VERSION@"
   sha256 "@SHA256@"
   license "Apache-2.0"
 

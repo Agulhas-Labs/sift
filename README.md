@@ -174,11 +174,14 @@ asks you to trust; `sift doctor` checks each one. A second run changes nothing a
 previews it.
 `sift uninstall` takes it all back out.
 
-A Homebrew tap is coming:
+Or with Homebrew:
 
 ```sh
-brew install agulhas-labs/tap/sift   # not published yet
+brew install agulhas-labs/tap/sift
 ```
+
+Give the full name: homebrew-core has an unrelated formula called `sift` (a grep alternative), so
+asking Homebrew for plain `sift` installs the wrong tool.
 
 ## Use it yourself
 

@@ -1891,6 +1891,35 @@ read once, at the launch, and a config that cannot be read adds no name rather t
 nonzero exit explained only by warning-severity violations is still a usable answer, since a strict linter
 run fails the exit code over a warning without ever spelling it `error:`.
 
+**A build's or test's warnings are listed in log order, capped at 20, and a warning that repeats one
+signature is listed once with its count.** Under `warnings (N):` (N always every warning the log carried)
+each signature prints its first occurrence in the compiler's own form, followed by `  ×K` where K > 1, the
+multiplier the errors sample uses. The cap counts printed lines, and `+M more warnings — see the raw log`
+counts the warnings those withheld lines stand for. Where nothing repeats, every line is one warning, so
+the listing reads exactly as a flat one. The case is a release build passing `-ffile-prefix-map`: 73
+unlocated `warning: <dir>/<Module>-<hash>.pcm: No such file or directory`, each one different text, that
+say one thing. The signature is narrower than the census errors and failures use, deliberately:
+- **A warning located at a line is grouped on its message verbatim.** Warnings at distinct `file:line`
+  sites are separate things to fix, so no two whose text differs are ever merged. A run of
+  `unused value 19`, `unused value 20` stays one line each, where `RunFailureSignature`, which elides
+  digits and string literals, would fold them. The same text at several sites does fold, listed at its
+  first site with the count: `×K` there says K sites, and the raw log names the rest.
+- **An unlocated warning is grouped on its message with each absolute path elided whole.** The path is
+  a token opening on `/` at the message's start or after whitespace, a quote, `(` or `[`, and running to
+  the next whitespace, less trailing punctuation. With no line, the path inside the message is the only
+  thing that differs between two reports of the same fault. The hash is in the path, so it goes with it,
+  and so does the directory (the capture names two). A bare hash outside a path is left alone: no capture
+  shows one, and a rule tuned on nothing would be guessing. Relative and `@rpath/` paths stay, so
+  `linking with dylib '@rpath/XCTest…'` and a second `'@rpath/…'` dylib stay two lines.
+- **Nothing else is elided.** Two messages differing in any word or number stay apart, and a located
+  warning never groups with an unlocated one. An unlocated warning reported against a file (xcodebuild's
+  `<path>/Widget.xcodeproj: warning: …`) groups only with another against that same file, since that path
+  is all the listing prints of where it came from.
+
+`RunErrorShape` and `RunFailureCensus` are not reused. Their census adds an `N warnings · M signatures · F files`
+heading and a five-signature sample, and that would change the listing of warnings that never repeat.
+The grouping (`RunWarningSignature`) only decides which lines print once.
+
 **An `xcodebuild -quiet` run's silence can be read as a pass once the exit code is in hand — the one
 exception to *silence is never success*, and bounded to it.** `-quiet` suppresses every action's
 `** … SUCCEEDED **` stamp on a clean run. Where argv carries `-quiet` as a flag (read with the option table

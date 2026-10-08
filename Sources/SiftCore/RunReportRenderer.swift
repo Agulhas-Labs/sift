@@ -554,13 +554,18 @@ extension RunReportRenderer {
         }
         // A linter's warnings are the whole of its output — one line per violation, hundreds of them, almost
         // always a handful of rules repeated — so they earn the same by-signature grouping an errors listing
-        // already gives a build. A build or test's warnings stay the flat,
-        // capped listing below: this is the shape those fixtures assert, and a build's warnings are rarely one
-        // rule repeated the way a linter's are.
+        // already gives a build. A build or test's warnings stay a capped listing in log order, where only a
+        // warning repeating one signature is folded into its first occurrence with a count: a listing with
+        // nothing repeated prints one warning per line, and no census heading or sample stands over it.
         guard kind == .linter else {
             var lines = ["", "warnings (\(report.warnings.count)):"]
-            lines.append(contentsOf: report.warnings.prefix(RunOutputFilter.warningCap).map { "  \(paths.shown($0).described)" })
-            let withheld = report.warnings.count - RunOutputFilter.warningCap
+            let listed = RunWarningSignature.grouped(report.warnings).prefix(RunOutputFilter.warningCap)
+            lines.append(contentsOf: listed.map { group in
+                // The multiplier is what says this line stands for more than itself, as in the errors sample.
+                let shared = group.count > 1 ? "  ×\(group.count)" : ""
+                return "  \(paths.shown(group.example).described)\(shared)"
+            })
+            let withheld = report.warnings.count - listed.reduce(0) { $0 + $1.count }
             if withheld > 0 {
                 lines.append("  +\(withheld) more warnings — see the raw log")
             }

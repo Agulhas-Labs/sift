@@ -29,8 +29,8 @@ struct DigestMemberMissAnswer {
         var members: [SymbolRow] = []
         for owner in owners {
             try members.append(contentsOf: renderer.store.children(of: owner.id))
-            for row in try renderer.store.extensions(ofTypeNamed: typeName) where try renderer.owns(extension: row, primary: owner) {
-                try members.append(contentsOf: renderer.store.children(of: row.id))
+            for placed in try DigestOwnedExtensions.of(owner, renderer: renderer) {
+                try members.append(contentsOf: renderer.store.children(of: placed.row.id))
             }
         }
         let type = qualifiers.joined(separator: ".")

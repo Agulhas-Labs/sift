@@ -166,7 +166,7 @@ public struct ExactAnswer {
     /// `where` for `symbol` with every reference site, or `nil` where the index declares nothing of that name.
     public static func references(in engine: SiftEngine, of symbol: String, freshness: Freshness) async throws -> String? {
         guard try !WhereRenderer(store: engine.store).declarations(for: symbol).isEmpty else { return nil }
-        return try await engine.lookup(symbol: symbol, freshness: freshness, options: WhereOptions(includeReferences: true))
+        return try await engine.lookup(symbol: symbol, freshness: freshness, options: WhereOptions(includeReferences: true, standsInForSearch: true))
     }
 
     /// `where` for `symbol` with no reference sites, split into the header line it opens with and everything under it — or `nil` where the index declares nothing of that name.
@@ -174,7 +174,7 @@ public struct ExactAnswer {
     /// Split so that several answers from one engine can be served under one header rather than repeating a fact about the tree once per name. The header is taken as the answer's own first line rather than rebuilt from the freshness, because the line an answer opens with is the one it is accountable for. Every owner's uses stay listed for a name several unrelated owners declare, since this answer stands in for a search whose every site's path it must show.
     public static func lookup(in engine: SiftEngine, of symbol: String, freshness: Freshness) async throws -> (header: String, body: String)? {
         guard try !WhereRenderer(store: engine.store).declarations(for: symbol).isEmpty else { return nil }
-        let text = try await engine.lookup(symbol: symbol, freshness: freshness, options: WhereOptions(collapsesSeveralOwners: false))
+        let text = try await engine.lookup(symbol: symbol, freshness: freshness, options: WhereOptions(collapsesSeveralOwners: false, standsInForSearch: true))
         guard let newline = text.firstIndex(of: "\n") else { return (text, "") }
         return (String(text[..<newline]), String(text[text.index(after: newline)...]))
     }
@@ -208,6 +208,35 @@ public struct ExactAnswer {
             }
         }
         return located
+    }
+
+    /// Every line a `where` answer shows by its path and number: each it locates (``locations(inWhereAnswer:)``) and each site it lists by written name.
+    ///
+    /// What accounts for a grep's printed lines, never what credits a file as located: a name-matched site is a lead, but the answer still puts that very line in front of the reader.
+    public static func shownLocations(inWhereAnswer text: String) -> Set<Location> {
+        locations(inWhereAnswer: text).union(NameMatchedSites.shownLines(inAnswer: text))
+    }
+
+    /// The sites a `where` answer's per-file cap cut, by line: those `whole`, the same name's answer listing every line, locates in a file whose row here ends `, +58 more`, and this answer does not.
+    ///
+    /// Read by line rather than by count: a count of what was cut says nothing of which lines of the file they were, and a line a search prints that is no site of the name must not be taken for one.
+    public static func cutSites(inWhereAnswer text: String, listedWhole whole: String) -> Set<Location> {
+        var capped = Set<String>()
+        for line in text.split(separator: "\n") {
+            if let match = line.wholeMatch(of: cappedReferenceLine) {
+                capped.insert(String(match.output.1))
+            }
+        }
+        guard !capped.isEmpty else { return [] }
+        return shownLocations(inWhereAnswer: whole).filter { capped.contains($0.path) }.subtracting(shownLocations(inWhereAnswer: text))
+    }
+
+    /// Each doc summary a `where` answer shows beside a declaration, with the declaration's file and first line: the doc comment line it was read from is in front of the reader too, though the answer locates it by no number of its own.
+    public static func docSummaries(inWhereAnswer text: String) -> [(declaration: Location, summary: String)] {
+        NameMatchedSites.linesOutside(answer: text).compactMap { line in
+            guard let match = line.wholeMatch(of: declarationLine), let start = Int(match.output.2), let summary = match.output.3 else { return nil }
+            return (Location(path: String(match.output.1), line: start), String(summary))
+        }
     }
 
     /// Every Swift file a `search` answer lists matches in, by the heading ``SearchRenderer`` opens each file's block with — the path alone at the margin, then a colon.
@@ -301,10 +330,13 @@ extension ExactAnswer {
 
     /// A `where` entry that locates one line — a declaration, `  Module.Name — kind — signature — path.swift:12-40` with any doc summary after, or a listed row, `  caller — path.swift:12` with the access or a conformer's mark (`— direct`, `— indirect`, `— direct; the index store does not have it`, `— direct; the index store has it through another type`, `— writes <Name>, which the index store resolves to <Declaration>`, `— through typealias <alias>`, `— inherited through <Name>`), unit count and folded sites a row may close on (`— read via $flag`, `  ×2 units`, `(3 sites)`).
     nonisolated(unsafe) static let declarationLine =
-        /\s+.* — (.+\.swift):(\d+)(?:-\d+)?(?: — (?:read and write|read|write|used|referenced|direct; the index store does not have it|direct; the index store has it through another type|writes \S+, which the index store resolves to \S+|through typealias \S+|inherited through \S+|direct|indirect)(?: via \S+)?)?(?:  ×\d+ units)?(?: \(\d+ sites\))?(?:  \/\/\/.*)?/
+        /\s+.* — (.+\.swift):(\d+)(?:-\d+)?(?: — (?:read and write|read|write|used|referenced|direct; the index store does not have it|direct; the index store has it through another type|writes \S+, which the index store resolves to \S+|through typealias \S+|inherited through \S+|direct|indirect)(?: via \S+)?)?(?:  ×\d+ units)?(?: \(\d+ sites\))?(?:  \/\/\/ ?(.*))?/
 
     /// A `where` reference line, `  path.swift (3): 4, 5, 6`, whole or capped, `  path.swift (60): 4, 10, +58 more`, whose listed lines are the only ones it locates.
     nonisolated(unsafe) static let referenceLine = /\s+(.+\.swift) \(\d+\): (\d+(?:, \d+)*)(?:, \+\d+ more)?/
+
+    /// A `where` reference line that ends on the count of the lines it cut, `  path.swift (60): 4, 10, +58 more`.
+    nonisolated(unsafe) static let cappedReferenceLine = /\s+(.+\.swift) \(\d+\): \d+(?:, \d+)*, \+(\d+) more.*/
 
     /// A store block's file heading where its sites are listed one row per line with their text, `  path.swift (3):`, with any mark or typealias spelling after the colon.
     nonisolated(unsafe) static let siteTextHeading = #/ {2}(\S.*\.swift) \(\d+\):.*/#

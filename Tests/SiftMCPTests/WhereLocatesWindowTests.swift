@@ -10,7 +10,7 @@ import Testing
 
 /// The replay credits a `where` answer's located files as the live hook reads them off the usage log, so a window of a file the answer located is let through silently in both.
 @Suite(.temporaryDirectories) struct WhereLocatesWindowTests {
-    /// A `where` answered in the transcript, through the MCP tool or the CLI, locates its file for the window after it: `noLookup`, where the same window with no answer before it is not.
+    /// A `where` answered in the transcript, through the MCP tool or the CLI, locates its file for the window after it: no lookup, logged `locatedWindow`, where the same window with no answer before it is not.
     @Test(arguments: [true, false])
     func aWindowAfterAWhereAnswerIsNoLookupInTheReplay(throughTheServer: Bool) async throws {
         let root = try await InPlaceAnswerTests.indexedRepository()
@@ -30,7 +30,7 @@ import Testing
             return (answered.verdict(payload: window, cwd: root.path, at: nil, decides: true), cold.verdict(payload: window, cwd: root.path, at: nil, decides: true))
         }
 
-        #expect(verdicts.0 == ReplayVerdict(token: "allowed", rule: "noLookup"))
+        #expect(verdicts.0 == ReplayVerdict(token: "allowed", rule: ReplayVerdict.logged("locatedWindow")))
         // With no answer before it the window is a lookup, which the fixture's small file leaves unanswered.
         #expect(verdicts.1 == ReplayVerdict(token: "allowed", rule: "notSmaller"))
         // The context's own call located it, so the audit scores the window as the scan does, not as located by

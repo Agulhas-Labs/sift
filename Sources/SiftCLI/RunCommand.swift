@@ -30,11 +30,11 @@ struct RunCommand: ParsableCommand {
             every answer names. Anything else runs untouched. stdout and stderr are merged into one \
             stream, as `2>&1` does.
 
-            An unfiltered, serial `swift test` of the package at the repository's root is also checked \
+            An unfiltered, serial `swift test` of a package, at the repository's root or nested in it, is also checked \
             against the tests the index declares, and says so under totals: in one line — `inventory: N \
             declared, N reported` — or names the tests that never reported or reported more than once. \
             It is a note, never a verdict: the exit code stays the wrapped command's. A filtered, skipped \
-            or --parallel run, a nested package's run and an xcodebuild run print nothing; a run in scope \
+            or --parallel run and an xcodebuild run print nothing; a run in scope \
             that could not be checked (no index yet, it could not be read, every declared test was lifted \
             out of the counts, or more than 20 s to freshen and reconcile) prints one \
             `inventory: not checked — …` line.
@@ -155,15 +155,16 @@ struct RunCommand: ParsableCommand {
     /// Defaulted to the progress file's own finish, which is every real invocation.
     var finishProgress: (RunProgress, Int32, String?) -> Void = { $0.finish(exitCode: $1, logPath: $2) }
 
-    /// What was asked for, minus the terminator.
+    /// Spawns the `simctl` reads and writes the accessibility checks make — injected so a test scripts the device instead of touching one.
     ///
-    /// `.captureForPassthrough` hands `--` through with everything else, and both spellings — with it and without — have to reach the same command.
-    private var arguments: [String] {
-        let written = command.first == "--" ? Array(command.dropFirst()) : command
-        return coverage ? RunCoverage.enabling(written) : written
-    }
+    /// Defaulted to a real spawn, which is what every real invocation does.
+    var simulatorRun: (String, [String]) throws -> SimulatorAccessibility.Output = { try SimulatorAccessibility.spawn($0, $1) }
 
     func run() throws {
+        // First, so the model reads that its command was replaced before anything the replacement printed.
+        if asked.rewritten {
+            output.emit(RunRewrite.notice(for: asked.arguments))
+        }
         // `--root` is a query flag; here it would reach the wrapped command (`env` rejects it as an option).
         if arguments.first == "--root" {
             throw ValidationError("sift run takes no --root: it runs in the current directory, so cd into the worktree first.")
@@ -269,6 +270,8 @@ struct RunCommand: ParsableCommand {
             environment: environment,
             tree: checkouts.buildsElsewhere ? nil : treeBefore?.tree.value
         )
+        // The note on a stale generated project comes first, above everything the command prints.
+        (XcodeGenStaleProject.lines(for: arguments, from: workingDirectory.path, repositoryRoot: builtRoot ?? workingDirectory) + SimulatorAccessibility.warnings(before: arguments, run: simulatorRun)).forEach(output.emit)
         let interruptions = RunProgressInterruptions.watch(progress, arming: writesUnder == nil)
         defer { interruptions.end() }
         let outcome = try RunLauncher(workingDirectory: workingDirectory, repositoryRoot: root, runLogDirectory: writesUnder)
@@ -287,17 +290,14 @@ struct RunCommand: ParsableCommand {
         let ownExitCode = outcome.report.flatMap { selector?.ownExitCode($0, exitCode: outcome.exitCode) }
             ?? (executedNothing ? RunTestSelector.exitCode : nil)
         let exitCode = ownExitCode ?? outcome.exitCode
+        // A run that built and failed keeps its log in a pool of its own, tagged by command, until a run of the
+        // same command passes: a handoff that cites the path must still find it. A did-not-build log is already kept.
+        outcome.log?.settle(exitCode: exitCode, command: arguments, in: workingDirectory)
         // After the run is measured and before the answer goes out. Measured before, because the milliseconds
         // in the run log are the wrapped command's and never this tool's own housekeeping; before the answer,
         // because what it found is a line of that answer and a qualification on its headline.
-        // The log is read whole only where the re-arm has to consult it: an `xcodebuild` line that named no
-        // `-destination`, whose resolved platform shows nowhere else. Every other run pays nothing for it.
-        let needsTranscript = arguments.first.map { ($0 as NSString).lastPathComponent } == "xcodebuild" && !arguments.contains("-destination")
-        // Lossy, not `String(data:encoding:)`: only an ASCII marker (`PLATFORM_NAME\=…`) is ever looked for in
-        // this text, so a run log that is not valid UTF-8 elsewhere must not drop the re-arm note along with it.
-        let transcript = needsTranscript ? outcome.log?.contents().map { String(decoding: $0, as: UTF8.self) } : nil // swiftlint:disable:this optional_data_string_conversion no_swiftlint_disable
-        let accessibility = SimulatorAccessibility.restore(after: arguments, log: transcript)
-        let inventory = inventoryLines(outcome, workingDirectory: workingDirectory, root: root, executedNothing: executedNothing)
+        let accessibility = restoreAccessibility(after: outcome)
+        let inventory = inventoryLines(outcome, workingDirectory: workingDirectory, executedNothing: executedNothing)
             + UnmatchedFilterHint.lines(after: outcome, selector: selector, repositoryRoot: writesUnder ?? root, budget: hintBudget)
         var answerLines = report(outcome, workingDirectory: workingDirectory, accessibility: accessibility, bundles: bundles, selector: selector, inventory: inventory)
         if let coverageStart {
@@ -340,7 +340,7 @@ struct RunCommand: ParsableCommand {
             exitCode: outcome.exitCode,
             answer: RunUsageLog.Answer(
                 report: outcome.report,
-                lines: answerLines,
+                lines: answerLines.map { $0 + (asked.rewritten ? 1 : 0) },
                 failedTests: outcome.reportedTestFailures
             ),
             repositoryRoot: outcome.repositoryRoot,
@@ -405,18 +405,20 @@ struct RunCommand: ParsableCommand {
         return TreeKey.of(repositoryRoot: root).map { ProvableRun(tree: $0, workingDirectory: Self.directory(of: workingDirectory, relativeTo: root)) }
     }
 
-    /// The lines ``RunInventoryCheck`` owes this run's answer, and none for a run it does not bound.
+    /// The lines ``RunInventoryCheck`` owes this run's answer: the unchecked line for an unnarrowed `xcodebuild` test run it does not bound, and none for any other run it does not bound.
     ///
-    /// Read from the repository ``writesUnder`` names where a fixture scoped the run, since freshening an index is a write like the others that seam covers; a real invocation reads the repository it ran in.
-    private func inventoryLines(_ outcome: RunOutcome, workingDirectory: URL, root: URL?, executedNothing: Bool) -> [String] {
-        guard let report = outcome.report, let repository = writesUnder ?? root,
-              RunInventoryCheck.applies(to: arguments, report: report, workingDirectory: writesUnder ?? workingDirectory, repositoryRoot: repository, executedNothing: executedNothing)
+    /// The package is the one the command tests, nested or not, and the index read is that of the repository holding it.
+    ///
+    /// The package is found from the directory ``writesUnder`` names where a fixture scoped the run, since freshening an index is a write like the others that seam covers; a real invocation starts from the directory it ran in.
+    private func inventoryLines(_ outcome: RunOutcome, workingDirectory: URL, executedNothing: Bool) -> [String] {
+        guard let report = outcome.report,
+              let package = RunInventoryCheck.testedPackage(by: arguments, report: report, workingDirectory: writesUnder ?? workingDirectory, executedNothing: executedNothing)
         else {
-            return []
+            return outcome.report.flatMap { RunInventoryCheck.unchecked(by: arguments, report: $0, workingDirectory: writesUnder ?? workingDirectory, executedNothing: executedNothing)?.lines } ?? []
         }
         var outcomes = report.testOutcomes
         outcomes.commandExitCode = outcome.exitCode
-        return RunInventoryCheck.check(outcomes, loggedAt: outcome.log?.url, repositoryRoot: repository, budget: inventoryBudget, executedNothing: executedNothing).lines(after: report.testCrash)
+        return RunInventoryCheck.check(outcomes, loggedAt: outcome.log?.url, repositoryRoot: GitContext.discoverRoot(from: package) ?? package, package: package, budget: inventoryBudget, executedNothing: executedNothing).lines(after: report.testCrash)
     }
 
     /// The ledger this run reads and writes: the real one for `root`, or the one under ``writesUnder`` where a test scoped this run.
@@ -540,7 +542,7 @@ struct RunCommand: ParsableCommand {
             output.emitError("sift run: no filter for this command — output passed through unchanged.")
             return nil
         }
-        if let answer = outcome.filteredAnswer(workingDirectory: workingDirectory, accessibility: accessibility, testBundles: bundles, selector: selector, inventory: inventory) {
+        if let answer = outcome.filteredAnswer(workingDirectory: workingDirectory, accessibility: accessibility, testBundles: bundles, selector: selector, inventory: inventory, stamped: true) {
             output.emit(answer.text)
             return answer.lines
         }
@@ -597,6 +599,19 @@ extension RunCommand {
 }
 
 extension RunCommand {
+    /// Re-arms the preference on every simulator the run tested on, reading the run's log only where the destination is not in the command line.
+    private func restoreAccessibility(after outcome: RunOutcome) -> [SimulatorAccessibility.Restoration] {
+        // The log is read whole only where the re-arm has to consult it: an `xcodebuild` line that named no
+        // `-destination`, whose resolved platform shows nowhere else. Every other run pays nothing for it.
+        let needsTranscript = arguments.first.map { ($0 as NSString).lastPathComponent } == "xcodebuild" && !arguments.contains("-destination")
+        // Lossy, not `String(data:encoding:)`: only an ASCII marker (`PLATFORM_NAME\=…`) is ever looked for in
+        // this text, so a run log that is not valid UTF-8 elsewhere must not drop the re-arm note along with it.
+        let transcript = needsTranscript ? outcome.log?.contents().map { String(decoding: $0, as: UTF8.self) } : nil // swiftlint:disable:this optional_data_string_conversion no_swiftlint_disable
+        return SimulatorAccessibility.restore(after: arguments, log: transcript, run: simulatorRun)
+    }
+}
+
+extension RunCommand {
     /// The device notes owed by a run whose filtered answer could not be served — read from the outcome's own report rather than assumed, so an already-on device is not told there is nothing to say when its failures read empty accessibility trees.
     ///
     /// Pulled out of ``report(_:workingDirectory:accessibility:bundles:)`` so the wiring — that ``RunOutcome/failuresReadEmptyTrees(workingDirectory:accessibility:)`` is asked rather than assumed `false` — is reachable from a test without a live process.
@@ -607,6 +622,18 @@ extension RunCommand {
 }
 
 extension RunCommand {
+    /// What was asked for, minus the terminator and the mark the hook leaves on a build it rewrote.
+    ///
+    /// `.captureForPassthrough` hands `--` through with everything else, and both spellings — with it and without — have to reach the same command. The mark (``SiftCore/RunRewrite``) is never the command's: nothing past this sees it.
+    private var arguments: [String] {
+        coverage ? RunCoverage.enabling(asked.arguments) : asked.arguments
+    }
+
+    /// What was typed after `sift run`, the terminator and the hook's mark off, and whether the mark was there.
+    private var asked: (arguments: [String], rewritten: Bool) {
+        RunRewrite.unmarked(command.first == "--" ? Array(command.dropFirst()) : command)
+    }
+
     /// The file and line `--without-line` names, split on the last colon; anything else is refused with the form it takes.
     private static func line(named written: String) throws -> (path: String, number: Int) {
         guard let colon = written.lastIndex(of: ":"),

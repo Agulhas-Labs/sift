@@ -75,7 +75,7 @@ struct TranscriptAuditReplayTests {
     /// A whole `cat` of a file the hook answers in place today is recovered, a cold `sed` window of another is recovered too, and the share is recomputed from both.
     @Test func aWholeReadAndAColdWindowAreBothRecovered() async throws {
         let root = try await WorthAnsweringFixture.repository()
-        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0) // \(String(repeating: "x", count: 80))\n        return count * 2\n    }" }
+        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0)\(WorthAnsweringFixture.comment)\n        return count * 2\n    }" }
         try ("/// A gizmo.\nstruct Gizmo {\n" + members.joined(separator: "\n") + "\n}\n")
             .write(to: root.appendingPathComponent("Sources/App/Gizmo.swift"), atomically: true, encoding: .utf8)
         try await SiftEngine(directory: root).ensureFresh()
@@ -230,6 +230,10 @@ struct TranscriptAuditReplayTests {
     /// `HookReplay`'s size budget drives the real in-place answerer, not a fixture: a whole read the live hook answers comfortably under its own ten-thousand-byte budget is measured over-size once the replay's own budget is set below it, and the bytes it names are the answer the answerer actually built.
     @Test func theReplaysSizeBudgetDrivesTheRealAnswererOversize() async throws {
         let root = try await InPlaceAnswerTests.indexedRepository()
+        // A file past the size bound whose digest is still more than the share of its source a whole read's refusal may run to, so only the replay's budget withholds it.
+        try ("/// A depot.\nstruct Depot {\n" + (1 ... 400).map { "    func stock\($0)() -> Int { \($0) }" }.joined(separator: "\n") + "\n}\n")
+            .write(to: root.appendingPathComponent("Sources/App/Depot.swift"), atomically: true, encoding: .utf8)
+        try await SiftEngine(directory: root).ensureFresh()
 
         let hook = try HookReplay(directory: TemporaryDirectory.make("hook-replay"), sizeBudget: 10, timeBudget: InPlaceAnswerTests.roomy)
         let verdict = await Self.verdict(of: "cat Sources/App/Depot.swift", cwd: root.path, hook: hook)
@@ -282,7 +286,7 @@ struct TranscriptAuditReplayTests {
 
         #expect(section.contains("  cold            1  the lookups the audit calls cold"), "\(section)")
         #expect(section.contains { $0.hasPrefix("  still cold      1  ") }, "\(section)")
-        #expect(section.contains("         1  noLookup"), "\(section)")
+        #expect(section.contains("         1  locatedWindow (logged)"), "\(section)")
         #expect(section.contains { $0.hasPrefix("  located         0  ") }, "\(section)")
         #expect(section.contains { $0.hasPrefix("  read whole      0  ") }, "\(section)")
     }
@@ -316,7 +320,7 @@ struct TranscriptAuditReplayTests {
     /// A window behind a `cd` into the repository, of a file an earlier window behind the same `cd` already showed, is a re-read at the scan itself: both relative paths are spelled out against the directory the `cd` moves to, which is where the hook reads them from, so the second is neither cold nor left still cold as `noLookup`.
     @Test func aWindowBehindACdOfAFileAnEarlierWindowBehindTheSameCdAlreadyShowedIsARescanReRead() async throws {
         let root = try await InPlaceAnswerTests.indexedRepository()
-        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0) // \(String(repeating: "x", count: 80))\n        return count * 2\n    }" }
+        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0)\(WorthAnsweringFixture.comment)\n        return count * 2\n    }" }
         try ("/// A gizmo.\nstruct Gizmo {\n" + members.joined(separator: "\n") + "\n}\n")
             .write(to: root.appendingPathComponent("Sources/App/Gizmo.swift"), atomically: true, encoding: .utf8)
         try await SiftEngine(directory: root).ensureFresh()
@@ -525,7 +529,7 @@ extension TranscriptAuditReplayTests {
     /// A window behind a `cd` and in front of `|| true` is placed as the same window without either — `true` prints nothing, so the hook reads the line as the window alone — and a window of a file an earlier recovered answer showed is therefore never left still cold as `noLookup`.
     @Test func aWindowBehindACdAndASilentFallbackIsNotLeftStillCold() async throws {
         let root = try await InPlaceAnswerTests.indexedRepository()
-        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0) // \(String(repeating: "x", count: 80))\n        return count * 2\n    }" }
+        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0)\(WorthAnsweringFixture.comment)\n        return count * 2\n    }" }
         try ("/// A gizmo.\nstruct Gizmo {\n" + members.joined(separator: "\n") + "\n}\n")
             .write(to: root.appendingPathComponent("Sources/App/Gizmo.swift"), atomically: true, encoding: .utf8)
         try await SiftEngine(directory: root).ensureFresh()
@@ -546,7 +550,7 @@ extension TranscriptAuditReplayTests {
     @Test(arguments: ["|| echo x", "|| sed -n 1,5p Gizmo.swift"])
     func aWindowInFrontOfAFallbackThatPrintsIsPlacedBehindItsCd(fallback: String) async throws {
         let root = try await InPlaceAnswerTests.indexedRepository()
-        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0) // \(String(repeating: "x", count: 80))\n        return count * 2\n    }" }
+        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0)\(WorthAnsweringFixture.comment)\n        return count * 2\n    }" }
         try ("/// A gizmo.\nstruct Gizmo {\n" + members.joined(separator: "\n") + "\n}\n")
             .write(to: root.appendingPathComponent("Sources/App/Gizmo.swift"), atomically: true, encoding: .utf8)
         try await SiftEngine(directory: root).ensureFresh()
@@ -690,7 +694,7 @@ extension TranscriptAuditReplayTests {
 
     /// An answer that runs out of time in the session backs off that shape in the session alone: its subagent's identical read a minute later is tried and runs out of time of its own, never withheld by the session's back-off.
     @Test func anOverrunBacksOffOnlyTheContextItHappenedIn() async throws {
-        let root = try await InPlaceAnswerTests.indexedRepository()
+        let root = try await InPlaceAnswerTests.indexedRepository(padding: 300)
         let session = try TemporaryDirectory.make("projects").appendingPathComponent("replayed-session.jsonl")
         let subagents = session.deletingPathExtension().appendingPathComponent("subagents", isDirectory: true)
         try FileManager.default.createDirectory(at: subagents, withIntermediateDirectories: true)
@@ -778,7 +782,7 @@ extension TranscriptAuditReplayTests {
 
     /// A call's timestamp, not wall time, drives when an overrun's back-off has elapsed: two calls of the same shape ten minutes apart on the transcript's own clock — both dated years before the suite runs — back off only within that window, so the second is tried again rather than withheld on a window the wall clock, close to elapsing on neither reading, would say had not even started.
     @Test func aBackoffWindowElapsesOnTheTranscriptsClockNotWallTime() async throws {
-        let root = try await InPlaceAnswerTests.indexedRepository()
+        let root = try await InPlaceAnswerTests.indexedRepository(padding: 300)
         let hook = try HookReplay(directory: TemporaryDirectory.make("hook-replay"), timeBudget: 0)
 
         let section = try await Self.replayed([

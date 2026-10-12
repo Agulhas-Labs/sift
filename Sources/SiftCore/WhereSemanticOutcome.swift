@@ -3,14 +3,12 @@
 //
 
 extension WhereRenderer {
-    /// What the semantic pass produced: the axis for the header, the declarations it could not answer for, which the syntactic fallback then picks up, and whether it resolved anything the reference boundaries bound.
+    /// What the semantic pass produced: the axis for the header, the declarations it could not answer for, which the syntactic fallback then picks up, and what it listed.
     struct SemanticOutcome {
         let axis: SemanticAxis
         let refused: [SymbolRow]
-        /// Whether any row was actually asked for its references or its usage — an empty answer included, since "no references to X" is itself a claim about references and carries the same two caveats.
-        ///
-        /// False where every row was refused for staleness or carries no USR, and on an extension row, which the pass skips: there the boundaries would describe a section the answer does not have.
-        let boundsReferences: Bool
+        /// The note under the header naming the modules a later build left out, where the answer cites rows in their changed files (``NotCompiledNote``).
+        var notCompiledNote: String?
         /// The in-tree stores that owned at least one declaration, by name, in the order they first answered.
         var answeredBy: [String] = []
         /// The declarations no store resolved, for the line naming the project that builds their files.

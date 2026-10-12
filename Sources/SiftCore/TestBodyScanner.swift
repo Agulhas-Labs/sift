@@ -21,10 +21,11 @@ final class TestBodyScanner: SyntaxVisitor {
 
     /// Parses `source` and returns its openings; the tree is local to this call and released when it returns.
     static func openings(in source: String, path: String) -> [TestBodyOpening] {
-        let tree = Parser.parse(source: source)
-        let scanner = TestBodyScanner(converter: SourceLocationConverter(fileName: path, tree: tree))
-        scanner.walk(tree)
-        return scanner.openings
+        NestingGate.parseOrEmpty(source) { tree in
+            let scanner = TestBodyScanner(converter: SourceLocationConverter(fileName: path, tree: tree))
+            scanner.walk(tree)
+            return scanner.openings
+        }
     }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {

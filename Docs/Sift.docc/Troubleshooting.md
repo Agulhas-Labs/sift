@@ -15,9 +15,7 @@ The header of an answer says how far to trust it. After you edit a file the comp
 `sift run -- swift build --build-tests`, append a comment line to `Sources/Stacks/Library.swift`, and ask:
 
 ```text
-tree: Shelf  head: ec26cde  dirty: 1  parse_errors: 0  semantic: stale (1 file changed since last build)
-where Library.count
-mode: syntactic + semantic (index store via .build)
+tree: Shelf  head: ec26cde  dirty: 1  parse_errors: 0  semantic: stale since last build (1 file changed: Sources/Stacks/Library.swift)
 
 declarations (1):
   Stacks.Library.count(for:) — func — public func count(for borrower: String) -> Int — Sources/Stacks/Library.swift:38-40
@@ -26,7 +24,7 @@ semantic REFUSED — changed since the last build; rebuild with `sift run -- swi
 
 syntactic call sites — by written name over the working tree, never stale — see sift help answers (call sites)
 
-"count" (1 call site in 1 file):
+"count" (1 call site by written name in 1 file):
   Sources/Stacks/Library.swift:
     :20  in Library.lend(title:to:days:)  | guard count(for: borrower) < limit else {
 ```
@@ -51,13 +49,11 @@ repository's next query; `sift index` does it up front.
 
 ### There is no index store
 
-A repository that has not been built has no index store, and `where` says so in the header and the mode line:
+A repository that has not been built has no index store, and `where` says so in the header and the note under it:
 
 ```text
-tree: Shelf  head: ec26cde  clean  semantic: none (no index store — see note)
-where Library.lend
-mode: syntactic (sift help answers); no index store for this tree yet; how to build one: sift help answers, section (index store)
-callers/overrides: NOT ANSWERED from the index store; see the mode line above.
+tree: Shelf  head: ec26cde  clean  semantic: none (no index store for this tree yet)
+no store for callers, overrides or references; sites by written name; how to build one: sift help answers, section (index store)
 ```
 
 Without a store, `where` promises declarations, and call sites matched by their written name. It does not

@@ -44,9 +44,15 @@ extension InPlaceAnswerer.Computed {
         }.joined(separator: " or ")
     }
 
+    /// The bytes a refusal of this answer may run to: `budget`, or — for the whole read of one file, which the hook has denied the source of — up to ``InPlaceAnswer/wholeReadShare`` of the file's bytes, at most ``InPlaceAnswer/wholeReadCeiling``, where that is more.
+    func sizeAllowance(budget: Int) -> Int {
+        guard calls.count == 1, calls[0].tool == "digest", calls[0].fileLines != nil, let source = calls[0].source else { return budget }
+        return max(budget, min(source * InPlaceAnswer.wholeReadShare.numerator / InPlaceAnswer.wholeReadShare.denominator, InPlaceAnswer.wholeReadCeiling))
+    }
+
     /// The first check the candidate framed as `refusal` fails, where it is held to the size budget `sizeBudget` and, where `weighed`, to the source its calls weighed; `nil` where it passes them all.
     func shortfall(as refusal: InPlaceAnswer.Refusal, sizeBudget: Int, weighed: Bool) -> InPlaceAnswerer.Shortfall? {
-        guard refusal.served <= sizeBudget else { return .overBudget }
+        guard refusal.served <= sizeAllowance(budget: sizeBudget) else { return .overBudget }
         guard weighed else { return nil }
         guard undercutsWhatItWeighs(served: refusal.served), !InPlaceAnswer.deniesSaving(inReason: refusal.text) else { return .notSmaller }
         return savesTooLittleForWhatItHides(served: refusal.served) ? .belowFloor : nil

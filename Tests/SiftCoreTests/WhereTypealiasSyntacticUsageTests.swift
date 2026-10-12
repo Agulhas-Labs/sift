@@ -36,9 +36,9 @@ struct WhereTypealiasSyntacticUsageTests {
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
 
-        let output = try await engine.lookup(symbol: "Gizmo", freshness: freshness)
+        let output = try await engine.lookup(symbol: "Gizmo", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
-        #expect(output.contains("\"Gizmo\" used by 4 lines in 2 files — "), "\(output)")
+        #expect(output.contains("\"Gizmo\" (4 uses by written name in 2 files) — "), "\(output)")
         #expect(output.contains("; 2 written as Sources.Box and Sources.Crate, typealiases naming it, folded in here"), "\(output)")
         #expect(output.contains("; 2 more lines declaring a typealias of it, which is another name for the type rather than use of it"), "\(output)")
         #expect(output.contains("\n  Sources/Lib/Gizmo.swift (1):\n    :4  | public typealias Spare = Gizmo; public var spare: Gizmo? = nil\n"), "\(output)")
@@ -68,9 +68,9 @@ struct WhereTypealiasSyntacticUsageTests {
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
 
-        let output = try await engine.lookup(symbol: "Crate", freshness: freshness)
+        let output = try await engine.lookup(symbol: "Crate", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
-        #expect(output.contains("\"Crate\" used by 2 lines in 2 files — "), "\(output)")
+        #expect(output.contains("\"Crate\" (2 uses by written name in 2 files) — "), "\(output)")
         #expect(output.contains("\n  Sources/Lib/Crate.swift (1):\n    :2  | public typealias Ints = Crate<Int>"), "\(output)")
         #expect(output.contains("\n  Sources/Lib/Use.swift (1):\n    :1  | let many: Ints? = nil"), "\(output)")
         #expect(!output.contains("declaring a typealias of it"), "\(output)")

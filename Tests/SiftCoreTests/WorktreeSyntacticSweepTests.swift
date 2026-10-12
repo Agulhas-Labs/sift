@@ -43,8 +43,8 @@ struct WorktreeSyntacticSweepTests {
         let output = try await Self.answer("relay()", in: worktree)
         let lines = output.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains { $0.hasPrefix("references: all sites by written name, paged by file") }, "\(output)")
-        #expect(output.contains("no index store in this worktree"), "\(output)")
+        #expect(lines.contains { $0.hasPrefix("no store for callers, overrides or references; sites by written name") }, "\(output)")
+        #expect(output.contains("semantic: none (no index store in this worktree)"), "\(output)")
         #expect(!output.contains("references: UNAVAILABLE"), "\(output)")
         #expect(!output.contains("truncated:"), "\(output)")
         for index in 1 ... Self.callerCount {
@@ -79,7 +79,7 @@ struct WorktreeSyntacticSweepTests {
     func aCheckoutSweepWithNoStoreNamesTheTreeNotAWorktree() async throws {
         let output = try await Self.answer("relay()", in: Self.makeRepo())
 
-        #expect(output.split(separator: "\n").contains { $0.hasPrefix("references: all sites by written name, paged by file") }, "\(output)")
+        #expect(output.split(separator: "\n").contains { $0.hasPrefix("no store for callers, overrides or references; sites by written name") }, "\(output)")
         #expect(output.contains("no index store for this tree yet"), "\(output)")
         #expect(!output.contains("in this worktree"), "\(output)")
     }

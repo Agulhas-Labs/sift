@@ -18,14 +18,17 @@ struct SmallOverloadsServed {
     /// The lines of the served answer, or `nil` where the list should stand instead.
     ///
     /// The list stands once the ranges add up to more than `SourcePassthrough.floorLineCeiling`, and where any one cannot be sliced, because then the list is the answer that says which.
-    func answer(_ members: [SymbolRow], target: String) throws -> [String]? {
+    func answer(_ members: [SymbolRow], target: String, signatureOnly: Bool = false) throws -> [String]? {
         let total = members.reduce(0) { $0 + $1.endLine - $1.line + 1 }
         guard total <= SourcePassthrough.floorLineCeiling else { return nil }
         var blocks: [String] = []
+        var printed = 0
         for row in members {
             let source = renderer.sourceReader.text(of: row.path, under: renderer.repoRoot)
             guard case let .lines(body, _) = SourceSlicer.slice(of: row, in: source) else { return nil }
-            try blocks.append(([header(of: row), ""] + body).joined(separator: "\n"))
+            let shown = signatureOnly ? MemberSignature.lines(of: body) : body
+            printed += shown.count
+            try blocks.append(([header(of: row), ""] + shown).joined(separator: "\n"))
         }
         // The banners name each file once however many of its declarations are served.
         var paths: [String] = []
@@ -36,6 +39,6 @@ struct SmallOverloadsServed {
         let elsewhere = try ParseErrorNotice.acrossRepository(renderer.store).paths.filter { !paths.contains($0) }
         let countBanner = ParseErrorNotice(paths: elsewhere).servedCountBanner.map { [$0, ""] } ?? []
         let preamble = try countBanner + renderer.parseErrorBanner(touching: paths) + renderer.guessedModuleBanner(touching: paths)
-        return preamble + ["\(target) names \(members.count) declarations, \(total) lines together; each follows", "", blocks.joined(separator: "\n\n")]
+        return preamble + ["\(target) names \(members.count) declarations, \(printed) lines together; each follows", "", blocks.joined(separator: "\n\n")]
     }
 }

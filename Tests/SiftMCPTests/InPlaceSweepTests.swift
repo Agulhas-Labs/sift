@@ -15,10 +15,14 @@ struct InPlaceSweepTests {
     /// A package whose `Gadget` is declared in one file and referenced in another, built with an index store and indexed.
     private static func builtPackage() async throws -> URL {
         let root = try MCPTestRepo.make(declaring: "Alpha")
+        let notes = (1 ... 26).map { "// Widget on shelf \($0) of the store, counted with every other Widget there" }.joined(separator: "\n")
+        let pallets = (1 ... 26).map { "func pallet\($0)(first: Gadget = Gadget(), second: Gadget = Gadget()) {}" }.joined(separator: "\n")
         try MCPTestRepo.add([
             "Package.swift": "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"App\", targets: [.target(name: \"App\")])\n",
+            "Sources/App/Stock/Aisles/Bays/Racks/Shelves/Pallets.swift": "\(pallets)\n",
             "Sources/App/Gadget.swift": "public struct Gadget {\n    public init() {}\n}\n",
             "Sources/App/Uses.swift": "struct Holder {\n    var gadget: Gadget\n    func make() -> Gadget { Gadget() }\n    func take(_ part: Gadget) {}\n}\n",
+            "Sources/App/Stock/Aisles/Bays/Racks/Shelves/Notes.swift": "\(notes)\n",
             "Sources/App/Widget.swift": "struct Widget {}\n// Widget in a comment\nlet label = \"Widget in a string\"\n",
         ], to: root)
         try MCPTestRepo.build(root)
@@ -46,8 +50,8 @@ struct InPlaceSweepTests {
         // the proof fails there as well — and it does not fall back, since `where` resolves the name as written
         // and the search does not, so the loose answer would not say what the search says.
         #expect(try await InPlaceAnswerTests.outcome("grep -rniw gadget Sources", in: root) == .withheld(.notExact))
-        // A cut across files keeps lines in an order grep does not fix.
-        #expect(try await InPlaceAnswerTests.outcome("grep -rnw Gadget Sources | head -2", in: root) == .withheld(.unchecked))
+        // A cut across files keeps lines in an order grep does not fix, so it is weighed against the fewest bytes any order prints, which two short lines undercut.
+        #expect(try await InPlaceAnswerTests.outcome("grep -rnw Gadget Sources | head -2", in: root) == .withheld(.notSmaller))
     }
 
     /// A sweep's search stops, and nothing opens the engine for it, at the first line of a file no `where` answer lists lines of, or once the lines it prints could not all be located inside the size budget.

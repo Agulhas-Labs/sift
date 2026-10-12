@@ -36,7 +36,7 @@ struct SwiftLiteralLexer {
             let trimmed = body.literal.text.drop { $0 == " " || $0 == "\t" }
             if !trimmed.isEmpty {
                 let dropped = body.literal.text.count - trimmed.count
-                found.append(Literal(text: String(trimmed), segments: body.literal.segments, printedSegments: body.literal.printedSegments, segmentStarts: body.literal.segmentStarts.map { $0 - dropped }))
+                found.append(Literal(text: String(trimmed), segments: body.literal.segments, printedSegments: body.literal.printedSegments, segmentStarts: body.literal.segmentStarts.map { $0 - dropped }, isBlockLine: true))
             }
             found.append(contentsOf: body.nested)
             joins = Array(repeating: false, count: found.count)
@@ -123,18 +123,27 @@ extension SwiftLiteralLexer {
         let printedSegments: [String]
         /// The character offset in `text` where each of `segments` starts; negative for a block line's first segment by the indentation `text` drops.
         let segmentStarts: [Int]
+        /// Whether this is one line of a multiline block, whose segments still carry the line's indentation.
+        let isBlockLine: Bool
 
-        init(text: String, segments: [String], printedSegments: [String]? = nil, segmentStarts: [Int]) {
+        init(text: String, segments: [String], printedSegments: [String]? = nil, segmentStarts: [Int], isBlockLine: Bool = false) {
             self.text = text
             self.segments = segments
             self.printedSegments = printedSegments ?? segments
             self.segmentStarts = segmentStarts
+            self.isBlockLine = isBlockLine
         }
 
-        /// Whether any literal segment holds `query`, matched with smart case against either its source spelling or its printed text.
+        /// `printedSegments` as the line prints once the block's indentation is stripped, which a block line's first segment still carries; the printed segments themselves for any other literal.
+        var unindentedPrintedSegments: [String] {
+            guard isBlockLine, let first = printedSegments.first else { return printedSegments }
+            return [String(first.drop { $0 == " " || $0 == "\t" })] + printedSegments.dropFirst()
+        }
+
+        /// Whether any literal segment holds `query`, matched ignoring case against either its source spelling or its printed text.
         func contains(_ query: String) -> Bool {
             zip(segments, printedSegments).contains { spelling, printed in
-                SmartCaseQuery.contains(spelling, query: query) || SmartCaseQuery.contains(printed, query: query)
+                CaseFoldedQuery.contains(spelling, query: query) || CaseFoldedQuery.contains(printed, query: query)
             }
         }
 
@@ -150,7 +159,7 @@ extension SwiftLiteralLexer {
             let runs = anchor.split { $0 == "\"" || $0 == "\\" || $0.unicodeScalars.contains { $0.properties.generalCategory == .control } || !spelled.contains($0) }
             let longestFirst = runs.enumerated().sorted { $0.element.count != $1.element.count ? $0.element.count > $1.element.count : $0.offset < $1.offset }.map(\.element)
             for run in [Substring(anchor)] + longestFirst {
-                guard let found = SmartCaseQuery.range(of: String(run), in: written) else { continue }
+                guard let found = CaseFoldedQuery.range(of: String(run), in: written) else { continue }
                 let start = segmentStarts[index] + written.distance(from: written.startIndex, to: found.lowerBound)
                 let range = start ..< start + written.distance(from: found.lowerBound, to: found.upperBound)
                 if range.lowerBound >= 0, range.upperBound <= text.count {
@@ -196,7 +205,7 @@ private extension SwiftLiteralLexer {
         index + hashes <= characters.count && characters[index ..< index + hashes].allSatisfy { $0 == "#" }
     }
 
-    /// `segment` unescaped to the text it prints: `\"` → `"`, `\\` → `\`, `\n`/`\t`/`\r`/`\0` → the character, `\u{…}` → the scalar.
+    /// `segment` unescaped to the text it prints: `\"` → `"`, `\'` → `'`, `\\` → `\`, `\n`/`\t`/`\r`/`\0` → the character, `\u{…}` → the scalar.
     static func printed(_ segment: String) -> String {
         let characters = Array(segment)
         var result = ""
@@ -210,6 +219,9 @@ private extension SwiftLiteralLexer {
             switch characters[index + 1] {
             case "\"":
                 result.append("\"")
+                index += 2
+            case "'":
+                result.append("'")
                 index += 2
             case "\\":
                 result.append("\\")

@@ -2,7 +2,6 @@
 // Copyright © Agulhas Labs
 //
 
-import SwiftParser
 import SwiftSyntax
 
 /// The name a written type is declared under, so an extension of `Depot<Int>`, `[Int]` or `Int?` is matched to the type `Depot`, `Array` or `Optional` it extends.
@@ -43,9 +42,7 @@ struct DeclaredTypeName {
 
     /// The dotted path a written type names with its generic arguments set aside — `Depot.Gizmo` for `Depot.Gizmo<Int>` — or the spelling itself where it is not a name or a member of one.
     static func path(ofSpelling spelling: String) -> String {
-        var parser = Parser(spelling)
-        let type = TypeSyntax.parse(from: &parser)
-        return type.hasError ? spelling : path(of: type) ?? spelling
+        NestingGate.parseTypeOrMissing(spelling) { $0.hasError ? spelling : path(of: $0) ?? spelling }
     }
 
     /// The declared name of the innermost type a dotted container path ends in — `Depot` for `App.Depot<Pallet.Gizmo>`, `Array` for `App.[Int]` — read past dots inside brackets.
@@ -61,8 +58,6 @@ struct DeclaredTypeName {
             }
         }
         let spelling = String(path[start...])
-        var parser = Parser(spelling)
-        let type = TypeSyntax.parse(from: &parser)
-        return type.hasError ? spelling : of(type)
+        return NestingGate.parseTypeOrMissing(spelling) { $0.hasError ? spelling : of($0) }
     }
 }

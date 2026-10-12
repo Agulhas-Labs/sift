@@ -93,10 +93,10 @@ struct HelpTopicsTests {
     func theAnswersTopicDescribesStatusesStaleFormAsItIsPrinted() throws {
         let answers = try #require(HelpTopics.topic(named: "answers")).body
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        let template = "stale (N files changed since last build, M files deleted since last build)"
-        let printed = SemanticAxis.staleByFileState(newerFiles: 2, deletedFiles: 3).rendered
+        let template = "stale since last build (N files: C changed, D deleted)"
+        let printed = SemanticAxis.staleByFileState(StaleFiles(changed: 2, deleted: 3)).rendered
 
         #expect(answers.contains("`\(template)`"))
-        #expect(template.replacingOccurrences(of: "N files", with: "2 files").replacingOccurrences(of: "M files", with: "3 files") == printed)
+        #expect(template.replacingOccurrences(of: "N files", with: "5 files").replacingOccurrences(of: "C changed", with: "2 changed").replacingOccurrences(of: "D deleted", with: "3 deleted") == printed)
     }
 }

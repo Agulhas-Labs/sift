@@ -35,6 +35,12 @@ enum SemanticInput {
         return false
     }
 
+    /// This input for a query about the repo-relative `paths`: an open context none of whose stores answers for any of them takes the no-store path its ``SemanticContext/outsideNote`` gives, and every other input is unchanged.
+    func answering(forFiles paths: [String]) -> SemanticInput {
+        guard case let .active(context) = self, !paths.isEmpty, let note = context.outsideNote, !context.answersForAny(of: paths) else { return self }
+        return .unavailable(note: note)
+    }
+
     /// Whether the caller turned semantics off (`--syntactic`) rather than merely lacking a store — distinguishes "did not ask for callers/overrides" from "asked, but nothing is there to answer with".
     var isInactive: Bool {
         if case .inactive = self {

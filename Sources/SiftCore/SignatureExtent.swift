@@ -13,14 +13,16 @@ struct SignatureExtent {
 
     /// The extent of `row`'s signature in `source`, the file's lines, or `nil` where no declaration of a kind with a signature starts where the row says it does.
     init?(of row: SymbolRow, in source: [String]) {
-        let tree = Parser.parse(source: source.joined(separator: "\n"))
-        let converter = SourceLocationConverter(fileName: row.path, tree: tree)
-        let finder = DeclarationFinder(line: row.line, column: row.column, converter: converter)
-        finder.walk(tree)
-        guard let declaration = finder.found, let end = Self.end(of: declaration, named: row.name) else {
+        let line = NestingGate.parse(source.joined(separator: "\n")) { tree -> Int? in
+            let converter = SourceLocationConverter(fileName: row.path, tree: tree)
+            let finder = DeclarationFinder(line: row.line, column: row.column, converter: converter)
+            finder.walk(tree)
+            return finder.found.flatMap { Self.end(of: $0, named: row.name) }.map { converter.location(for: $0).line }
+        }
+        guard let line = line.flatMap(\.self) else {
             return nil
         }
-        lastLine = converter.location(for: end).line
+        lastLine = line
     }
 
     /// Where the head of `declaration` ends: the body's opening brace, or the end of the head `SymbolVisitor` records as its signature.

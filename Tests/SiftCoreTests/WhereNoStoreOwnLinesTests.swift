@@ -29,9 +29,9 @@ struct WhereNoStoreOwnLinesTests {
         let using = (path: "Sources/App/Depot.swift", source: "func stock() -> Gizmo {\n    Gizmo(weight: 2)\n}\n")
         let output = try await Self.answer("Gizmo", files: [Self.declaring, using])
 
-        #expect(output.contains("references: all sites by written name, paged by file"), "\(output)")
-        #expect(output.contains("\"Gizmo\" used by 2 lines in 1 file"), "\(output)")
-        #expect(output.contains("more lines inside its own declaration or its extensions in this module, which is not use, listed below as a rename changes them"), "\(output)")
+        #expect(output.contains("no store for uses; sites by written name"), "\(output)")
+        #expect(output.contains("\"Gizmo\" (2 uses by written name in 1 file)"), "\(output)")
+        #expect(output.contains("more lines inside its own declaration or its extensions in this module, listed below as a rename changes them"), "\(output)")
         #expect(output.contains("1 more line declaring a typealias of it, which is another name for the type rather than use of it, listed below as a rename changes it"), "\(output)")
         #expect(output.contains("    :10  | static let heavy = Gizmo(weight: 9)"), "\(output)")
         #expect(output.contains("    :5  | Gizmo(weight: 1)"), "\(output)")
@@ -54,7 +54,7 @@ struct WhereNoStoreOwnLinesTests {
     func aPlainLookupStillCountsThemWithoutListingThem() async throws {
         let output = try await Self.answer("Gizmo", files: [Self.declaring], references: false)
 
-        #expect(output.contains("inside its own declaration or its extensions in this module, which is not use"), "\(output)")
+        #expect(output.contains("inside its own declaration or its extensions in this module"), "\(output)")
         #expect(!output.contains("listed below as a rename changes"), "\(output)")
         #expect(!output.contains(":10  | static let heavy = Gizmo(weight: 9)"), "\(output)")
     }

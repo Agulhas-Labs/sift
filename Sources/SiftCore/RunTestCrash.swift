@@ -100,14 +100,15 @@ public extension RunTestCrash {
             return true
         }
 
-        /// The process SwiftPM's `error: Process '…' exited with unexpected signal code N` names, or `nil` where `line` is not one.
+        /// The process SwiftPM's `error: Process '…' exited with unexpected signal code N` names, found anywhere in `line` because SwiftPM can print it glued to the end of a test process's unterminated output, or `nil` where `line` has none.
         static func signalledProcess(_ line: String) -> Process? {
-            let head = "error: Process '"
             let tail = "' exited with unexpected signal code "
-            guard line.hasPrefix(head), let end = line.range(of: tail, options: .backwards), let signal = Int(line[end.upperBound...]) else {
+            guard let start = line.range(of: "error: Process '"), let end = line.range(of: tail, options: .backwards), start.upperBound <= end.lowerBound,
+                  let signal = Int(line[end.upperBound...])
+            else {
                 return nil
             }
-            let command = line[line.index(line.startIndex, offsetBy: head.count) ..< end.lowerBound]
+            let command = line[start.upperBound ..< end.lowerBound]
             let words = command.split(separator: " ")
             guard let executable = words.first else {
                 return nil
@@ -220,6 +221,15 @@ extension RunTestCrash {
         return clause + "; \(count) selected \(count == 1 ? "test" : "tests") never started"
     }
 
+    /// How many started-and-unfinished tests a crash line names before it lists only the last few that started.
+    static let lastStartedLimit = 5
+
+    /// A signal number with its name where it is a common one, as in `5 (SIGTRAP)`.
+    static func describe(signal: Int) -> String {
+        let names = [5: "SIGTRAP", 6: "SIGABRT", 9: "SIGKILL", 10: "SIGBUS", 11: "SIGSEGV"]
+        return names[signal].map { "\(signal) (\($0))" } ?? "\(signal)"
+    }
+
     /// The lines this crash adds beneath the answer's headline: each trap, then each process that died with the tests it was running and the count it never started.
     func lines() -> [String] {
         var lines = traps.map { "  \(RunFailureCensus.clipped($0))" }
@@ -229,9 +239,19 @@ extension RunTestCrash {
             lines.append("  no trap message in the log: the process took the signal without printing one")
         }
         for (index, process) in processes.enumerated() {
-            let running = unfinished.filter { ($0.hasPrefix("-[") ? Framework.xctest : .swiftTesting) == process.framework }
-            var line = "  \(process.framework.rawValue) test process exited on signal \(process.signal)"
-            line += running.isEmpty ? ", in no test the log shows started and unfinished" : " while running \(running.joined(separator: ", "))"
+            var running = unfinished.filter { ($0.hasPrefix("-[") ? Framework.xctest : .swiftTesting) == process.framework }
+            var line: String
+            if running.count > Self.lastStartedLimit, let bundle = process.bundle {
+                let own = declaredSwiftTesting?.first { TestIdentifier.moduleName(ofTarget: $0.key) == TestIdentifier.moduleName(ofTarget: bundle) }.map { Set($0.value) }
+                if let own {
+                    running = running.filter(own.contains)
+                }
+                let last = running.sorted { (starts[$0]?.position ?? 0) < (starts[$1]?.position ?? 0) }.suffix(Self.lastStartedLimit)
+                line = "  \(bundle) test process exited on signal \(Self.describe(signal: process.signal)); last started: \(last.joined(separator: ", "))"
+            } else {
+                line = "  \(process.framework.rawValue) test process exited on signal \(process.signal)"
+                line += running.isEmpty ? ", in no test the log shows started and unfinished" : " while running \(running.joined(separator: ", "))"
+            }
             if let never = neverStarted[index] {
                 line += "; \(never.count) of \(never.selected) selected \(never.selected == 1 ? "test" : "tests") never started"
             }

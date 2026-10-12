@@ -22,7 +22,7 @@ struct ReadOnlyStoreNoteTests {
         let freshness = try await engine.ensureFresh()
 
         let answer = try await engine.lookup(symbol: "Depot", freshness: freshness)
-        let note = try #require(answer.split(separator: "\n").first { $0.contains("but failed to open:") }.map(String.init))
+        let note = try #require(answer.split(separator: "\n").first { $0.contains("index store failed to open (") }.map(String.init))
 
         #expect(note.contains("cannot be written"), "\(note)")
         #expect(!note.contains("permission"), "\(note)")
@@ -42,8 +42,9 @@ struct ReadOnlyStoreNoteTests {
         let freshness = try await engine.ensureFresh()
 
         let answer = try await engine.lookup(symbol: "Depot", freshness: freshness)
-        let note = try #require(answer.split(separator: "\n").first { $0.contains("in-tree store .build/runner-dd failed to open:") }.map(String.init))
+        let note = try #require(answer.split(separator: "\n").first { $0.contains("index store failed to open (") }.map(String.init))
 
+        #expect(note.contains(".build/runner-dd"), "\(note)")
         #expect(note.contains("cannot be written"), "\(note)")
         #expect(!note.contains("permission"), "\(note)")
         #expect(!note.contains("Error Domain"), "\(note)")

@@ -53,7 +53,7 @@ struct WherePrivateNarrowingTests {
     func aPrivatePropertysUsesInAnotherFileAreDroppedAndCounted() async throws {
         let output = try await Self.lookup("Box.secret")
 
-        #expect(output.contains("\"secret\" (5 uses by name, 1 on other types dropped, 4 kept, narrowed to its declaring file, as it is private: 1 elsewhere dropped, 3 kept, in 1 file):"), "\(output)")
+        #expect(output.contains("\"secret\" (5 uses by written name, 1 on other types dropped, 4 kept, narrowed to its declaring file, as it is private: 1 elsewhere dropped, 3 kept, in 1 file):"), "\(output)")
         #expect(output.contains(":8  in Box.twice()"), "\(output)")
         #expect(!output.contains("Sources/Lib/Other.swift"), "\(output)")
     }

@@ -60,8 +60,8 @@ struct SyntacticCallerTests {
         let freshness = try await engine.ensureFresh()
         let output = try await engine.lookup(symbol: "assertEventually()", freshness: freshness)
 
-        #expect(output.contains("syntactic call sites"))
-        #expect(output.contains("3 call sites in 1 file"))
+        #expect(output.contains("no store for callers, overrides or references; sites by written name"))
+        #expect(output.contains("3 call sites by written name in 1 file"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Users.swift:3  in AlphaTests.testOne()"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Users.swift:9  in BetaTests.testThree()"))
     }
@@ -75,10 +75,10 @@ struct SyntacticCallerTests {
         let freshness = try await engine.ensureFresh()
         let output = try await engine.lookup(symbol: "assertEventually()", freshness: freshness)
 
-        let caveatLines = output.split(separator: "\n").filter { $0.hasPrefix(NameMatchedSites.headingOpening) }
+        let caveatLines = output.split(separator: "\n").filter { $0.hasPrefix(DegradedNote.noStoreOpening) }
 
         #expect(caveatLines.count == 1)
-        #expect(caveatLines.first?.contains("over the working tree, never stale") == true)
+        #expect(caveatLines.first?.contains("sites by written name") == true)
         #expect(caveatLines.first?.contains("dynamically dispatched") == false)
     }
 
@@ -147,11 +147,11 @@ struct SyntacticCallerTests {
         let depth = try await engine.lookup(symbol: "Limits.depth", freshness: freshness)
         let flag = try await engine.lookup(symbol: "Limits.flag", freshness: freshness)
 
-        #expect(depth.contains("\"depth\" (2 uses in 2 files"))
+        #expect(depth.contains("\"depth\" (2 uses by written name in 2 files"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(depth).contains("Sources/App/Limits.swift:5  in Limits.lines(_:)"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(depth).contains("Sources/App/Reader.swift:4  in Reader.read()"))
         #expect(!depth.contains("no call spelled"))
-        #expect(flag.contains("\"flag\" (2 uses in 1 file"))
+        #expect(flag.contains("\"flag\" (2 uses by written name in 1 file"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(flag).contains("Sources/App/Reader.swift:6  in Reader.chosen()"))
     }
 
@@ -197,7 +197,7 @@ struct SyntacticCallerTests {
 
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Unrelated.swift:4  in Unrelated.g()"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Unrelated.swift:6  in Unrelated.h(depth:)"))
-        #expect(output.contains("syntactic call sites — by written name"))
+        #expect(output.contains("no store for callers, overrides or references; sites by written name"))
     }
 
     /// The one-line stand-in notice is identical whether the empty list it stands in for would have held a property's uses or a function's calls — the reading of what an empty list means now lives once in `sift help worktree-index`, not repeated per kind on every call.
@@ -217,12 +217,12 @@ struct SyntacticCallerTests {
         let function = try await engine.lookup(symbol: "Limits.unused()", freshness: freshness)
 
         #expect(property.contains("no use spelled \"unread\" anywhere in the working tree"))
-        #expect(property.contains("callers/overrides: NOT ANSWERED from the index store; see the mode line above."))
+        #expect(property.contains("no store for callers, overrides or references; sites by written name"))
         #expect(!property.contains("Read an empty list"))
-        #expect(function.contains("callers/overrides: NOT ANSWERED from the index store; see the mode line above."))
+        #expect(function.contains("no store for callers, overrides or references; sites by written name"))
         // The two notices are the same string — neither carries a per-kind reading of the empty list.
-        let propertyNotice = try #require(property.split(separator: "\n").first { $0.hasPrefix("callers/overrides: NOT ANSWERED") })
-        let functionNotice = try #require(function.split(separator: "\n").first { $0.hasPrefix("callers/overrides: NOT ANSWERED") })
+        let propertyNotice = try #require(property.split(separator: "\n").first { $0.hasPrefix(DegradedNote.noStoreOpening) })
+        let functionNotice = try #require(function.split(separator: "\n").first { $0.hasPrefix(DegradedNote.noStoreOpening) })
         #expect(propertyNotice == functionNotice)
     }
 
@@ -250,8 +250,8 @@ struct SyntacticCallerTests {
         let freshness = try await engine.ensureFresh()
         let output = try await engine.lookup(symbol: "assertEventually()", freshness: freshness)
 
-        #expect(output.contains("semantic: none (no index store — see note)"))
-        #expect(output.contains("syntactic call sites — by written name over the working tree, never stale"))
+        #expect(output.contains("semantic: none (no index store for this tree yet)"))
+        #expect(output.contains("no store for callers, overrides or references; sites by written name"))
     }
 
     /// A renderer with no scanner wired emits nothing at all, which is what keeps "unscanned" and "scanned, empty" distinguishable.
@@ -305,7 +305,7 @@ struct SyntacticCallerTests {
 
         #expect(!output.contains(NameMatchedSites.headingOpening))
         #expect(!output.contains("Read an empty list"))
-        #expect(output.contains("callers/overrides: NOT ANSWERED from the index store (a subscript has no name-matched fallback either); see the mode line above."))
+        #expect(output.contains(DegradedNote.subscriptOpening))
     }
 
     /// An enum case is named — `.fast`, `case .fast:` — rather than called, so with no store what stands for its uses is every expression spelling its name; and a case nothing spells says no *use* was found, never that no call was.
@@ -340,8 +340,8 @@ struct SyntacticCallerTests {
         let slow = try await engine.lookup(symbol: "Mode.slow", freshness: freshness)
         let idle = try await engine.lookup(symbol: "Mode.idle", freshness: freshness)
 
-        #expect(fast.contains("syntactic call sites — by written name"))
-        #expect(fast.contains("\"fast\" (1 use in 1 file"))
+        #expect(fast.contains("no store for callers, overrides or references; sites by written name"))
+        #expect(fast.contains("\"fast\" (1 use by written name in 1 file"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(fast).contains("Sources/App/Mode.swift:7  in pick(_:)"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(slow).contains("Sources/App/Mode.swift:13  in make()"))
         #expect(idle.contains("no use spelled \"idle\" anywhere in the working tree"))

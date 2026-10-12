@@ -161,6 +161,18 @@ public extension RunProgressSnapshot {
         !phase.isTerminal && now.timeIntervalSince(updatedAt) <= RunProgressWriter.staleAfter
     }
 
+    /// Whether the run is still going by its process: a phase that is not terminal, a `pid` that answers a signal-0 probe, and a heartbeat no older than ``processCeiling``.
+    ///
+    /// A heartbeat is a timer on a loaded machine and can be late; a process that is gone cannot come back, so this is the rule for a reader that must not mistake a slow run for a dead one. The ceiling covers the one way the probe lies: a run killed before it wrote its end, whose pid the system has since given to another process.
+    func processIsGoingOn(at now: Date = Date()) -> Bool {
+        !phase.isTerminal && now.timeIntervalSince(updatedAt) <= Self.processCeiling && kill(pid, 0) == 0
+    }
+
+    /// The longest a heartbeat may lag before a live-looking `pid` stops counting as the run's own: far past any late timer, short of a reused pid keeping a tree's question unasked for good.
+    static var processCeiling: TimeInterval {
+        2 * 60 * 60
+    }
+
     /// Where a run has got to: `idle` until a build or test line is recognised, then building and testing in any order, then exactly one terminal phase.
     enum Phase: String, Codable, Sendable, CaseIterable {
         case idle

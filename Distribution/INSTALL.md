@@ -3,9 +3,10 @@
      goes in CHANGELOG.md, which ships beside this. -->
 # sift — install
 
-A Swift toolkit for AI coding agents: an index of your code (type digests, symbol resolution,
-member source, reference sweeps, structural search, string-catalog tracing), builds and tests that
-tell the truth, and checks on every change — as a CLI and an MCP stdio server for Claude Code.
+Two tools in one binary for AI coding agents working in Swift: build and test output an agent can
+afford to read (`sift run`, and hooks that answer a large file's whole read with its digest and check
+every edit parses), and semantic lookups for when grep is too noisy (callers, read and write sites,
+reference sweeps, structural search, string-catalog tracing) — as a CLI and an MCP stdio server.
 
 <!-- PROVENANCE -->
 
@@ -36,7 +37,8 @@ open-source components the binary links, and their licenses, are listed in `THIR
 | File | |
 |---|---|
 | `sift` | the binary — one file, no runtime, no package manager |
-| `install.sh` | copies it to `~/.local/bin` and registers the MCP server at user scope (per-repository `--scope local` is the alternative, see the README) |
+| `install.sh` | copies it to `~/.local/bin`, registers the MCP server at user scope (per-repository `--scope local` is the alternative, see `Docs/Guide.md` §3) and appends a line (time, version, commit, tree state, binary size) to `~/.sift/deploys.jsonl`; `sift report --deploys` lists them |
+| `BUILD_INFO` | the version, commit and tree state this bundle was built from, which `install.sh` records; without it the line carries `null` for them |
 | `Sift.md`, `README.md` | the agent guide and the overview |
 | `Docs/Guide.md` | the full reference: config, indexing, freshness, troubleshooting, every command |
 
@@ -79,7 +81,8 @@ repository's `.sift/` (and its `.git/info/exclude` entry) and `~/.sift`, and run
 `swift test`, `xcodebuild` and `swiftlint` may (`[y/N]`, default no: a build runs package manifests and build
 plugins). Each adds only its own block. With no terminal neither is asked and nothing is added; the Claude Code
 section names `sift install-hook --allow-run` (both blocks) and `--allow-lookups` (the lookups alone), and
-`--no-allow-run` adds neither. `sift install` takes none of those flags.
+`--no-allow-run` adds neither. `sift install --allow-run` and `sift install --allow-lookups` answer for the Claude Code
+step without a terminal (`--no-allow-run` is `install-hook` only).
 
 With no terminal to ask on, it installs nothing unless `--yes`, `--all` or `--agent` says what to install into,
 and says so. One agent's failure is reported and the others are still installed; the exit status is 1 when any
@@ -98,12 +101,29 @@ route. It is not published yet, so `sift install` is the one that works today.
 sh install.sh
 ```
 
+**From Claude Code, run it yourself.** In auto mode, Claude Code's permission classifier refuses an agent
+running `install.sh`: it edits the agent's own settings and installs a binary with no Developer ID signature.
+That is the harness working as intended. Type it at the prompt with a leading `!` instead:
+
+```
+! sh install.sh --allow-run
+```
+
+A `!` command has no terminal either, so nothing is asked: `--allow-run` adds both blocks of allow rules (the
+lookups and the wrapped builds), `--allow-lookups` the lookups alone, and with neither no rule is added and the
+output names the command that adds them. Then start a new Claude Code session.
+
 Re-running it is the upgrade path. On a terminal its `install-hook` step asks the two allow-rule questions above
-(lookups default yes, or no after a remembered no; builds default no); the script passes no flag of its own. It registers Claude Code only; run `sift install` afterwards for Cursor and
-Codex. It strips the quarantine flag (the binary is ad-hoc signed, so an AirDropped copy would be refused), removes any previous
-binary **before** copying (never copy over the old inode: macOS SIGKILLs the result, exit 137,
-silently; `rm` first, then `cp`), refreshes the user rule, and **removes any existing `sift` MCP
-registration before adding this one** (at user scope; for a per-repository registration use the README's `--scope local` command instead), since `claude mcp add` fails outright on a name that already
+(lookups default yes, or no after a remembered no; builds default no). With no terminal, as when an agent runs it,
+nothing is asked or added and the output names the command that adds the rules; `sh install.sh --allow-run` (both
+blocks) or `sh install.sh --allow-lookups` (the lookups alone) answers up front, and is the one command to install
+and allow. An agent installing for a user passes them only when the user asked for it. Any other flag is refused.
+It registers Claude Code only; run `sift install` afterwards for Cursor and
+Codex. It strips the quarantine flag (the binary is ad-hoc signed, so an AirDropped copy would be refused), copies the new
+binary to a temporary name beside the destination and then renames it over the old one (never copy over
+the old inode: macOS SIGKILLs the result, exit 137, silently; the rename gives the new binary an inode of
+its own, and there is never a moment with no binary), refreshes the user rule, and **removes any existing `sift` MCP
+registration before adding this one** (at user scope; for a per-repository registration use the `--scope local` command in `Docs/Guide.md` §3 instead), since `claude mcp add` fails outright on a name that already
 exists.
 
 If an older install left a sift status line or the `sift-band@sift` plugin, `install.sh` removes them (the plugin
@@ -260,18 +280,21 @@ the full promise.
 ## Troubleshooting
 
 **It dies instantly with no output (exit 137).** A new binary was copied over an installed one in
-place; see Install. `rm` first, then `cp`.
+place; see Install. Copy to a temporary name, then rename it over the old binary (new inode).
 
 **"no index store for this tree yet".** The semantic half needs a real build: `sift run -- swift build`
 for a SwiftPM package, or `sift run -- xcodebuild -scheme <Scheme> build` for a macOS project (add
 `-workspace <W>.xcworkspace` when there is one; a bare `xcodebuild build` with no scheme builds into
 `./build/` and is never discovered). An iOS project also needs a destination, or it targets a generic
 device and fails to sign: `-destination 'generic/platform=iOS Simulator'`. Then `sift status` reports
-which store it found, or names an `indexStorePath` it read and rejected. A package nested below the
-repo root, or a custom `-derivedDataPath`, needs `indexStorePath` set in `.sift.json`, pointing at the
-store directory itself — the one holding `v<N>/units`, relative to the repo root: `<Pkg>/.build/out`
-for a package in `<Pkg>` (`<Pkg>/.build/debug/index/store` under `--build-system native`), not
-`<Pkg>/.build` itself. The discovery order is in `Docs/Guide.md` §7.
+which store it found, or names an `indexStorePath` it read and rejected. An `xcodebuild
+-derivedDataPath <Pkg>/.build/DerivedData`, where `<Pkg>` is the repo root or a directory holding a
+`Package.swift`, is found with nothing to set, and so is a SwiftPM build of a package nested below the
+repo root (`swift build --package-path <Pkg> --build-tests`), which leaves its store in `<Pkg>/.build`.
+Any other custom `-derivedDataPath` needs `indexStorePath` set in `.sift.json`, pointing at the
+store directory itself — the one holding `v<N>/units`, relative to the repo root:
+`<path>/Index.noindex/DataStore` for `-derivedDataPath <path>`. The discovery
+order is in `Docs/Guide.md` §7.
 
 **MCP server not appearing in Claude Code.** Start a new session first, then check `claude mcp list`.
 When registering by hand, `--scope` must come *before* the `--`, or the binary receives it:

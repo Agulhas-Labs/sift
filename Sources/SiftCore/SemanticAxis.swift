@@ -6,28 +6,34 @@
 public enum SemanticAxis: Sendable {
     /// The query was answered from syntax alone; the store, if any, was never opened.
     case syntacticOnly
-    /// A semantic query ran but no index store exists.
-    case noStore
-    /// `status` found no index store — ``noStore``'s fact, pointing at where `status` says it.
+    /// The caller turned the store off with `--syntactic`, so whether one exists was never asked.
+    case off
+    /// A semantic query ran but no index store exists: in this worktree, which has no build directory of its own, or for this tree, which has not been built yet.
+    ///
+    /// The header says which in place of sending the reader to a note, since the remedy differs: a worktree builds its own store, a checkout builds once.
+    case noStore(inWorktree: Bool)
+    /// `status` found no index store — ``noStore(inWorktree:)``'s fact, pointing at where `status` says it.
     ///
     /// A query's note about the missing store sits directly under its header, so "see note" is true there. `status` names the store on its own `index store:` line further down, and a header sending the reader to a note that is not under it sends them looking for something that is not there.
     case noStoreInStatus
-    /// A store exists and is still being read, past this query's budget — the opposite remedy to ``noStore``: ask again, never build.
+    /// A semantic query ran about files no open store answers for, each store being a nested package's, which this clause names (`Kit/.build answers only for files in Kit`).
+    case noStoreCovering(String)
+    /// A store exists and is still being read, past this query's budget — the opposite remedy to ``noStore(inWorktree:)``: ask again, never build.
     ///
     /// Rendering the two alike puts "build the project" in the header of an answer whose body says no build would help.
     case warming
-    /// A store exists but opening it failed, so semantics are as unavailable as with ``noStore`` — but the reason differs, and a build does not fix an open failure.
+    /// A store exists but opening it failed, so semantics are as unavailable as with ``noStore(inWorktree:)`` — but the reason differs, and a build does not fix an open failure.
     ///
     /// The open error is left to the body, which already quotes it: it carries a full path, and the header is the line that gets pasted.
     case openFailed
     /// A semantic query ran, every declaration it answered for predates the store's newest unit, and so does every file the answer cites.
     case fresh
-    /// A semantic query ran and the store no longer matches the tree: `newerFiles` files it cited have been written since the last build (a declaring file among them refuses outright), and `deletedOccurrenceFiles` files it still holds occurrences in are gone from the tree entirely.
-    case stale(newerFiles: Int, deletedOccurrenceFiles: Int)
-    /// No store was opened, and file state alone says the tree has moved past the last build: `newerFiles` indexed files have been written since it, and `deletedFiles` files this index dropped since it are still gone.
+    /// A semantic query ran and the store no longer matches the tree: the files it cited that were written since their own build (a declaring file among them refuses outright), are gone from the tree, or are new to it, each counted once under its worse kind.
+    case stale(StaleFiles)
+    /// No store was opened, and file state alone says the tree has moved past the last build: indexed files written since it are counted changed, and files this index dropped since it that are still gone are counted deleted.
     ///
-    /// `status`'s reading of ``stale(newerFiles:deletedOccurrenceFiles:)``, and worded one step weaker on purpose. A query knows the store still cites each deleted file, because it read the occurrence; this reading never opened the store, so it cannot say the store holds anything in the file — only that the file was here and is not now (Docs/AnswerContract.md §8).
-    case staleByFileState(newerFiles: Int, deletedFiles: Int)
+    /// `status`'s reading of ``stale(_:)``, rendered in the same form. A query knows the store still cites each deleted file, because it read the occurrence; this reading never opened the store, so it cannot say the store holds anything in the file — only that the file was here and is not now (Docs/AnswerContract.md §8).
+    case staleByFileState(StaleFiles)
     /// No file is stale, but this many declarations have no unit in the store covering them — a different fact from staleness, and one a rebuild may not fix.
     case unresolved(symbols: Int)
     /// No file is stale, but this many indexed test files have no unit in the store: their target was not built (a plain `swift build` builds none), so every reference from them is missing and the store's answer is a lower bound.
@@ -38,15 +44,14 @@ public enum SemanticAxis: Sendable {
     var rendered: String {
         switch self {
         case .syntacticOnly: "syntactic-only"
-        case .noStore: "none (no index store — see note)"
+        case .off: "off (--syntactic)"
+        case let .noStore(inWorktree): inWorktree ? "none (no index store in this worktree)" : "none (no index store for this tree yet)"
         case .noStoreInStatus: "none (no index store — see the index store: line below)"
+        case let .noStoreCovering(scope): "none (no index store covers these files; \(scope))"
         case .warming: "warming (index store still loading — ask again shortly)"
         case .openFailed: "none (index store found but failed to open)"
         case .fresh: "fresh"
-        case let .stale(newerFiles, deletedOccurrenceFiles):
-            "stale (\(Self.staleDetail(newerFiles: newerFiles, deleted: deletedOccurrenceFiles, deletedNoun: "occurrence file")))"
-        case let .staleByFileState(newerFiles, deletedFiles):
-            "stale (\(Self.staleDetail(newerFiles: newerFiles, deleted: deletedFiles, deletedNoun: "file")))"
+        case let .stale(files), let .staleByFileState(files): "stale since last build (\(files.rendered))"
         case let .unresolved(symbols): "fresh, \(symbols) declaration\(symbols == 1 ? "" : "s") not found in the store"
         case let .partial(testFiles):
             "partial (\(testFiles) test file\(testFiles == 1 ? " has" : "s have") no unit in the store — references from tests are a lower bound)"
@@ -67,12 +72,12 @@ public enum SemanticAxis: Sendable {
     /// The same verdict over several stores' judges, each file counted once whichever store cited it.
     ///
     /// Staleness outranks `testFilesWithoutUnit`, which outranks a declaration without a unit: a stale file is the stronger fact and a rebuild fixes it, and a test target the store never compiled hides every reference from it, where an unresolved declaration hides only its own.
-    static func of(refusals: [SemanticRefusal], occurrences judges: [OccurrenceFreshness], testFilesWithoutUnit: Int = 0) -> SemanticAxis {
-        let staleFiles = Set(refusals.filter { $0.reason == .modifiedSinceBuild }.map(\.path))
-            .union(judges.flatMap(\.modifiedFiles))
-        let deleted = Set(judges.flatMap(\.deletedFiles)).count
-        if !staleFiles.isEmpty || deleted > 0 {
-            return .stale(newerFiles: staleFiles.count, deletedOccurrenceFiles: deleted)
+    ///
+    /// The files the answer lists by written name, given by kind (``WhereChangedFileMentions``), are cited by the answer as surely as an occurrence's, so they count too.
+    static func of(refusals: [SemanticRefusal], occurrences judges: [OccurrenceFreshness], testFilesWithoutUnit: Int = 0, listedByName: [String: FileKind] = [:]) -> SemanticAxis {
+        let counted = countedFiles(refusals: refusals, occurrences: judges, listedByName: listedByName)
+        if !counted.isEmpty {
+            return .stale(StaleFiles(counted))
         }
         if testFilesWithoutUnit > 0 {
             return .partial(testFiles: testFilesWithoutUnit)
@@ -80,22 +85,34 @@ public enum SemanticAxis: Sendable {
         // A declaration under `#if` with no occurrence recorded is unresolved as one without a unit is: the store answers nothing for it, and no file is shown to have changed.
         let unresolved = refusals.count { refusal in
             switch refusal.reason {
-            case .noCoveringUnit, .unrecordedUnderCondition: true
-            case .modifiedSinceBuild: false
+            case .noCoveringUnit, .unrecordedUnderCondition, .outsidePackage: true
+            case .modifiedSinceBuild, .newSinceBuild: false
             }
         }
         return unresolved == 0 ? .fresh : .unresolved(symbols: unresolved)
     }
 
-    /// Both counts are named whenever both are non-zero — they are separate facts about the same store, and reporting only the louder one is how the header comes to claim less than the body already shows.
-    private static func staleDetail(newerFiles: Int, deleted: Int, deletedNoun: String) -> String {
-        var parts: [String] = []
-        if newerFiles > 0 {
-            parts.append("\(newerFiles) file\(newerFiles == 1 ? "" : "s") changed since last build")
+    /// Each file a verdict over its refusals, judges and by-name files counts stale, under the worse of the kinds it was found to be (deleted, then changed, then new), so a file two stores cite is counted once.
+    static func countedFiles(refusals: [SemanticRefusal], occurrences judges: [OccurrenceFreshness], listedByName: [String: FileKind] = [:]) -> [String: FileKind] {
+        var counted: [String: FileKind] = [:]
+        func count(_ path: String, _ kind: FileKind) {
+            counted[path] = min(counted[path] ?? kind, kind)
         }
-        if deleted > 0 {
-            parts.append("\(deleted) \(deletedNoun)\(deleted == 1 ? "" : "s") deleted since last build")
+        for refusal in refusals {
+            switch refusal.reason {
+            case .modifiedSinceBuild: count(refusal.path, .changed)
+            case .newSinceBuild: count(refusal.path, .new)
+            case .noCoveringUnit, .unrecordedUnderCondition, .outsidePackage: break
+            }
         }
-        return parts.joined(separator: ", ")
+        for judge in judges {
+            judge.deletedFiles.forEach { count($0, .deleted) }
+            judge.modifiedFiles.forEach { count($0, .changed) }
+            judge.newFiles.forEach { count($0, .new) }
+        }
+        for (path, kind) in listedByName where kind < .notBuilt {
+            count(path, kind)
+        }
+        return counted
     }
 }

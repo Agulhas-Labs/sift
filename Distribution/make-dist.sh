@@ -87,7 +87,9 @@ ARCHS="$(lipo -archs "$BIN")"
 SWIFT_VERSION="$(swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p' | head -1)"
 MACOS_VERSION="$(sw_vers -productVersion)"
 
+TREE_STATE=clean
 if [ -n "$(git status --porcelain)" ]; then
+    TREE_STATE=dirty
     echo "warning: working tree is dirty — the bundle will claim $STAMP_LABEL $STAMP but contain uncommitted changes"
 fi
 
@@ -96,9 +98,16 @@ mkdir -p "$STAGE"
 cp "$BIN" "$STAGE/sift"
 cp "$REPO/Distribution/install.sh" "$STAGE/install.sh"
 chmod +x "$STAGE/install.sh"
-cp "$REPO/Sift.md" "$REPO/README.md" "$REPO/CHANGELOG.md" "$STAGE/"
+# What install.sh records about this build in the deploy log: the stamp above (never the private commit, for
+# the reason the header gives) and the tree state the warning above reported.
+printf 'version=%s\ncommit=%s\ntree=%s\n' "$VERSION" "$STAMP" "$TREE_STATE" > "$STAGE/BUILD_INFO"
 mkdir -p "$STAGE/Docs"
-cp "$REPO/Docs/Guide.md" "$STAGE/Docs/Guide.md"
+# Copied through the link rewrite, not as they are: each links to documents the bundle does not carry
+# (Design.md, Benchmarks/) or lays out differently (INSTALL.md, LICENSE.txt), and a download has to read
+# right without the repository beside it. The check after staging fails on any link left unresolved.
+for doc in Sift.md README.md CHANGELOG.md Docs/Guide.md; do
+    sh "$REPO/Distribution/bundle-links.sh" rewrite "$doc" "$VERSION" < "$REPO/$doc" > "$STAGE/$doc"
+done
 cp "$REPO/LICENSE" "$STAGE/LICENSE.txt"
 
 # Third-party notices are assembled from the resolved checkouts, never hand-maintained: the binary
@@ -117,7 +126,10 @@ sh "$REPO/Distribution/third-party-notices.sh" "$REPO" "$SCRATCH/checkouts" > "$
 # carries is worse than one that says nothing, and hand-edited version strings always drift.
 PROVENANCE="**Build provenance:** \`sift\` $VERSION, $STAMP_LABEL \`$STAMP\` ($DATE), built with Apple Swift $SWIFT_VERSION on macOS $MACOS_VERSION. Architecture: \`$ARCHS\` (Apple Silicon only)."
 awk -v line="$PROVENANCE" '{ if ($0 == "<!-- PROVENANCE -->") print line; else print }' \
-    "$REPO/Distribution/INSTALL.md" > "$STAGE/INSTALL.md"
+    "$REPO/Distribution/INSTALL.md" | sh "$REPO/Distribution/bundle-links.sh" rewrite Distribution/INSTALL.md "$VERSION" > "$STAGE/INSTALL.md"
+
+echo "==== Checking links ===="
+sh "$REPO/Distribution/bundle-links.sh" check "$STAGE"
 
 echo "==== Verifying ===="
 # Over the staged bundle rather than the binary alone: the documents ship too, and a worked

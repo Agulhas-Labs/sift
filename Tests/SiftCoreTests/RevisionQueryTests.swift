@@ -52,7 +52,7 @@ struct RevisionQueryTests {
         let repo = try Self.makeRepo()
         let answer = try SiftEngine(directory: repo.root).digest(targets: ["Widget"], at: repo.commits[0], options: DigestOptions())
 
-        #expect(answer.contains("Widget — Sources — Sources/Lib/Widget.swift:2-5"), "\(answer)")
+        #expect(answer.contains("Widget — Sources — Sources/Lib/Widget.swift:1-5"), "\(answer)")
         #expect(answer.contains("public func polish() {}"), "\(answer)")
         #expect(!answer.contains("shine"), "\(answer)")
         #expect(!answer.contains("buff"), "\(answer)")
@@ -62,7 +62,7 @@ struct RevisionQueryTests {
         let repo = try Self.makeRepo()
         let answer = try SiftEngine(directory: repo.root).digest(targets: ["Widget"], at: repo.commits[1], options: DigestOptions())
 
-        #expect(answer.contains("Widget — Sources — Sources/Lib/Widget.swift:2-8"), "\(answer)")
+        #expect(answer.contains("Widget — Sources — Sources/Lib/Widget.swift:1-8"), "\(answer)")
         #expect(answer.contains("public func shine() {}"), "\(answer)")
         #expect(answer.contains("public func polish() {}"), "\(answer)")
         #expect(!answer.contains("buff"), "\(answer)")
@@ -135,7 +135,7 @@ struct RevisionQueryTests {
 
         #expect(!answer.contains("working tree,"), "\(answer)")
         #expect(!answer.contains("over the working tree"), "\(answer)")
-        #expect(answer.contains("over the files parsed at \(repo.commits[0])"), "\(answer)")
+        #expect(answer.contains("--at \(repo.commits[0]): callers, overrides or references not available from git, sites by written name"), "\(answer)")
     }
 
     @Test func aBadRevisionIsRefusedInGitsOwnWords() async throws {

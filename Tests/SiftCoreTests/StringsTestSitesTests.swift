@@ -57,7 +57,7 @@ struct StringsTestSitesTests {
 
         let output = try engine.strings(query: "gizmo")
 
-        #expect(output.contains("in tests: 1 site in 1 file — Alpha.swift (1), split on the XCTest or Testing import, never the path"))
+        #expect(output.contains("in tests: 1 site in 1 file — Alpha.swift (1)"))
     }
 
     @Test

@@ -52,6 +52,8 @@ public struct SyntacticCallSite: Sendable, Equatable {
     var localDeclarations: [String]?
     /// Those of `enclosingTypes` declared inside a function, whose supertypes and members no top-level type of the same name shows.
     var localEnclosingTypes: Set<String> = []
+    /// Whether a `nameOnly` site is a function's bare name, written on nothing, handed to a call as an argument or bound, returned or listed as a value — `map(f)`, `let g = f` — where a function passed by name is, rather than `x.f`, which is far more often another type's property.
+    private(set) var handedOnBare = false
     /// The source line the site is written on, as the name-matched block prints it beside the line number, or `nil` where the scan did not read it.
     var text: String?
 
@@ -156,5 +158,12 @@ public struct SyntacticCallSite: Sendable, Equatable {
         var read = self
         read.text = sourceLines.indices.contains(line - 1) ? NameMatchedSites.sourceText(sourceLines[line - 1]) : nil
         return read
+    }
+
+    /// The site with ``handedOnBare`` set as `bare` says.
+    func handingOnBare(_ bare: Bool) -> SyntacticCallSite {
+        var handed = self
+        handed.handedOnBare = bare
+        return handed
     }
 }

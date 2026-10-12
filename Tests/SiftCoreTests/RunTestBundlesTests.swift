@@ -42,7 +42,7 @@ struct RunTestBundlesTests {
         #expect(RunTestBundles.declared(forRunOf: ["swift", "test"], in: directory).count == 2)
     }
 
-    /// A run pointed at another package is undetermined: the manifest beside the reader is then not the one that ran, and a count taken from it would name a bundle the run never owed.
+    /// A run pointed at another package reads that package's manifest, so one with no manifest there is undetermined rather than counted from the manifest beside the reader.
     @Test
     func aRunPointedAtAnotherPackageIsUndetermined() throws {
         let directory = try Self.package()

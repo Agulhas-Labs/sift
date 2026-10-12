@@ -13,17 +13,26 @@ import IndexStoreDB
 final class SemanticStore: @unchecked Sendable {
     private let database: IndexStoreDB
     let provenance: DiscoveredStore.Provenance
+    /// The SwiftPM package directory the store was built in, empty for the root's (``DiscoveredStore/package``).
+    let package: String
+    /// The root of the tree the store answers for: the repo-relative path of a declaration it is asked about is spelled under it, as the build recorded the file.
+    let repoRoot: URL
     /// Where the store was ingested, which names the store as well — its path and its directory's identity.
     ///
     /// The engine re-probes per query and reopens when discovery yields another cache.
     let cache: SemanticCache
     /// The store's "last built" moment at open; the engine reopens when newer units land, so a stale anchor never outlives a build.
     let newestUnitDate: Date
+    /// Guards ``newestUnits`` and ``unitLookups``, since the open store is shared across queries.
+    private let unitLock = NSLock()
+    /// Each absolute path the store was asked about, as the store spells it, to its newest unit's date, `nil` where it holds none: a store's units do not change while it is open, so each path is looked up once per open.
+    private var newestUnits: [String: Date?] = [:]
+    private var lookups = 0
 
     /// Opens the store, ingesting its units into a cache of its own (``SemanticCache``), so a warm reopen is instant and no other store's units ever answer for it.
     ///
     /// `beforeRead` runs once the cache is ready and before IndexStoreDB reads the store: a test's way into the moment a rebuild landing as a cold import starts.
-    init(discovered: DiscoveredStore, newestUnitDate: Date, cache: SemanticCache, beforeRead: () -> Void = {}) throws {
+    init(discovered: DiscoveredStore, repoRoot: URL, newestUnitDate: Date, cache: SemanticCache, beforeRead: () -> Void = {}) throws {
         let library = try IndexStoreLibrary(dylibPath: Self.libIndexStorePath())
         try cache.prepare()
         beforeRead()
@@ -44,6 +53,8 @@ final class SemanticStore: @unchecked Sendable {
         }
         self.database = database
         provenance = discovered.provenance
+        package = discovered.package
+        self.repoRoot = repoRoot
         self.cache = cache
         self.newestUnitDate = newestUnitDate
     }
@@ -77,17 +88,20 @@ final class SemanticStore: @unchecked Sendable {
         return FileManager.default.fileExists(atPath: candidate.path) ? candidate.path : defaultPath
     }
 
-    /// Resolves a syntactic declaration to its USR among canonical occurrences.
+    /// Resolves a syntactic declaration to its USR among canonical occurrences, `nil` for a declaration in a file the store does not answer for (``answers(forFile:)``).
     ///
     /// The store names functions in their labeled form (`save(_:to:)`), so the labeled name is tried first, the bare base name as fallback. Attributed declarations start a line or two above where the store anchors them, so any line inside the declaration's range matches (exact line preferred).
+    ///
+    /// An occurrence counts only in the row's own file, spelled under ``repoRoot`` as the build may have recorded it: another file ending in the same path, in a nested package or a dependency, is never the row's.
     func usr(for row: SymbolRow) -> String? {
+        guard answers(forFile: row.path) else { return nil }
         let name = Self.asTheStoreSpellsIt(row.name)
-        var candidates = database.canonicalOccurrences(ofName: name)
+        var candidates = canonicalOccurrences(ofName: name)
         if candidates.isEmpty, row.name != row.baseName {
-            candidates = database.canonicalOccurrences(ofName: Self.asTheStoreSpellsIt(row.baseName))
+            candidates = canonicalOccurrences(ofName: Self.asTheStoreSpellsIt(row.baseName))
         }
-        // Component-boundary suffix match: "OtherContentView.swift" must not satisfy "ContentView.swift".
-        let inFile = candidates.filter { $0.location.path == row.path || $0.location.path.hasSuffix("/" + row.path) }
+        let spellings = Set(Self.spellings(ofFile: row.path, under: repoRoot))
+        let inFile = candidates.filter { spellings.contains($0.location.path) }
         if let exact = inFile.first(where: { $0.location.line == row.line }) {
             return exact.symbol.usr
         }
@@ -107,14 +121,66 @@ final class SemanticStore: @unchecked Sendable {
 
     /// Whether the store holds a unit for the source file at the absolute `path`, spelled as the build recorded it.
     func hasUnit(forFile path: String) -> Bool {
-        database.dateOfLatestUnitFor(filePath: path) != nil
+        newestUnit(ofFile: path) != nil
+    }
+
+    /// The date of the newest unit the store holds for the source file at the absolute `path`, spelled as the build recorded it, `nil` where it holds none; asked of the store once per path per open.
+    func newestUnit(ofFile path: String) -> Date? {
+        unitLock.withLock {
+            if let known = newestUnits[path] {
+                return known
+            }
+            lookups += 1
+            let date = database.dateOfLatestUnitFor(filePath: path)
+            newestUnits[path] = .some(date)
+            return date
+        }
+    }
+
+    /// How many newest-unit lookups the store has paid for since it opened, which is what makes the one-per-path claim checkable.
+    var unitLookups: Int {
+        unitLock.withLock { lookups }
+    }
+
+    /// Whether the store answers for the file at the repo-relative `path` at all (``DiscoveredStore/answers(package:forFile:)``).
+    func answers(forFile path: String) -> Bool {
+        DiscoveredStore.answers(package: package, forFile: path)
+    }
+
+    /// The absolute spellings a build may have recorded the repo-relative `path` under `root` by (``FileSpellings``), every one of them, the filesystem asked.
+    static func spellings(ofFile path: String, under root: URL) -> [String] {
+        var spellings = FileSpellings(ofFile: path, under: root)
+        return spellings.all()
+    }
+
+    /// For each of `names`, each distinct place the newest units of the file at the absolute `path` record a symbol of that base name referenced at, marked with whether the scanned shape takes a symbol recorded there by its compound name, a declaration and an implicit occurrence left out (``fromCurrentUnits(_:)``): what the last build saw the file refer to, to set against what it writes now.
+    func writtenPlaces(of names: ScannedNames, inFile path: String) -> [String: [ScannedNames.RecordedPlace]] {
+        let byBare = Dictionary(names.names.map { ($0.replacingOccurrences(of: "`", with: ""), $0) }) { first, _ in first }
+        var places: [String: Int] = [:]
+        var written: [String: [ScannedNames.RecordedPlace]] = [:]
+        for occurrence in fromCurrentUnits(database.symbolOccurrences(inFilePath: path))
+            where !occurrence.roles.contains(.implicit) && !occurrence.roles.contains(.definition) && !occurrence.roles.contains(.declaration)
+        {
+            guard let name = byBare[String(occurrence.symbol.name.prefix { $0 != "(" })] else { continue }
+            let isTakenByName = names.accepts(symbolNamed: occurrence.symbol.name, as: name)
+            let key = "\(name):\(occurrence.location.line):\(occurrence.location.utf8Column)"
+            if let index = places[key] {
+                if isTakenByName {
+                    written[name]?[index].isTakenByName = true
+                }
+                continue
+            }
+            places[key] = written[name, default: []].count
+            written[name, default: []].append(ScannedNames.RecordedPlace(line: occurrence.location.line, column: occurrence.location.utf8Column, isTakenByName: isTakenByName))
+        }
+        return written
     }
 
     /// Call sites of the symbol, and the places it is named without a call, each with the calling symbol's name, the location and the unit that recorded it — a macro expansion's copy of a written one left out (``written(_:)``).
     ///
     /// A call is recorded `ref|call`, and a function handed on unapplied — `.map(T.f)`, `T.f(x:)` as a value, `#selector(f)` — `ref` alone, related only to the symbol containing it; asked for calls alone, the store answered "no callers" of a function used exactly that way, and the answer was believed. So every reference is taken, and one with no call is marked ``Hit/uncalled``.
     func callers(ofUSR usr: String) -> [Hit] {
-        Self.written(database.occurrences(ofUSR: usr, roles: .reference)).map { kept in
+        Self.written(occurrences(ofUSR: usr, roles: .reference)).map { kept in
             var hit = Hit(kept.occurrence, name: name(of: kept, by: [.calledBy, .containedBy]) ?? "(unknown caller)")
             hit.uncalled = !kept.occurrence.roles.contains(.call)
             return hit
@@ -139,7 +205,7 @@ final class SemanticStore: @unchecked Sendable {
     func uses(ofUSR usr: String, sources: inout SourceLines) -> [Use] {
         let property = property(ofUSR: usr)
         return property.targets.flatMap { target in
-            Self.written(database.occurrences(ofUSR: target.usr, roles: [.reference, .read, .write]))
+            Self.written(occurrences(ofUSR: target.usr, roles: [.reference, .read, .write]))
                 .filter { !property.isGenerated($0.occurrence) }
                 .map { kept in
                     let observer = property.movedObserver(containing: kept.occurrence)
@@ -160,7 +226,7 @@ final class SemanticStore: @unchecked Sendable {
     ///
     /// An enum case is never read or written and is called only sometimes, so neither `uses` nor `callers` sees one whole. Verified empirically against a real store: every use of a case written in code — `.fast` in an expression, `Mode.fast` qualified, `case .fast:` in a switch, `if case .fast = x`, `x == .fast`, from its own file, another file or another module — is recorded on the case's own USR as a plain `ref`, related only to the symbol containing it. Building a case with associated values (`.value(3)`, `Mode.value(4)`) adds `call`; matching one (`case .value(let x)`, `case let .pair(left, _)`) does not, and neither does an unapplied `Mode.value`. So the references are the uses, each found exactly once, and none carries an access; a macro expansion's copy of one is left out (``written(_:)``). Code the compiler synthesizes names a case with no occurrence recorded: `CaseIterable`'s `allCases` and a raw value's `init(rawValue:)` reach one nothing lists.
     func caseUses(ofUSR usr: String) -> [Use] {
-        Self.written(database.occurrences(ofUSR: usr, roles: .reference)).map { kept in
+        Self.written(occurrences(ofUSR: usr, roles: .reference)).map { kept in
             Use(
                 hit: Hit(kept.occurrence, name: name(of: kept, by: .containedBy) ?? "(top level)"),
                 reads: false,
@@ -173,9 +239,9 @@ final class SemanticStore: @unchecked Sendable {
     ///
     /// A superset of `callers`: call sites carry both `.call` and `.reference`, and type mentions carry only `.reference`, which is exactly what a delete or rename sweep needs and `callers` cannot see. Definitions are excluded — they carry `.definition`, not `.reference`.
     ///
-    /// Read by the rules a property's uses are (see `uses`, above), since a sweep edits the same lines: a reference through a wrapper's `$` or `_` sibling is one to rename, marked with the sibling — whether the store records it on the sibling or, spelled so in the source, on the property itself; an implicit one inside an accessor of the property or of either sibling has nothing written there to rename, so it is dropped; and one inside an observer a macro moved sits at the macro's line, where there is nothing to rename either, so it is dropped too — the renderer says where that leaves a gap.
+    /// Read by the rules a property's uses are (see `uses`, above), since a sweep edits the same lines: a reference through a wrapper's `$` or `_` sibling is one to rename, marked with the sibling — whether the store records it on the sibling or, spelled so in the source, on the property itself; an implicit one inside an accessor of the property or of either sibling has nothing written there to rename, so it is dropped; and one inside an observer a macro moved sits at the macro's line, where there is nothing to rename either, so it is dropped too — the renderer says where that leaves a gap. A mention inside a declaration a macro generated is dropped as well (``isGeneratedMention(_:implicitDeclarations:)``): `@Observable` storage names its property's type at the attribute, where nothing is written.
     ///
-    /// **This covers code only.** Comments and string literals are not occurrences, so a doc comment naming the symbol is invisible here; the renderer says so rather than letting an empty result read as "nothing left to change".
+    /// **This covers code only.** Comments and string literals are not occurrences, so a doc comment naming the symbol is invisible here; `where --refs` lists such mentions apart, from the working tree (``NonCodeMentions``), so an empty result does not read as "nothing left to change".
     func references(ofUSR usr: String) -> [Hit] {
         var sources = SourceLines()
         return references(ofUSR: usr, sources: &sources)
@@ -183,15 +249,30 @@ final class SemanticStore: @unchecked Sendable {
 
     /// The same references, reading sibling spellings through a caller's line cache, shared with the uses for one query.
     func references(ofUSR usr: String, sources: inout SourceLines) -> [Hit] {
+        referencesAndGeneratedMentions(ofUSR: usr, sources: &sources).hits
+    }
+
+    /// The same references, with the `path:line` of each mention the sweep sets aside as one a macro generated, so the sweep that leaves them out can say how many; a line that also holds a mention written there is among them.
+    ///
+    /// One read of the store per target serves both, so the count and the list cannot disagree about what was set aside.
+    func referencesAndGeneratedMentions(ofUSR usr: String, sources: inout SourceLines) -> (hits: [Hit], generatedLines: Set<String>) {
         let property = property(ofUSR: usr)
-        return property.targets.flatMap { target in
-            Self.written(database.occurrences(ofUSR: target.usr, roles: .reference))
-                .filter { !property.isGenerated($0.occurrence) && property.movedObserver(containing: $0.occurrence) == nil }
-                .map { kept in
-                    let through = target.through ?? property.sibling(spelling: kept.occurrence, in: &sources)
-                    return Hit(kept.occurrence, name: name(of: kept, by: [.containedBy, .calledBy]) ?? "(top level)", through: through)
+        var implicitDeclarations: [String: Bool] = [:]
+        var hits: [Hit] = []
+        var generatedLines: Set<String> = []
+        for target in property.targets {
+            for kept in Self.written(occurrences(ofUSR: target.usr, roles: .reference)) {
+                let occurrence = kept.occurrence
+                guard !property.isGenerated(occurrence), property.movedObserver(containing: occurrence) == nil else { continue }
+                if isGeneratedMention(occurrence, implicitDeclarations: &implicitDeclarations) {
+                    generatedLines.insert("\(occurrence.location.path):\(occurrence.location.line)")
+                    continue
                 }
+                let through = target.through ?? property.sibling(spelling: occurrence, in: &sources)
+                hits.append(Hit(occurrence, name: name(of: kept, by: [.containedBy, .calledBy]) ?? "(top level)", through: through))
+            }
         }
+        return (hits, generatedLines)
     }
 
     /// Declarations that override the symbol, or witness it: never one a protocol declares, which restates it (``implementedRequirements(ofUSR:)``).
@@ -201,12 +282,12 @@ final class SemanticStore: @unchecked Sendable {
     /// A witness picked at a conformance is listed where it is written. Verified empirically against a real store: a protocol extension's default that `struct Depot: Refined` takes is recorded as an implicit occurrence of the default at `Depot`'s name, contained by `Depot`, beside the default's own definition, and a function in a type's body that `extension Crate: Named {}` makes a witness is recorded so at the extension (``implementedRequirements(ofUSR:)``). So such an occurrence stands for the witness's written definitions, each listed once however many conformers take it; one whose witness has no written definition in the tree is kept where it is. `inTree` judges a definition's absolute path: the store also holds definitions outside it — a library's member read from its SDK interface (at line 0), a dependency's checkout under `.build` — and a synthesized member has none at all.
     func overrides(ofUSR usr: String, inTree: (String) -> Bool) -> [Hit] {
         var listed: Set<Anchor> = []
-        let overriding = database.occurrences(relatedToUSR: usr, roles: .overrideOf).filter { occurrence in
+        let overriding = occurrences(relatedToUSR: usr, roles: .overrideOf).filter { occurrence in
             occurrence.relations.contains { $0.symbol.usr == usr && $0.roles.contains(.overrideOf) }
         }
         .flatMap { occurrence in
             guard occurrence.roles.contains(.implicit) else { return [occurrence] }
-            let definitions = database.occurrences(ofUSR: occurrence.symbol.usr, roles: .definition).filter {
+            let definitions = occurrences(ofUSR: occurrence.symbol.usr, roles: .definition).filter {
                 !$0.roles.contains(.implicit) && $0.location.line > 0 && inTree($0.location.path)
             }
             return definitions.isEmpty ? [occurrence] : definitions
@@ -224,12 +305,12 @@ final class SemanticStore: @unchecked Sendable {
     /// The other end of ``overrides(ofUSR:)``: the definition carries an `overrideOf` relation to each, or, where an extension declares the conformance, an implicit occurrence at the extension carries it and the definition does not. A call through one of them is recorded against it, or (inside a library) not at all, never against the symbol, so the symbol's own callers are only its direct ones. The declaring protocol or class is named from the store alone (``ImplementedRequirement/owner``).
     func implementedRequirements(ofUSR usr: String) -> [ImplementedRequirement] {
         var seen: Set<String> = []
-        let occurrences = database.occurrences(ofUSR: usr, roles: [.definition, .overrideOf])
+        let recorded = occurrences(ofUSR: usr, roles: [.definition, .overrideOf])
         // A requirement is a child of its protocol, a default implementation a child of the protocol's extension.
-        let restated = occurrences.contains { occurrence in
+        let restated = recorded.contains { occurrence in
             occurrence.roles.contains(.definition) && occurrence.relations.contains { $0.roles.contains(.childOf) && $0.symbol.kind == .protocol }
         }
-        return occurrences.flatMap { occurrence in
+        return recorded.flatMap { occurrence in
             occurrence.relations.filter { $0.roles.contains(.overrideOf) }.map(\.symbol)
         }
         .filter { seen.insert($0.usr).inserted }
@@ -238,7 +319,7 @@ final class SemanticStore: @unchecked Sendable {
 
     /// The protocol or class that declares the requirement `usr`: its definition's parent where the store holds the definition, else the symbol whose USR is the longest prefix of the requirement's, as a member's USR extends its container's — and `nil` where the store holds neither.
     private func owner(ofRequirement usr: String) -> ImplementedRequirement.Owner? {
-        let parents = database.occurrences(ofUSR: usr, roles: .definition).compactMap { definition in
+        let parents = occurrences(ofUSR: usr, roles: .definition).compactMap { definition in
             definition.relations.first { $0.roles.contains(.childOf) }?.symbol
         }
         if let parent = parents.first, let owner = ImplementedRequirement.Owner(parent.name, kind: parent.kind) {
@@ -246,6 +327,7 @@ final class SemanticStore: @unchecked Sendable {
         }
         let prefixes = usr.indices.dropFirst("s:".count + 1).reversed().map { String(usr[..<$0]) }
         for prefix in prefixes {
+            // Unfiltered on purpose: only the symbol's name and kind are read, which every unit records alike, so a unit older than its file's last edit cannot misplace anything here.
             var found: Symbol?
             _ = database.forEachSymbolOccurrence(byUSR: prefix, roles: .all) { occurrence in
                 found = occurrence.symbol
@@ -262,7 +344,7 @@ final class SemanticStore: @unchecked Sendable {
     ///
     /// The store writes inheritance as an occurrence *of the base* at the conformer's clause, with the conformer in the relation (`ref|baseOf`, relation `Child:[baseOf]` — verified empirically against a real store).
     func semanticConformers(ofUSR usr: String) -> [Hit] {
-        Self.written(database.occurrences(ofUSR: usr, roles: .baseOf), inheritanceClauses: true).map { kept in
+        Self.written(occurrences(ofUSR: usr, roles: .baseOf)).map { kept in
             Hit(kept.occurrence, name: relatedName(of: kept.occurrence, by: .baseOf) ?? "(unknown)")
         }
     }
@@ -271,10 +353,10 @@ final class SemanticStore: @unchecked Sendable {
     ///
     /// A type of the name that itself inherits from `usr`, however indirectly, is no other: its own conformers conform to `usr` too. Nor is a clause whose inheritor the store shows inheriting from `usr` through any chain (`final class Lantern: Answer, Middle` where `Middle` refines it): that row conforms to both, and stays.
     func conformersOfOtherTypes(named name: String, besides usr: String) -> [Hit] {
-        let others = Set(database.canonicalOccurrences(ofName: name).filter { [.protocol, .class].contains($0.symbol.kind) && $0.symbol.usr != usr }.map(\.symbol.usr))
+        let others = Set(canonicalOccurrences(ofName: name).filter { [.protocol, .class].contains($0.symbol.kind) && $0.symbol.usr != usr }.map(\.symbol.usr))
         return others.filter { !inherits($0, from: usr) }.sorted().flatMap { other in
-            let declaredIn = database.occurrences(ofUSR: other, roles: .definition).first?.location.path
-            return Self.written(database.occurrences(ofUSR: other, roles: .baseOf), inheritanceClauses: true).filter { kept in
+            let declaredIn = occurrences(ofUSR: other, roles: .definition).first?.location.path
+            return Self.written(occurrences(ofUSR: other, roles: .baseOf)).filter { kept in
                 !kept.occurrence.relations.contains { relation in
                     relation.roles.contains(.baseOf) && extended(by: relation.symbol.usr).contains { inherits($0, from: usr) }
                 }
@@ -288,7 +370,7 @@ final class SemanticStore: @unchecked Sendable {
 
     /// The declaration `usr` and, where it is an extension, the type it extends: the inheritor a conformance an extension declares belongs to.
     private func extended(by usr: String) -> [String] {
-        [usr] + database.occurrences(relatedToUSR: usr, roles: .extendedBy).filter { occurrence in
+        [usr] + occurrences(relatedToUSR: usr, roles: .extendedBy).filter { occurrence in
             occurrence.relations.contains { $0.symbol.usr == usr && $0.roles.contains(.extendedBy) }
         }.map(\.symbol.usr)
     }
@@ -307,10 +389,12 @@ final class SemanticStore: @unchecked Sendable {
     ///
     /// The store holds no canonical occurrence of an extension by its name, so the extension is found from the type's side, by the header the store records extending it.
     private func extendedTypes(of row: SymbolRow) -> [String] {
+        guard answers(forFile: row.path) else { return [] }
         let lines = row.line ... max(row.line, row.endLine)
-        return Set(database.canonicalOccurrences(ofName: Self.asTheStoreSpellsIt(DeclaredTypeName.last(ofPath: row.name))).map(\.symbol.usr)).filter { usr in
-            database.occurrences(ofUSR: usr, roles: .extendedBy).contains { occurrence in
-                (occurrence.location.path == row.path || occurrence.location.path.hasSuffix("/" + row.path)) && lines.contains(occurrence.location.line)
+        let spellings = Set(Self.spellings(ofFile: row.path, under: repoRoot))
+        return Set(canonicalOccurrences(ofName: Self.asTheStoreSpellsIt(DeclaredTypeName.last(ofPath: row.name))).map(\.symbol.usr)).filter { usr in
+            occurrences(ofUSR: usr, roles: .extendedBy).contains { occurrence in
+                spellings.contains(occurrence.location.path) && lines.contains(occurrence.location.line)
             }
         }.sorted()
     }
@@ -319,8 +403,8 @@ final class SemanticStore: @unchecked Sendable {
     ///
     /// Only a reference that is no base counts: a clause writing a typealias of a composition is recorded as conforming to each of its members at the alias's token, and none of those is the name written there.
     func records(_ name: String, writtenAt hit: Hit) -> Bool {
-        Set(database.canonicalOccurrences(ofName: Self.asTheStoreSpellsIt(name)).map(\.symbol.usr)).contains { usr in
-            database.occurrences(ofUSR: usr, roles: .reference).contains { occurrence in
+        Set(canonicalOccurrences(ofName: Self.asTheStoreSpellsIt(name)).map(\.symbol.usr)).contains { usr in
+            occurrences(ofUSR: usr, roles: .reference).contains { occurrence in
                 !occurrence.roles.contains(.baseOf) && occurrence.location.path == hit.path && occurrence.location.line == hit.line && occurrence.location.utf8Column == hit.column
             }
         }
@@ -331,11 +415,11 @@ final class SemanticStore: @unchecked Sendable {
         var seen: Set<String> = [usr]
         var pending = [usr]
         while let inheritor = pending.popLast() {
-            let extensions = database.occurrences(ofUSR: inheritor, roles: .extendedBy).flatMap { occurrence in
+            let extensions = occurrences(ofUSR: inheritor, roles: .extendedBy).flatMap { occurrence in
                 occurrence.relations.filter { $0.roles.contains(.extendedBy) }.map(\.symbol.usr)
             }
             let bases = ([inheritor] + extensions).flatMap { declaration in
-                database.occurrences(relatedToUSR: declaration, roles: .baseOf).filter { occurrence in
+                occurrences(relatedToUSR: declaration, roles: .baseOf).filter { occurrence in
                     occurrence.relations.contains { $0.symbol.usr == declaration && $0.roles.contains(.baseOf) }
                 }
             }
@@ -357,7 +441,7 @@ final class SemanticStore: @unchecked Sendable {
     ///
     /// Where an extension *ends* is not recorded here — the store anchors a header, not a range — so a caller that needs the span reads it off the syntactic row the header line falls inside (``WhereRenderer/ownSpans(of:extendedAt:relativePath:)``).
     func extensionSites(ofUSR usr: String) -> [Hit] {
-        Self.written(database.occurrences(ofUSR: usr, roles: .extendedBy)).map { kept in
+        Self.written(occurrences(ofUSR: usr, roles: .extendedBy)).map { kept in
             Hit(kept.occurrence, name: relatedName(of: kept.occurrence, by: .extendedBy) ?? "(unknown)")
         }
     }
@@ -371,12 +455,12 @@ private extension SemanticStore {
         var enclosure: String?
     }
 
-    /// The occurrences written in code: an implicit occurrence is dropped as a macro expansion's copy where the same unit also recorded the same symbol written — in the same declaration, or, when the copy sits in a declaration the expansion generated (``ExpansionOrigin/isGenerated(_:)``), in no declaration at all, in the same file at or after the copy's line.
+    /// The occurrences written in code: an implicit occurrence in a declaration is dropped as a macro expansion's copy where the same unit also recorded the same symbol written in the same declaration, or, when the copy sits in a declaration the expansion generated (``ExpansionOrigin/isGenerated(_:)``), written in no declaration at all, in the same file at or after the copy's line.
     ///
     /// Verified empirically against a real store: `#expect(f() == 1)` records the call to `f()` where it is written and again, implicit, at the `#expect` — on the line the macro opens, so a call written on the line after it was listed on both. `#Preview { Counter(model: Model()) }` records `Model()` on the line it is written with no relation at all — the closure is an argument to a macro at file scope — and again, implicit, at the `#Preview` line inside the `makePreview()` the expansion generates: two calls were listed as three, the extra under a generated name and the real one as an unknown caller. A copy is matched to the nearest written one at or after its line, and that one is named by the macro it is written in. An implicit occurrence with no written twin stays, because some uses are only ever implicit: a property wrapper's `init(wrappedValue:)` is called at `@Clamp var amount = 3` and nowhere else, a dynamic-member subscript is read at `box.level`, and `@Test` calls the function it is attached to from a function it generates — dropping those would answer "no callers" of something in use. A declaration that makes one call both ways keeps its written row.
     ///
-    /// The flag says the occurrences are those of a base at the clauses naming it, which the store relates to the inheriting type and to no declaration containing the clause. Such an occurrence has no "same declaration" to share, so one in no declaration is never taken for the copy of another: a subclass written through its base's own typealias, recorded on the base as an implicit occurrence, is no copy of the clause another type writes beside it in the file, and neither is the conformance a macro's extension adds. The occurrences a reference query reads keep that match, because the implicit occurrence at an alias's clause is a second record of the line the alias's own reference already stands for, and listing both would count the line twice.
-    static func written(_ occurrences: [SymbolOccurrence], inheritanceClauses: Bool = false) -> [Written] {
+    /// An implicit occurrence in no declaration has no "same declaration" to share, so it is never taken for the copy of another written in none: a subclass written through its base's own typealias, recorded on the base as an implicit occurrence at the clause, is no copy of the clause another type writes beside it in the file, and neither is the conformance a macro's extension adds, nor a reference at file scope beside an unrelated one. The implicit record at an alias's clause is a second record of the site the alias's own reference stands for, and `where` sets it aside where it merges the two (``WhereRenderer/AliasFold/ownReferences(_:)``).
+    static func written(_ occurrences: [SymbolOccurrence]) -> [Written] {
         let written = occurrences.filter { !$0.roles.contains(.implicit) }
         let twins = Set(written.map(Twin.init))
         let unrelated = Dictionary(grouping: written.filter { container(of: $0) == nil }, by: Place.init)
@@ -387,7 +471,7 @@ private extension SemanticStore {
                 kept.append(occurrence)
                 continue
             }
-            if twins.contains(Twin(occurrence)), !inheritanceClauses || container(of: occurrence) != nil {
+            if container(of: occurrence) != nil, twins.contains(Twin(occurrence)) {
                 continue
             }
             let place = Place(occurrence)
@@ -404,6 +488,21 @@ private extension SemanticStore {
             let nearest = copies[Place(occurrence)]?.filter { $0.line <= occurrence.location.line }.max { $0.line < $1.line }
             return Written(occurrence: occurrence, enclosure: nearest?.enclosure)
         }
+    }
+
+    /// Whether an occurrence is a mention a macro generated: an implicit reference that neither calls, reads nor writes, inside a declaration the store records as implicit — `implicitDeclarations` caches that answer by the declaration's USR for one query.
+    ///
+    /// Verified empirically against a real store: `@Observable` declares `_feed` beside `var feed: Feed`, and the store records the storage's type as an implicit reference to `Feed` at the `@Observable` attribute, inside `_feed`, whose definition it marks implicit; the observation accessors it adds name the class there the same way. So a line holding only the attribute was listed as a reference and counted as a production use. Only a plain mention is taken: a call, read or write in generated code can be the only record of a real use — `@Test`'s call to the function it is attached to, a wrapper's `init(wrappedValue:)` — and a mention written on the attribute's line, `@Observable final class Relay: Feed`, is no implicit occurrence, so it stays.
+    func isGeneratedMention(_ occurrence: SymbolOccurrence, implicitDeclarations: inout [String: Bool]) -> Bool {
+        guard occurrence.roles.contains(.implicit), occurrence.roles.isDisjoint(with: [.call, .read, .write]),
+              let container = Self.container(of: occurrence)?.usr
+        else { return false }
+        if let known = implicitDeclarations[container] {
+            return known
+        }
+        let implicit = occurrences(ofUSR: container, roles: .definition).contains { $0.roles.contains(.implicit) }
+        implicitDeclarations[container] = implicit
+        return implicit
     }
 
     /// The declaration the store records an occurrence inside, `nil` for one it relates to none.
@@ -498,19 +597,19 @@ private extension SemanticStore {
     /// **What the lookup checks**, and no more: a declaration named `$name` or `_name` that the store marks implicit and records as a child of the property's own parent. So a `_name` written in code beside `name` is a declaration of its own and never one of these, however it is used — it is not implicit. Where each sibling sits is not checked. `@Observable` declares an implicit `_level` beside `level` too, every use of which sits inside `level`'s own accessors, so none of it is listed. A USR that is not a property's — `vp`, or `vpZ` for a static one — has no siblings, and is not looked up.
     func property(ofUSR usr: String) -> Property {
         guard usr.hasSuffix("vp") || usr.hasSuffix("vpZ"),
-              let definition = database.occurrences(ofUSR: usr, roles: .definition).first
+              let definition = occurrences(ofUSR: usr, roles: .definition).first
         else {
             return Property(usr: usr, name: nil, siblings: [], wrapped: false)
         }
         let name = definition.symbol.name
         let parent = Self.parent(of: definition)
         let siblings = ["$" + name, "_" + name].compactMap { spelled in
-            database.canonicalOccurrences(ofName: spelled)
+            canonicalOccurrences(ofName: spelled)
                 .first { $0.roles.contains(.implicit) && Self.parent(of: $0) == parent }
                 .map { Property.Target(usr: $0.symbol.usr, through: spelled) }
         }
         // An attribute is written before the name it is attached to, and the store records the wrapper type it names as an occurrence the property contains — `@Clamp` at its own column.
-        let wrapped = database.occurrences(relatedToUSR: usr, roles: .containedBy).contains { occurrence in
+        let wrapped = occurrences(relatedToUSR: usr, roles: .containedBy).contains { occurrence in
             occurrence.location.path == definition.location.path
                 && (occurrence.location.line, occurrence.location.utf8Column) < (definition.location.line, definition.location.utf8Column)
         }
@@ -565,7 +664,64 @@ extension SemanticStore {
     }
 }
 
+extension SemanticStore {
+    /// How many references to `usr` (and to a property's wrapper siblings) ``fromCurrentUnits(_:)`` sets aside, by the absolute path of the file they sit in and then their line: sites only a unit older than their file's last edit records, which an answer must say it left out.
+    func setAsideReferences(ofUSR usr: String) -> [String: [Int: Int]] {
+        var counts: [String: [Int: Int]] = [:]
+        for target in property(ofUSR: usr).targets {
+            let recorded = database.occurrences(ofUSR: target.usr, roles: .reference)
+            for occurrence in recorded {
+                counts[occurrence.location.path, default: [:]][occurrence.location.line, default: 0] += 1
+            }
+            for occurrence in fromCurrentUnits(recorded) {
+                counts[occurrence.location.path, default: [:]][occurrence.location.line, default: 0] -= 1
+            }
+        }
+        return counts.compactMapValues { lines in
+            let kept = lines.filter { $0.value > 0 }
+            return kept.isEmpty ? nil : kept
+        }
+    }
+}
+
 private extension SemanticStore {
+    /// The occurrences of `usr` carrying any of `roles`, each read from a unit that describes its file as it stands (``fromCurrentUnits(_:)``): every occurrence read goes through here or ``occurrences(relatedToUSR:roles:)``, never straight to the database.
+    func occurrences(ofUSR usr: String, roles: SymbolRole) -> [SymbolOccurrence] {
+        fromCurrentUnits(database.occurrences(ofUSR: usr, roles: roles))
+    }
+
+    /// The occurrences related to `usr` by any of `roles`, read from current units as ``occurrences(ofUSR:roles:)`` reads them.
+    func occurrences(relatedToUSR usr: String, roles: SymbolRole) -> [SymbolOccurrence] {
+        fromCurrentUnits(database.occurrences(relatedToUSR: usr, roles: roles))
+    }
+
+    /// The occurrences recorded by a unit that describes its file as the file now stands: one no older than the earlier of the file's newest unit and its last change.
+    ///
+    /// A store keeps one unit per output file, so a source compiled for two architectures, platforms or configurations has a unit for each, and IndexStoreDB answers from all of them. One that no build has replaced since the file changed still records the file's old content: verified against a real Xcode store, where a simulator build for one architecture a fortnight old sat beside today's build for the other, and listed a caller at the line its call had held before the file was edited, credited to the function now there. A unit written after the file's last change describes the file as it stands, so every configuration built since the edit answers together and a call only one of them compiles is still listed; where none was, the file's newest unit alone answers, which is the store-wide approximation the staleness anchor already makes. The change moment is the later of mtime and ctime (``FileChangeStat``), since a restored mtime cannot move ctime back; a file that cannot be statted is read from its newest unit.
+    func fromCurrentUnits(_ occurrences: [SymbolOccurrence]) -> [SymbolOccurrence] {
+        var floors: [String: Date] = [:]
+        return occurrences.filter { occurrence in
+            let path = occurrence.location.path
+            let floor = floors[path] ?? currentUnitFloor(ofFile: path)
+            floors[path] = floor
+            return occurrence.location.timestamp >= floor
+        }
+    }
+
+    /// The canonical occurrences of a symbol named `name`, each from a unit that describes its file as it stands (``fromCurrentUnits(_:)``).
+    ///
+    /// IndexStoreDB returns the definition from every unit that recorded it, so a unit older than the file's last edit hands back its own copy beside the current one. The current provider is always among those returned, since a file's newest unit clears its own floor, so filtering never hides a symbol a current unit holds.
+    func canonicalOccurrences(ofName name: String) -> [SymbolOccurrence] {
+        fromCurrentUnits(database.canonicalOccurrences(ofName: name))
+    }
+
+    /// The oldest moment a unit of the file at `path` can have been written at and still describe it: the earlier of its newest unit and its last change; `distantPast` for a file the store holds no unit for.
+    func currentUnitFloor(ofFile path: String) -> Date {
+        guard let newest = newestUnit(ofFile: path) else { return .distantPast }
+        guard let changed = FileChangeStat.of(path: path)?.changed else { return newest }
+        return min(newest, Date(timeIntervalSince1970: changed))
+    }
+
     /// The declaration a definition is a child of, `nil` for a top-level one.
     static func parent(of definition: SymbolOccurrence) -> String? {
         definition.relations.first { $0.roles.contains(.childOf) }?.symbol.usr
@@ -608,7 +764,7 @@ private extension SemanticStore {
     ///
     /// Verified empirically against a real store: a `_modify` coroutine's USR is its property's with the last letter (before a static member's `Z`) `M` where the property's is `p`, and its definition is recorded as a child of the property, which names it.
     func accessorName(of symbol: Symbol) -> String? {
-        let owners = database.occurrences(ofUSR: symbol.usr, roles: .definition).compactMap { definition in
+        let owners = occurrences(ofUSR: symbol.usr, roles: .definition).compactMap { definition in
             definition.relations.first { $0.roles.contains(.childOf) }?.symbol.name
         }
         guard let owner = owners.first(where: { !$0.isEmpty }) else { return nil }

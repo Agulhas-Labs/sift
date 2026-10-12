@@ -21,8 +21,7 @@ struct RejectedSettingWhereTests {
 
         let output = try await SemanticStoreWarmUp.settled { try await engine.lookup(symbol: "helper()", freshness: freshness) }
 
-        #expect(output.contains("mode: syntactic + semantic (index store via .build)"))
-        #expect(output.contains("passed over: indexStorePath 'not-a-store' in .sift.json is not an index store (no v<N>/units under it)"))
+        #expect(output.contains("stores: index store via .build; passed over: indexStorePath 'not-a-store' in .sift.json is not an index store (no v<N>/units under it)"))
         #expect(output.contains("callers of Lib.helper() (1):"))
     }
 }

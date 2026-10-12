@@ -48,6 +48,21 @@ public struct MeasuredAnswer: Sendable, Equatable {
 }
 
 public extension MeasuredAnswer {
+    /// The same answer with lines added after its text, everything it measured kept.
+    func appending(_ extra: [String]) -> MeasuredAnswer {
+        MeasuredAnswer(
+            text: ([text] + extra).joined(separator: "\n"),
+            bytes: bytes,
+            missed: missed,
+            reparsedPaths: reparsedPaths,
+            unreparsedPaths: unreparsedPaths,
+            parseErrorFiles: parseErrorFiles,
+            parts: parts
+        )
+    }
+}
+
+public extension MeasuredAnswer {
     /// One answer measured against its alternative, both sides counted at answer time.
     ///
     /// Bytes, not tokens, and said that way everywhere it surfaces: this counts what was rendered, and any conversion to tokens would be an estimate wearing a measurement's clothes. A ratio of two byte counts taken the same way is reliable even where neither absolute number is.

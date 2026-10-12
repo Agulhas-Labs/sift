@@ -12,8 +12,12 @@ import Testing
 @Suite(.temporaryDirectories)
 struct InPlaceNamesTests {
     /// A package declaring two types and using them, built with an index store so a `where` has callers to list.
-    private static func builtPackage() async throws -> URL {
+    ///
+    /// Each name is used on many lines of a file under a deep directory, so a search for it prints more than the `where` answering it, which is all a sweep is answered for.
+    static func builtPackage() async throws -> URL {
         let root = try MCPTestRepo.make(declaring: "Alpha")
+        let pallets = (1 ... 40).map { "func pallet\($0)(first: Depot = Depot(), second: Depot = Depot()) {}" }.joined(separator: "\n")
+        let spares = (1 ... 40).map { "func spare\($0)(first: Crate = Crate(), second: Crate = Crate()) {}" }.joined(separator: "\n")
         try MCPTestRepo.add([
             "Package.swift": "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"App\", targets: [.target(name: \"App\")])\n",
             "Sources/App/Depot.swift": "public struct Depot {\n    public init() {}\n}\n",
@@ -21,6 +25,8 @@ struct InPlaceNamesTests {
             "Sources/App/Uses.swift": "struct Holder {\n    var depot = Depot()\n    var second = Gizmo()\n}\n",
             // A subtree of `Sources` holding sites of `Crate` and `Gizmo` and none of `Depot`.
             "Sources/App/Shelf/Crate.swift": "struct Crate {\n    var gizmo = Gizmo()\n}\n",
+            "Sources/App/Shelf/Bins/Trays/Slots/Rows/Spares.swift": "\(spares)\n",
+            "Sources/App/Stock/Aisles/Bays/Racks/Pallets.swift": "\(pallets)\n",
             // Declared where `Sources` does not reach, so a search of `Sources` for it prints nothing.
             "Tests/AppTests/Orchard.swift": "struct Orchard {\n    var depot = Depot()\n}\n",
         ], to: root)
@@ -49,8 +55,8 @@ struct InPlaceNamesTests {
 
         // Each surface carries the operands its own spelling gives: the shell's as written, the `Grep`'s resolved,
         // since that surface's directory is the path it searched.
-        #expect(shell?.call == .symbols(names: ["Depot"], paths: ["Sources"]))
-        #expect(tool?.call == .symbols(names: ["Depot"], paths: ["/repo/Sources"]))
+        #expect(shell?.call == .symbols(names: ["Depot"], paths: ["Sources"], proof: ShellGrep(arguments: ["-rn", "Depot", "Sources"])))
+        #expect(tool?.call == .symbols(names: ["Depot"], paths: ["/repo/Sources"], spelled: ["Sources"]))
         // The `Grep`'s own path is what roots its answer, as it is what roots the offer the answer stands in for.
         #expect(tool?.directory == "/repo/Sources")
         #expect(tool?.isWholeCommand == true)
@@ -72,7 +78,7 @@ struct InPlaceNamesTests {
         #expect(InPlaceShape.match(forShell: "grep -rni gadget Sources", in: "/repo") == nil)
         #expect(InPlaceShape.match(forShell: "grep -rn --ignore-case gadget Sources", in: "/repo") == nil)
         #expect(InPlaceShape.match(forSearchTool: "Grep", input: ["pattern": "gadget", "path": "Sources", "-i": true], in: "/repo") == nil)
-        #expect(InPlaceShape.match(forSearchTool: "Grep", input: ["pattern": "gadget", "path": "Sources", "-i": false], in: "/repo")?.call == .symbols(names: ["gadget"], paths: ["/repo/Sources"]))
+        #expect(InPlaceShape.match(forSearchTool: "Grep", input: ["pattern": "gadget", "path": "Sources", "-i": false], in: "/repo")?.call == .symbols(names: ["gadget"], paths: ["/repo/Sources"], spelled: ["Sources"]))
     }
 
     /// A whole-line search (`-x`) is not the shape either: it prints only a line that is the name alone, which a declaration site almost never is, so the loose `where` would answer past what the search itself would print.
@@ -87,7 +93,7 @@ struct InPlaceNamesTests {
     func aBareDotReadsSelfAndMetatypeExpressionsThroughTheirType() {
         let readings = [("Self.pending", "pending"), (#"'Self\.pending'"#, "pending"), ("Depot.Type", "Depot"), ("Depot.self", "Depot"), (#"'Depot\.Type'"#, "Depot")]
         for (pattern, name) in readings {
-            guard case let .symbols(names, paths, _, proof, _)? = InPlaceShape.match(forShell: "grep -rn \(pattern) Sources", in: "/repo")?.call else {
+            guard case let .symbols(names, paths, _, proof, _, _)? = InPlaceShape.match(forShell: "grep -rn \(pattern) Sources", in: "/repo")?.call else {
                 Issue.record("expected \(pattern) read as a names search")
                 continue
             }
@@ -102,7 +108,7 @@ struct InPlaceNamesTests {
     func aMetatypeSearchIsAnsweredOnlyWhereItsLinesAreReferences() async throws {
         let root = try await Self.builtPackage()
         try MCPTestRepo.add([
-            "Sources/App/Kinds.swift": "struct Kinds {\n    var kind: Gizmo.Type = Gizmo.self\n}\n",
+            "Sources/App/Catalogue/Volumes/Sections/Chapters/Entries/Records/Listings/Kinds.swift": "struct Kinds {\n\((1 ... 24).map { "    var kind\($0): Gizmo.Type = Gizmo.self // the kind every shelf in the store holds" }.joined(separator: "\n"))\n}\n",
             "Sources/App/Label.swift": "let label = \"Depot.Type and Depot.self\"\n",
         ], to: root)
         try MCPTestRepo.build(root)
@@ -120,7 +126,7 @@ struct InPlaceNamesTests {
         #expect(InPlaceShape.match(forSearchTool: "Grep", input: ["pattern": "Gizmo.Type", "path": "Sources"], in: root.path) == nil)
         // Named files are no candidate whatever their lines spell.
         #expect(InPlaceShape.match(forShell: "grep -n Depot.Type Sources/App/Depot.swift Sources/App/Label.swift", in: root.path) == nil)
-        #expect(InPlaceShape.match(forShell: "grep -n Gizmo.Type Sources/App/Kinds.swift", in: root.path) == nil)
+        #expect(InPlaceShape.match(forShell: "grep -n Gizmo.Type Sources/App/Catalogue/Volumes/Sections/Chapters/Entries/Records/Listings/Kinds.swift", in: root.path) == nil)
     }
 
     /// A member searched through `Self` is held to the same proof: spelled in a string literal it is a line no store records, so the search runs, while a search printing only its real references is still answered with the member's `where`.
@@ -153,7 +159,7 @@ struct InPlaceNamesTests {
     func aGrepPickingEverySwiftFileIsStillAnswered(glob: String) {
         let tool = InPlaceShape.match(forSearchTool: "Grep", input: ["pattern": "Depot", "path": "Sources", "glob": glob], in: "/repo")
 
-        #expect(tool?.call == .symbols(names: ["Depot"], paths: ["/repo/Sources"]))
+        #expect(tool?.call == .symbols(names: ["Depot"], paths: ["/repo/Sources"], spelled: ["Sources"]))
     }
 
     /// An alternation of names is one `where` per name, in the order the pattern wrote them, on either surface.
@@ -162,8 +168,8 @@ struct InPlaceNamesTests {
         let shell = InPlaceShape.match(forShell: "grep -rnE 'Depot|Gizmo' Sources", in: "/repo")
         let tool = InPlaceShape.match(forSearchTool: "Grep", input: ["pattern": "Depot|Gizmo", "path": "Sources"], in: "/repo")
 
-        #expect(shell?.call == .symbols(names: ["Depot", "Gizmo"], paths: ["Sources"]))
-        #expect(tool?.call == .symbols(names: ["Depot", "Gizmo"], paths: ["/repo/Sources"]))
+        #expect(shell?.call == .symbols(names: ["Depot", "Gizmo"], paths: ["Sources"], proof: ShellGrep(arguments: ["-rnE", "Depot|Gizmo", "Sources"], rawArguments: ["-rnE", "'Depot|Gizmo'", "Sources"])))
+        #expect(tool?.call == .symbols(names: ["Depot", "Gizmo"], paths: ["/repo/Sources"], spelled: ["Sources"]))
     }
 
     /// An alternation of more names than the offer itself lists is not answered: past the cap the refusal names five calls and counts the rest, and an answer would serve names the offer never named.
@@ -174,7 +180,7 @@ struct InPlaceNamesTests {
         let atCap = names.dropLast().joined(separator: "|")
 
         #expect(InPlaceShape.match(forShell: "grep -rnE '\(capped)' Sources", in: "/repo") == nil)
-        #expect(InPlaceShape.match(forShell: "grep -rnE '\(atCap)' Sources", in: "/repo")?.call == .symbols(names: Array(names.dropLast()), paths: ["Sources"]))
+        #expect(InPlaceShape.match(forShell: "grep -rnE '\(atCap)' Sources", in: "/repo")?.call == .symbols(names: Array(names.dropLast()), paths: ["Sources"], proof: ShellGrep(arguments: ["-rnE", atCap, "Sources"], rawArguments: ["-rnE", "'\(atCap)'", "Sources"])))
     }
 
     /// The answer is one plain `where` per name, its opening line naming every call it is made of, under one freshness header.
@@ -208,15 +214,21 @@ struct InPlaceNamesTests {
         #expect(outcome == .withheld(.overSize))
     }
 
-    /// A `where` lists a symbol's callers out of the build's index store, so a repository with none withholds here exactly as the anchored sweep does rather than answering declarations alone.
+    /// A repository with no index store is answered with the syntactic `where`, which lists every use by written name and says on its mode line that it is syntactic.
     @Test
-    func aRepositoryWithNoIndexStoreWithholds() async throws {
+    func aRepositoryWithNoIndexStoreIsAnsweredSyntactically() async throws {
         let root = try MCPTestRepo.make(declaring: "Alpha")
+        try MCPTestRepo.add(["\(NoStoreSweepTests.shelf)/Shop.swift": NoStoreSweepTests.shop(using: "Alpha")], to: root)
         let call = try #require(InPlaceShape.match(forShell: "grep -rn Alpha Sources", in: root.path)?.call)
 
         let outcome = try await InPlaceAnswerTests.answer(call, from: root.path)
 
-        #expect(outcome == .withheld(.noStore))
+        guard case let .answered(answered) = outcome else {
+            Issue.record("expected the names search answered with no store, got \(outcome)")
+            return
+        }
+
+        #expect(answered.reason.split(separator: "\n").contains { $0.hasPrefix("no store for ") && $0.contains("sites by written name") })
     }
 
     /// The hook answers a `Grep` in place, end to end: the lookup carries the shape, and the real answerer on a built fixture returns the in-place verdict naming the same call the refusal would have.
@@ -233,7 +245,7 @@ struct InPlaceNamesTests {
             couldAnswer: { _, _ in true }
         ))
 
-        #expect(lookup.inPlace?.call == .symbols(names: ["Depot"], paths: [root.path]))
+        #expect(lookup.inPlace?.call == .symbols(names: ["Depot"], paths: [root.path], spelled: [root.path]))
 
         let outcome = await InPlaceAnswerTests.onItsOwnThread {
             PreToolUseCommand.outcome(
@@ -270,7 +282,7 @@ struct InPlaceNamesTests {
         let other = try MCPTestRepo.make(declaring: "Alpha")
         let match = try #require(InPlaceShape.match(forShell: "grep -rn Alpha \(other.path)/Sources", in: root.path))
 
-        #expect(match.call == .symbols(names: ["Alpha"], paths: ["\(other.path)/Sources"]))
+        #expect(match.call == .symbols(names: ["Alpha"], paths: ["\(other.path)/Sources"], proof: ShellGrep(arguments: ["-rn", "Alpha", "\(other.path)/Sources"])))
         #expect(match.directory == root.path)
         #expect(try await InPlaceAnswerTests.answer(match.call, from: match.directory) == .withheld(.outsideRoot))
     }
@@ -282,11 +294,12 @@ struct InPlaceNamesTests {
         let tool = try #require(InPlaceShape.match(forSearchTool: "Grep", input: ["pattern": "Orchard", "path": "Sources"], in: root.path))
         let narrow = try #require(InPlaceShape.match(forShell: "grep -rn Orchard Sources", in: root.path))
 
-        #expect(narrow.call == .symbols(names: ["Orchard"], paths: ["Sources"]))
+        #expect(narrow.call == .symbols(names: ["Orchard"], paths: ["Sources"], proof: ShellGrep(arguments: ["-rn", "Orchard", "Sources"])))
         #expect(try await InPlaceAnswerTests.answer(narrow.call, from: narrow.directory) == .withheld(.outsideSearch))
         #expect(try await InPlaceAnswerTests.answer(tool.call, from: tool.directory) == .withheld(.outsideSearch))
         // The whole repository is no bound at all, and the same name is answered there: the declaration the
-        // narrow search never reaches is inside this one.
+        // narrow search never reaches is inside this one. Its build products' symbolic links leave the search
+        // itself undecided, so it is answered unweighed.
         #expect(try await InPlaceAnswerTests.answered("grep -rn Orchard .", in: root)?.calls.map(\.target) == ["Orchard"])
         // Named no path at all, the search walks the same directory, and is answered as the one given `.` is.
         #expect(try await InPlaceAnswerTests.answered("grep -rn Orchard", in: root)?.calls.map(\.target) == ["Orchard"])
@@ -300,7 +313,7 @@ struct InPlaceNamesTests {
         let root = try await Self.builtPackage()
         let mixed = try #require(InPlaceShape.match(forShell: #"grep -rnE "Crate|Depot" Sources/App/Shelf"#, in: root.path))
 
-        #expect(mixed.call == .symbols(names: ["Crate", "Depot"], paths: ["Sources/App/Shelf"]))
+        #expect(mixed.call == .symbols(names: ["Crate", "Depot"], paths: ["Sources/App/Shelf"], proof: ShellGrep(arguments: ["-rnE", "Crate|Depot", "Sources/App/Shelf"], rawArguments: ["-rnE", #""Crate|Depot""#, "Sources/App/Shelf"])))
         #expect(try await InPlaceAnswerTests.answer(mixed.call, from: mixed.directory) == .withheld(.outsideSearch))
         // Both names inside, the alternation is answered as it always was.
         #expect(try await InPlaceAnswerTests.answered(#"grep -rnE "Crate|Gizmo" Sources/App/Shelf"#, in: root)?.calls.map(\.target) == ["Crate", "Gizmo"])
@@ -354,7 +367,7 @@ struct InPlaceNamesTests {
         let root = try await Self.builtPackage()
         let mixed = try #require(InPlaceShape.match(forShell: #"grep -rnE "Depot|Orchard" Sources"#, in: root.path))
 
-        #expect(mixed.call == .symbols(names: ["Depot", "Orchard"], paths: ["Sources"]))
+        #expect(mixed.call == .symbols(names: ["Depot", "Orchard"], paths: ["Sources"], proof: ShellGrep(arguments: ["-rnE", "Depot|Orchard", "Sources"], rawArguments: ["-rnE", #""Depot|Orchard""#, "Sources"])))
         #expect(try await InPlaceAnswerTests.answer(mixed.call, from: mixed.directory) == .withheld(.outsideSearch))
     }
 
@@ -389,6 +402,9 @@ struct InPlaceNamesTests {
             "Sources/App/Depot.swift": "public struct Depot {\n    public init() {}\n    public func load() {}\n}\n",
             "Sources/App/Gizmo.swift": "public struct Gizmo {\n    public init() {}\n    public func load() {}\n}\n",
             "Sources/App/Uses.swift": "struct Holder {\n    func run() {\n        Depot().load()\n        Gizmo().load()\n    }\n}\n",
+            // Each owner's loads on lines of their own under a deep directory, so the search prints more than the answer.
+            "Sources/App/Docks/Harbours/Quays/Wharves/Berths/Moorings/Cranes/Hoists/Depots.swift": (1 ... 12).map { "func depot\($0)() { Depot().load() }" }.joined(separator: "\n") + "\n",
+            "Sources/App/Docks/Harbours/Quays/Wharves/Berths/Moorings/Cranes/Hoists/Gizmos.swift": (1 ... 12).map { "func gizmo\($0)() { Gizmo().load() }" }.joined(separator: "\n") + "\n",
         ], to: root)
         try MCPTestRepo.build(root)
         try await SiftEngine(directory: root).ensureFresh()

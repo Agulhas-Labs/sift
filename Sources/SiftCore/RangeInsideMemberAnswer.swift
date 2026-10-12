@@ -42,6 +42,11 @@ struct RangeInsideMemberAnswer {
         let header = "\(row.path) \(asked), in \(target) — \(row.kind.rawValue) — \(row.rangeDescription) (\(memberLines) lines; digest \(target) for all of it)"
         let all = Array(source[(window.lowerBound - 1) ..< window.upperBound])
         let cap = DigestRenderer.bodyLineCap
+        // A single line's window stays framed by the member's declaration, which an empty page still shows.
+        if !single, PastEndLine.applies(offset: options.offset, count: all.count) {
+            let preamble = try renderer.parseErrorBanner(touching: [row.path]) + renderer.guessedModuleBanner(touching: [row.path])
+            return (preamble + [header, "", PastEndLine.text(offset: options.offset, count: all.count, noun: "body lines")]).joined(separator: "\n")
+        }
         let offset = min(max(0, options.offset), all.count)
         var body = Array(all.dropFirst(offset).prefix(cap))
         if offset > 0, !single {

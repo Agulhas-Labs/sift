@@ -171,14 +171,15 @@ struct RunVerdictTests {
 
     /// The last action wins, a bare word that is an option's value is not an action at all, and an invocation naming no action is the `build` the manual page says it is.
     ///
-    /// `xcodebuild clean build` performs its actions in order and prints one verdict each, so the run's verdict is the build's — the captured `clean build` runs are exactly this shape. `-scheme test` names a scheme, and reading it as the `test` action would have the command owe a verdict no part of the invocation ever promised; nothing in argv separates that from a flag this reader has never heard of standing in front of a real `test`, so it refuses rather than picking one. And *"build … is the default action, and is used if no action is given"* is the manual page's own sentence, which is what a build script writing `xcodebuild -project X -scheme Y` is relying on.
+    /// `xcodebuild clean build` performs its actions in order and prints one verdict each, so the run's verdict is the build's — the captured `clean build` runs are exactly this shape. `-scheme test` names a scheme, and reading it as the `test` action would have the command owe a verdict no part of the invocation ever promised, so it is the default `build`. Behind a flag this reader has never heard of, nothing in argv separates a value from a real `test`, so it refuses rather than picking one. And *"build … is the default action, and is used if no action is given"* is the manual page's own sentence, which is what a build script writing `xcodebuild -project X -scheme Y` is relying on.
     @Test
     func theLastActionWinsAndAnOptionsValueIsNotOne() {
         let cleanBuild = ["xcodebuild", "-project", "Gizmo.xcodeproj", "-scheme", "Gizmo", "-destination", "platform=macOS", "clean", "build"]
         let building = RunVerdict.Contract.declares(succeeded: "** BUILD SUCCEEDED **", failed: "** BUILD FAILED **")
 
         #expect(RunVerdict.Contract.of(cleanBuild) == building)
-        #expect(RunVerdict.Contract.of(["xcodebuild", "-scheme", "test", "-project", "Gizmo.xcodeproj"]) == .unreadable)
+        #expect(RunVerdict.Contract.of(["xcodebuild", "-scheme", "test", "-project", "Gizmo.xcodeproj"]) == building)
+        #expect(RunVerdict.Contract.of(["xcodebuild", "-aFlagAddedAfterThisTableWasWritten", "test", "-project", "Gizmo.xcodeproj"]) == .unreadable)
         #expect(RunVerdict.Contract.of(["/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild", "test"]) == .declares(succeeded: "** TEST SUCCEEDED **", failed: "** TEST FAILED **"))
         #expect(RunVerdict.Contract.of(["xcodebuild", "-project", "Gizmo.xcodeproj", "-scheme", "Gizmo"]) == building)
         #expect(RunVerdict.Contract.of(["xcodebuild"]) == building)
@@ -226,10 +227,10 @@ struct RunVerdictTests {
     ///
     /// The refusal is the part to keep. An unread action read as *no contract* leaves the reader free to take any `** … **` in the log as the run's own, so one capture would answer `✔ xcodebuild` under one spelling of the invocation and `⚠ … the log's verdict is not this command's` under another, on nothing but the position of a flag.
     ///
-    /// **The wording is the part that can be wrong, and the log two lines below is what would contradict it.** `no verdict in the log` is a claim about the log, and here the log carries `** TEST EXECUTE SUCCEEDED **` — quoted directly beneath the headline denying it. What is true is narrower and is about this tool: it could not tell which line the action owed, so it took none. Both invocations here are genuinely unreadable and neither is common — a scheme named after an action word, and an export mode that closes on a line nobody has measured — because the common shapes (`-quiet test`, `archive`, a bare `xcodebuild`) all resolve properly.
+    /// **The wording is the part that can be wrong, and the log two lines below is what would contradict it.** `no verdict in the log` is a claim about the log, and here the log carries `** TEST EXECUTE SUCCEEDED **` — quoted directly beneath the headline denying it. What is true is narrower and is about this tool: it could not tell which line the action owed, so it took none. Both invocations here are genuinely unreadable and neither is common — an action word behind a flag this reader has never heard of, and an export mode that closes on a line nobody has measured — because the common shapes (`-quiet test`, `archive`, a bare `xcodebuild`) all resolve properly.
     @Test
     func anXcodebuildWhoseActionCannotBeReadHasNoVerdictAtAll() throws {
-        let ambiguous = ["xcodebuild", "-project", "P.xcodeproj", "-scheme", "test"]
+        let ambiguous = ["xcodebuild", "-project", "P.xcodeproj", "-aFlagAddedAfterThisTableWasWritten", "test"]
         let exporting = ["xcodebuild", "-exportArchive", "-archivePath", "P.xcarchive", "-exportPath", "out"]
 
         for invocation in [ambiguous, exporting] {
@@ -415,9 +416,9 @@ struct RunVerdictTests {
         #expect(RunVerdict.Contract.of(["xcodebuild", "-derivedDataPath", "clean", "build"])
             == .declares(succeeded: "** BUILD SUCCEEDED **", failed: "** BUILD FAILED **"))
         // Behind the last bare action there is nothing left to settle it, so the doubt stands.
-        #expect(RunVerdict.Contract.of(["xcodebuild", "test", "-derivedDataPath", "build"]) == .unreadable)
+        #expect(RunVerdict.Contract.of(["xcodebuild", "test", "-aFlagAddedAfterThisTableWasWritten", "build"]) == .unreadable)
         // And a collision with no bare action anywhere is unreadable either way.
-        #expect(RunVerdict.Contract.of(["xcodebuild", "-scheme", "test", "-project", "Gizmo.xcodeproj"]) == .unreadable)
+        #expect(RunVerdict.Contract.of(["xcodebuild", "-aFlagAddedAfterThisTableWasWritten", "test", "-project", "Gizmo.xcodeproj"]) == .unreadable)
 
         // End to end: the green capture under that invocation is a pass, not a `⚠`.
         let report = try TestSources.runReport("xcodebuild-test-success", invokedAs: derived)

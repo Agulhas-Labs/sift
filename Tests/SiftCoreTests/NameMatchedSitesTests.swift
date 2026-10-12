@@ -18,7 +18,7 @@ struct NameMatchedSitesTests {
         try TestSources.commitAll(in: root, message: "fixture")
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
-        return try await engine.lookup(symbol: "Gizmo", freshness: freshness)
+        return try await engine.lookup(symbol: "Gizmo", freshness: freshness, options: WhereOptions(standsInForSearch: true))
     }
 
     /// Everything the answer resolved stays — the declaration, and the extension listed after the block — and nothing the block matched by name does.

@@ -40,7 +40,7 @@ struct WhereQualifiedProtocolNoteTests {
         try TestSources.write(source, to: "Sources/Lib/Lib.swift", in: root)
         try TestSources.commitAll(in: root, message: "two nested protocols of one name, unbuilt")
         let engine = try SiftEngine(directory: root)
-        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh())
+        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
     }
 
     /// `Search.Answer` keeps all six lines and counts them, and says three are written only behind `Log.Shelf`; the unknown qualifier and the line naming both are not among them.
@@ -48,7 +48,7 @@ struct WhereQualifiedProtocolNoteTests {
     func linesBehindTheOtherOwnersQualifierAreKeptAndNoted() async throws {
         let search = try await Self.answer("Search.Answer", source: Self.source)
 
-        #expect(search.contains("\"Answer\" used by 6 lines in 1 file — 6 production · 0 tests, split on the XCTest or Testing import, never the path; 3 of them write \"Answer\" only behind Log.Shelf, which declares another \"Answer\", so may be that type's rather than this protocol's — counted all the same, as a qualifier is compared here by spelling, not resolved (for Sources.Search.Answer):" + Self.rows), "\(search)")
+        #expect(search.contains("\"Answer\" (6 uses by written name in 1 file) — 6 production · 0 tests; 3 of them write \"Answer\" only behind Log.Shelf, which declares another \"Answer\", so may be that type's rather than this protocol's — counted all the same, as a qualifier is compared here by spelling, not resolved (for Sources.Search.Answer):" + Self.rows), "\(search)")
     }
 
     /// `Search.Answer`'s conformers stay six, the composition included, the three written only behind `Log.Shelf` marked with what their clause writes.
@@ -65,7 +65,7 @@ struct WhereQualifiedProtocolNoteTests {
     func theOtherProtocolNotesTheLineBehindTheFirstsQualifier() async throws {
         let log = try await Self.answer("Log.Shelf.Answer", source: Self.source)
 
-        #expect(log.contains("\"Answer\" used by 6 lines in 1 file — 6 production · 0 tests, split on the XCTest or Testing import, never the path; 1 of them writes \"Answer\" only behind Search, which declares another \"Answer\", so may be that type's rather than this protocol's — counted all the same, as a qualifier is compared here by spelling, not resolved (for Sources.Log.Shelf.Answer):" + Self.rows), "\(log)")
+        #expect(log.contains("\"Answer\" (6 uses by written name in 1 file) — 6 production · 0 tests; 1 of them writes \"Answer\" only behind Search, which declares another \"Answer\", so may be that type's rather than this protocol's — counted all the same, as a qualifier is compared here by spelling, not resolved (for Sources.Log.Shelf.Answer):" + Self.rows), "\(log)")
         #expect(log.contains("\nconformers of Answer (6, by written name):\n  Sources.Use — struct — Sources/Lib/Lib.swift:10\n  Sources.Vault — extension — Sources/Lib/Lib.swift:11\n  Sources.Crate — struct — Sources/Lib/Lib.swift:12  (clause writes Search.Answer)\n  Sources.Mixed — struct — Sources/Lib/Lib.swift:13\n  Sources.Both — struct — Sources/Lib/Lib.swift:14\n  Sources.Pair — struct — Sources/Lib/Lib.swift:15"), "\(log)")
         #expect(!log.contains("Lib.swift:14  ("), "\(log)")
     }
@@ -75,7 +75,7 @@ struct WhereQualifiedProtocolNoteTests {
     func noOtherTypeOfTheNameLeavesTheAnswerAsItWas() async throws {
         let search = try await Self.answer("Search.Answer", source: "enum Search { protocol Answer {} }\nstruct Crate: Search.Answer {}\n")
 
-        #expect(search.contains("\n\"Answer\" used by 1 line in 1 file — 1 production · 0 tests, split on the XCTest or Testing import, never the path (for Sources.Search.Answer):\n  Sources/Lib/Lib.swift (1):\n    :2  | struct Crate: Search.Answer {}\n\nconformers of Answer (1, by written name):\n  Sources.Crate — struct — Sources/Lib/Lib.swift:2"), "\(search)")
+        #expect(search.contains("\n\"Answer\" (1 use by written name in 1 file) — 1 production · 0 tests (for Sources.Search.Answer):\n  Sources/Lib/Lib.swift (1):\n    :2  | struct Crate: Search.Answer {}\n\nconformers of Answer (1, by written name):\n  Sources.Crate — struct — Sources/Lib/Lib.swift:2"), "\(search)")
     }
 
     /// Another type of the name whose owner no line spells adds nothing.
@@ -83,7 +83,7 @@ struct WhereQualifiedProtocolNoteTests {
     func anOwnerNoLineSpellsLeavesTheAnswerAsItWas() async throws {
         let search = try await Self.answer("Search.Answer", source: "enum Search { protocol Answer {} }\nenum Log { protocol Answer {} }\nstruct Crate: Search.Answer {}\n")
 
-        #expect(search.contains("\n\"Answer\" used by 1 line in 1 file — 1 production · 0 tests, split on the XCTest or Testing import, never the path (for Sources.Search.Answer):\n  Sources/Lib/Lib.swift (1):\n    :3  | struct Crate: Search.Answer {}\n\nconformers of Answer (1, by written name):\n  Sources.Crate — struct — Sources/Lib/Lib.swift:3"), "\(search)")
+        #expect(search.contains("\n\"Answer\" (1 use by written name in 1 file) — 1 production · 0 tests (for Sources.Search.Answer):\n  Sources/Lib/Lib.swift (1):\n    :3  | struct Crate: Search.Answer {}\n\nconformers of Answer (1, by written name):\n  Sources.Crate — struct — Sources/Lib/Lib.swift:3"), "\(search)")
     }
 
     /// Asked by its bare name, both protocols are asked, so neither is another's and nothing is marked.
@@ -101,6 +101,6 @@ struct WhereQualifiedProtocolNoteTests {
     func aStructAskedForIsNotNoted() async throws {
         let base = try await Self.answer("Base.Item", source: "class Base {\n    struct Item {}\n}\nenum Shelf {\n    protocol Item {}\n}\nenum Outer {\n    class Shelf: Base {}\n    static let crate = Shelf.Item()\n}\n")
 
-        #expect(base.contains("\n\"Item\" used by 1 line in 1 file — 1 production · 0 tests, split on the XCTest or Testing import, never the path (for Sources.Base.Item):\n  Sources/Lib/Lib.swift (1):\n    :9  | static let crate = Shelf.Item()"), "\(base)")
+        #expect(base.contains("\n\"Item\" (1 use by written name in 1 file) — 1 production · 0 tests (for Sources.Base.Item):\n  Sources/Lib/Lib.swift (1):\n    :9  | static let crate = Shelf.Item()"), "\(base)")
     }
 }

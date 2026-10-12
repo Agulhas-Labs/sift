@@ -99,7 +99,6 @@ struct StringsAccessorFollowTests {
         let output = try engine.strings(query: "Lobby heading")
 
         #expect(Self.body(output) == """
-        strings "Lobby heading"
         1 key in 1 catalog — searched 1 catalog file; working-tree read, never stale
 
         Resources/Localizable.xcstrings:

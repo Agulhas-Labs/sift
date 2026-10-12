@@ -76,7 +76,7 @@ struct WhereInitializerCallsTests {
         let output = try await Self.lookup("Box.init(size:)", in: Self.repo())
 
         #expect(!output.contains("no call spelled"), "\(output)")
-        #expect(output.contains("syntactic call sites — by written name"), "\(output)")
+        #expect(output.contains("no store for callers, overrides or references; sites by written name"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Box.swift:5  in Box.init(width:height:)"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Box.swift:10  in Box.unit()"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Uses.swift:3  in Crate.init()"), "\(output)")
@@ -101,9 +101,9 @@ struct WhereInitializerCallsTests {
         let sized = try await Self.lookup("Box.init(size:)", in: root)
         let spread = try await Self.lookup("Box.init(width:height:)", in: root)
 
-        #expect(sized.contains("\"Box.init\" (9 call sites by name, 8 with the labels (size:), in 2 files"), "\(sized)")
+        #expect(sized.contains("\"Box.init\" (9 call sites by written name, 8 with the labels (size:), in 2 files"), "\(sized)")
         #expect(!WhereStoreSiteTextTests.located(sized).contains("Uses.swift:18"), "\(sized)")
-        #expect(spread.contains("\"Box.init\" (9 call sites by name, 1 with the labels (width:height:), in 1 file"), "\(spread)")
+        #expect(spread.contains("\"Box.init\" (9 call sites by written name, 1 with the labels (width:height:), in 1 file"), "\(spread)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(spread).contains("Sources/App/Uses.swift:18  in spread"), "\(spread)")
     }
 
@@ -163,7 +163,7 @@ struct WhereInitializerCallsTests {
 
         let output = try await Self.lookup("Box.init", in: root)
 
-        #expect(output.contains("\"Box.init\" (2 call sites in 1 file"), "\(output)")
+        #expect(output.contains("\"Box.init\" (2 call sites by written name in 1 file"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Box.swift:5  in make"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Box.swift:6  in b"), "\(output)")
     }
@@ -289,7 +289,7 @@ struct WhereInitializerCallsTests {
         let output = try await Self.lookup("Wrap.init", in: root)
 
         #expect(!output.contains("no call spelled"), "\(output)")
-        #expect(output.contains("\"Wrap.init\" (2 call sites in 1 file"), "\(output)")
+        #expect(output.contains("\"Wrap.init\" (2 call sites by written name in 1 file"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Wrap.swift:8  in Holder.x"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Wrap.swift:9  in Holder.y"), "\(output)")
     }
@@ -360,7 +360,7 @@ struct WhereInitializerCallsTests {
 
         let output = try await Self.lookup("Box.init", in: root)
 
-        #expect(output.contains("\"Box.init\" (3 call sites in 1 file"), "\(output)")
+        #expect(output.contains("\"Box.init\" (3 call sites by written name in 1 file"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Box.swift:6  in thrower()"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Box.swift:8  in later()"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Box.swift:9  in arr"), "\(output)")
@@ -446,7 +446,7 @@ extension WhereInitializerCallsTests {
 
         let output = try await Self.lookup("State.init", in: root)
 
-        #expect(output.contains("\"State.init\" (1 call site in 1 file"), "\(output)")
+        #expect(output.contains("\"State.init\" (1 call site by written name in 1 file"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/State.swift:7  in Screen.made"), "\(output)")
         #expect(!WhereStoreSiteTextTests.located(output).contains("State.swift:5"), "\(output)")
         #expect(!WhereStoreSiteTextTests.located(output).contains("State.swift:6"), "\(output)")
@@ -487,7 +487,7 @@ extension WhereInitializerCallsTests {
 
         let output = try await Self.lookup("State.init", in: root)
 
-        #expect(output.contains("\"State.init\" (3 call sites by name, 1 written as an attribute behind a qualifier that spells no owner of it, kept"), "\(output)")
+        #expect(output.contains("\"State.init\" (3 call sites by written name, 1 written as an attribute behind a qualifier that spells no owner of it, kept"), "\(output)")
         #expect(!output.contains("of another type named State dropped"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/State.swift:8  in Screen.count"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/State.swift:9  in Screen.total"), "\(output)")

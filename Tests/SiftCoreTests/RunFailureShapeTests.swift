@@ -173,16 +173,19 @@ struct RunFailureShapeTests {
     func aDumpedViewTreeIsClippedRatherThanReprintedWhole() throws {
         let long = String(repeating: "x", count: RunFailureCensus.wordsCap + 60)
         let clipped = "\(String(repeating: "x", count: RunFailureCensus.wordsCap))… (+60 characters — see the raw log)"
+        // The message has its own, wider cap: the expectation's expansion is the line a reader acts on.
+        let wideMessage = String(repeating: "x", count: RunFailureCensus.messageCap + 60)
+        let clippedMessage = "\(String(repeating: "x", count: RunFailureCensus.messageCap))… (+60 characters — see the raw log)"
         let shape = RunFailureShape.of(
-            [RunFailureShape.Failure(name: "aTest()", location: "T.swift:1:1", message: long, arguments: long, note: long)],
+            [RunFailureShape.Failure(name: "aTest()", location: "T.swift:1:1", message: wideMessage, arguments: long, note: long)],
             changedFiles: .of([])
         )
         let block = shape.rendered()
 
         #expect(block.contains("  aTest() with \(clipped) — T.swift:1:1"))
-        #expect(block.contains("    \(clipped)"))
+        #expect(block.contains("    \(clippedMessage)"))
         #expect(block.contains("    ↳ \(clipped) (by adjacency)"))
-        #expect(block.allSatisfy { $0.count < RunFailureCensus.wordsCap + 80 })
+        #expect(block.allSatisfy { $0.count < RunFailureCensus.messageCap + 80 })
 
         // An ordinary expectation is untouched — the cap is for dumps, not for messages. Which specific
         // message a signature shows now depends on which of its tests ranks lead, so this asks for that
@@ -191,16 +194,16 @@ struct RunFailureShapeTests {
         #expect(ordinary.contains { $0.hasPrefix("    Expectation failed:") && !$0.contains("more characters") })
     }
 
-    /// The `↳ top:` line prints a failure's own words too, so it is bounded like every other line in this block that does.
+    /// The `↳ top:` line prints a failure's own words too, so it is bounded, at ``RunFailureCensus/wordsCap`` rather than the message's wider cap: it is a normalised signature, not the line a reader acts on.
     ///
-    /// It is the easy one to leave unbounded, because the normalisation usually shrinks what it prints: the corpus's widest top line is 85 characters, since eliding the literals a message is *about* is most of its width. A message with no literals and no numbers in it survives normalisation whole — so, unbounded, the same sentence would be clipped at ``RunFailureCensus/wordsCap`` on the example line and printed in full on the line directly above it, in a block whose stated rule is that a failure's own words are bounded in both forms.
+    /// It is the easy one to leave unbounded, because the normalisation usually shrinks what it prints: the corpus's widest top line is 85 characters, since eliding the literals a message is *about* is most of its width. A message with no literals and no numbers in it survives normalisation whole — so, unbounded, the same sentence would be clipped on the example line and printed in full on the line directly above it, in a block whose stated rule is that a failure's own words are bounded in both forms.
     ///
     /// It is also load-bearing for ``RunFailureCensus/listingBudget``'s floor, which, that budget being one answer's rather than one section's, rests on a sample being the listing's own entries plus two lines that are themselves bounded. An unbounded `↳ top:` is the counter-example to that, and it is the second line of the sample.
     @Test
-    func theTopSignatureIsClippedLikeTheExampleBeneathIt() throws {
+    func theTopSignatureIsClippedAtTheWordsCap() throws {
         // No literals, no numbers, no addresses — the three things the normalisation elides — so the
         // signature is as wide as the message, which is what puts it past the cap.
-        let words = Array(repeating: "the accessibility label of the row", count: 12).joined(separator: ", ")
+        let words = Array(repeating: "the accessibility label of the row", count: 40).joined(separator: ", ")
         let shape = RunFailureShape.of(
             (0 ..< 12).map { RunFailureShape.Failure(name: "aTest\($0)()", location: "T.swift:1:1", message: words) },
             changedFiles: .of([])
@@ -210,11 +213,11 @@ struct RunFailureShapeTests {
         let top = try #require(block.first { $0.hasPrefix("  ↳ top:") })
         let example = try #require(block.first { $0.hasPrefix("    the accessibility") })
 
-        #expect(signature.utf8.count > RunFailureCensus.wordsCap)
+        #expect(signature.utf8.count > RunFailureCensus.messageCap)
         #expect(!top.contains(signature))
-        // The two lines carry the same bounded text, which is the rule this block states about itself.
-        #expect(top.contains(example.trimmingCharacters(in: .whitespaces)))
-        #expect(top.hasSuffix("characters — see the raw log)  ×12"))
+        #expect(top == "  ↳ top: \(RunFailureCensus.clipped(signature))  ×12")
+        // The example beneath keeps the message's wider cap, so the top line is the narrower of the two.
+        #expect(example.utf8.count > top.utf8.count)
     }
 
     /// The cap is bytes, because the budget it has to reconcile with is bytes — and 240 graphemes of CJK is three times that.

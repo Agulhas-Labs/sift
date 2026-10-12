@@ -57,7 +57,7 @@ public struct ScanDiff {
         }
         let differing = groups.values.reduce(0) { $0 + $1.count }
         let guided = (theirs.count { $0.classification == "guided" }, ours.count { $0.classification == "guided" })
-        let cold = (theirs.count { $0.classification == "cold" }, ours.count { $0.classification == "cold" })
+        let cold = (theirs.count { $0.isColdMiss }, ours.count { $0.isColdMiss })
         lines.append("  scan differs on \(differing) of \(keys.count) windows — guided \(guided.0) → \(guided.1), cold \(cold.0) → \(cold.1) (its → this one's)")
         return lines
     }

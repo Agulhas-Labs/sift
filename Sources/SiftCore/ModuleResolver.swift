@@ -11,7 +11,9 @@ import Yams
 /// Mapping sources, all merged (config wins on ties via longest prefix): the explicit config map, every SwiftPM manifest's declared targets — an explicit literal `path:` first, the `Sources/<Target>` + `Tests/<Target>` convention beside it — every XcodeGen spec's target→sources entries, and every `.xcodeproj`'s native targets. All three build systems are *discovered*, none is expected at a fixed path or under a fixed name (Docs/Design.md §2).
 struct ModuleResolver {
     /// Path prefix → module name, longest prefix consulted first.
-    private let prefixMap: [(prefix: String, module: String)]
+    private let prefixMap: [PrefixEntry]
+    /// Module → the name of the SwiftPM or XcodeGen target that builds it, for each target whose name is not its module's: a test plan names the target, and the index names the module.
+    let targetNames: [String: String]
     /// Repo-relative SwiftPM manifests that contributed no mapping at all — no literal target path and nothing under the convention directories.
     ///
     /// Surfaced by `init`, because these files' modules will be guessed while a build file that should name them sits right there.
@@ -34,6 +36,8 @@ struct ModuleResolver {
     ///
     /// Not part of the fingerprint: it changes no module attribution, and every file it is read from is already hashed by path.
     let projectDirectories: [String]
+    /// Repo-relative directories holding a SwiftPM manifest, the root as the empty string: the packages whose own `.build` index-store discovery checks for an `xcodebuild -derivedDataPath` build.
+    let packageDirectories: [String]
     /// Content digest of everything module attribution depends on that lives OUTSIDE the source files: the resolver's own logic version, every manifest's bytes, the XcodeGen files' bytes, and the config `moduleMap`.
     ///
     /// Source-content invalidation can never catch these inputs changing, which is how an upgraded binary (or an edited manifest) would serve stale per-file modules forever. The engine compares this against the value stored in the index and re-attributes every file on mismatch.
@@ -46,7 +50,11 @@ struct ModuleResolver {
     /// 3: `.xcodeproj` targets read directly — this is the mechanism that spares anyone a per-repository `sift init` after an upgrade, since bumping it re-attributes every existing index on its next query.
     ///
     /// 4: XcodeGen specs discovered anywhere in the tree and identified by *shape* rather than by name — the file may be called anything, `--spec` takes any path — and their `sources` resolved against the spec's own directory.
-    static let logicVersion = 4
+    ///
+    /// 5: a target's `PRODUCT_MODULE_NAME` / `PRODUCT_NAME` settings name its module, in XcodeGen specs and `.xcodeproj` alike, and one this tool cannot expand leaves the target's files guessed.
+    ///
+    /// 6: a module name no setting names is spelt as the build spells it (`My-Kit` is `My_Kit`), for XcodeGen and SwiftPM targets as the `.xcodeproj` ones already were.
+    static let logicVersion = 6
 
     init(repoRoot: URL, config: SiftConfig) {
         var accumulator = Accumulator()
@@ -62,24 +70,28 @@ struct ModuleResolver {
         let exclusions = accumulator.excluded
         let found = accumulator.survey
         survey = found
+        targetNames = accumulator.targetNames
+        var undeclared = accumulator.undeclared
         for (prefix, module) in config.moduleMap.sorted(by: { $0.key < $1.key }) {
             map[Self.normalized(prefix)] = module
+            undeclared.remove(Self.normalized(prefix))
             hasher.update(data: Data("map:\(prefix)=\(module)\n".utf8))
         }
         prefixMap = map
-            .map { (prefix: $0.key, module: $0.value) }
+            .map { PrefixEntry(prefix: $0.key, module: $0.value, isDeclared: !undeclared.contains($0.key)) }
             .sorted { $0.prefix.count > $1.prefix.count }
         excludedPrefixes = exclusions.sorted()
         unmappedManifests = unmapped.sorted()
         inputPaths = inputs.sorted()
         projectDirectories = Set(accumulator.projectDirectories).sorted()
+        packageDirectories = Set(accumulator.packageDirectories).sorted()
         let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
         fingerprint = "v\(Self.logicVersion):\(digest)"
     }
 
     /// The module for a repo-relative path; falls back to the first path component when nothing matches.
     func module(for relativePath: String) -> String {
-        resolvedModule(for: relativePath)
+        claim(for: relativePath)?.module
             ?? relativePath.split(separator: "/").first.map(String.init) ?? relativePath
     }
 
@@ -87,6 +99,25 @@ struct ModuleResolver {
     ///
     /// The distinction is invisible in `module(for:)` by design — every file gets *a* module either way — but it is the whole question `init` asks. A fallback module is a guess from the directory name, so `digest <Module>` and `where Module.Type` are wrong for those files in a way nothing in the output admits.
     func resolvedModule(for relativePath: String) -> String? {
+        guard let claim = claim(for: relativePath), claim.isDeclared else { return nil }
+        return claim.module
+    }
+
+    /// Whether a build file claims this path but renames its module through a setting this tool cannot read, so its module is the target's own name kept as a guess.
+    ///
+    /// Told apart from a path no build file claims because the remedy differs: a directory name is a fair draft for an unclaimed path, and here it is the one name the build is known to replace.
+    func isUnreadablyRenamed(_ relativePath: String) -> Bool {
+        unreadableRenamePrefix(for: relativePath) != nil
+    }
+
+    /// The prefix the build file claims a path under, where it renames that path's module unreadably — the prefix a `moduleMap` entry needs to outrank the claim, since a shorter one loses to it.
+    func unreadableRenamePrefix(for relativePath: String) -> String? {
+        guard let claim = claim(for: relativePath), !claim.isDeclared else { return nil }
+        return claim.prefix
+    }
+
+    /// The prefix entry that claims a path, declared or not; `nil` when none does or an `excludes:` rule takes the path back.
+    private func claim(for relativePath: String) -> PrefixEntry? {
         for entry in prefixMap {
             guard relativePath == entry.prefix || relativePath.hasPrefix(entry.prefix + "/") else { continue }
             // A longer `excludes:` match beats the directory that claimed it — the target says outright it does not
@@ -95,7 +126,7 @@ struct ModuleResolver {
                 exclusion.count > entry.prefix.count
                     && (relativePath == exclusion || relativePath.hasPrefix(exclusion + "/"))
             }
-            return excludedByLongerRule ? nil : entry.module
+            return excludedByLongerRule ? nil : entry
         }
         return nil
     }
@@ -107,6 +138,7 @@ struct ModuleResolver {
             let relativeBase = relative(manifestDirectory, to: repoRoot)
             let manifestPath = [relativeBase, "Package.swift"].filter { !$0.isEmpty }.joined(separator: "/")
             accumulator.projectDirectories.append(relativeBase)
+            accumulator.packageDirectories.append(relativeBase)
             let bytes = FileManager.default.contents(atPath: manifestDirectory.appendingPathComponent("Package.swift").path) ?? Data()
             accumulator.inputPaths.append(manifestPath)
             accumulator.hasher.update(data: Data("manifest:\(manifestPath)\n".utf8))
@@ -116,7 +148,8 @@ struct ModuleResolver {
             for target in SwiftPMManifest.parse(source: String(data: bytes, encoding: .utf8) ?? "").targets {
                 guard let path = target.path else { continue }
                 let prefixComponents = [relativeBase, normalized(path)].filter { !$0.isEmpty }
-                accumulator.map[prefixComponents.joined(separator: "/")] = target.name
+                accumulator.map[prefixComponents.joined(separator: "/")] = C99ExtendedIdentifier.spelling(of: target.name)
+                accumulator.recordTarget(target.name)
                 mapped += 1
             }
             for sourcesName in ["Sources", "Tests"] {
@@ -133,7 +166,8 @@ struct ModuleResolver {
                     let prefix = prefixComponents.joined(separator: "/")
                     // The convention is a guess from a directory name; a target the manifest *declared* for the same path is a statement. Never let the guess overwrite the statement — `.target(name: "Renamed", path: "Sources/Lib")` must beat the `Lib` the directory implies.
                     guard accumulator.map[prefix] == nil else { continue }
-                    accumulator.map[prefix] = targetURL.lastPathComponent
+                    accumulator.map[prefix] = C99ExtendedIdentifier.spelling(of: targetURL.lastPathComponent)
+                    accumulator.recordTarget(targetURL.lastPathComponent)
                     mapped += 1
                 }
             }
@@ -179,15 +213,15 @@ struct ModuleResolver {
             }
 
             let base = electedBase(for: targets, repoRoot: repoRoot)
-            var derived: [String: String] = [:]
+            var derived: [String: XcodeGenClaim] = [:]
             var derivedExclusions: [String] = []
             for target in targets.sorted(by: { $0.name < $1.name }) {
                 for source in target.sources {
                     guard let prefix = prefix(of: source.path, target: target, base: base, repoRoot: repoRoot) else { continue }
-                    if let existing = derived[prefix], existing <= target.name {
+                    if let existing = derived[prefix], existing.target <= target.name {
                         continue
                     }
-                    derived[prefix] = target.name
+                    derived[prefix] = XcodeGenClaim(target: target.name, setting: target.module)
                     for exclude in source.excludes {
                         derivedExclusions.append(normalized(prefix + "/" + exclude))
                     }
@@ -200,17 +234,26 @@ struct ModuleResolver {
 
             accumulator.survey.xcodeGenSpecs += 1
             accumulator.projectDirectories.append(relative(spec.deletingLastPathComponent(), to: repoRoot))
-            // Every contributing file, not just the one that names them: a fragment reached through `include:` decides
-            // module names too, so leaving it unstamped would mean editing it changed nothing until the process restarted.
+            // Every contributing file, not just the one that names them: a fragment reached through `include:` or an
+            // xcconfig decides module names too, so leaving it unstamped would mean editing it changed nothing until
+            // the process restarted.
             for file in contributingFiles {
                 let relativeFile = relative(file, to: repoRoot)
                 guard !relativeFile.hasPrefix("/"), !relativeFile.hasPrefix("..") else { continue }
                 accumulator.inputPaths.append(relativeFile)
                 accumulator.hasher.update(data: Data("xcodegen:\(relativeFile)\n".utf8))
             }
-            for (prefix, module) in derived.sorted(by: { $0.key < $1.key }) {
-                accumulator.hasher.update(data: Data("\(prefix)=\(module)\n".utf8))
-                accumulator.map[prefix] = module
+            for (prefix, claim) in derived.sorted(by: { $0.key < $1.key }) {
+                // An unexpandable rename keeps the target's name, the likeliest module, but not its confidence.
+                let mark = claim.isDeclared ? "" : "?"
+                accumulator.hasher.update(data: Data("\(prefix)=\(claim.module)\(mark)\n".utf8))
+                accumulator.map[prefix] = claim.module
+                accumulator.recordTarget(claim.target, module: claim.module)
+                if claim.isDeclared {
+                    accumulator.undeclared.remove(prefix)
+                } else {
+                    accumulator.undeclared.insert(prefix)
+                }
             }
             accumulator.excluded.append(contentsOf: derivedExclusions)
             for exclusion in derivedExclusions.sorted() {
@@ -256,7 +299,8 @@ struct ModuleResolver {
     private static func addXcodeProjectTargets(projects: [URL], repoRoot: URL, into accumulator: inout Accumulator) {
         for project in projects {
             accumulator.projectDirectories.append(relative(project.deletingLastPathComponent(), to: repoRoot))
-            let mappings = XcodeProjectTargets.mappings(projectPath: project, repoRoot: repoRoot)
+            let reading = XcodeProjectTargets.read(projectPath: project, repoRoot: repoRoot)
+            let mappings = reading.mappings
             guard !mappings.isEmpty else {
                 accumulator.survey.unreadableProjects += 1
                 continue
@@ -266,11 +310,24 @@ struct ModuleResolver {
             accumulator.inputPaths.append(relativeProject + "/project.pbxproj")
             accumulator.hasher.update(data: Data("xcodeproj:\(relativeProject)\n".utf8))
             accumulator.hasher.update(data: Data(XcodeProjectTargets.fingerprintContribution(of: mappings).utf8))
+            // Stamped, not hashed: the mappings above already carry what an xcconfig decides, and the stamp is what
+            // rebuilds the resolver when one is edited, or created where the project names it.
+            for file in reading.configFiles {
+                let relativeFile = relative(file, to: repoRoot)
+                guard !relativeFile.hasPrefix("/"), !relativeFile.hasPrefix("..") else { continue }
+                accumulator.inputPaths.append(relativeFile)
+            }
+            for module in reading.undeclaredModules.sorted() {
+                accumulator.hasher.update(data: Data("undeclared:\(module)\n".utf8))
+            }
             for (prefix, module) in mappings.sorted(by: { $0.key < $1.key }) where accumulator.map[normalized(prefix)] == nil {
                 // First writer wins. Every project in the tree is discovered, so letting a later one have the final
                 // say would let a vendored sample relabel a prefix a real manifest already owns — resolved-looking,
                 // so no guessed banner.
                 accumulator.map[normalized(prefix)] = module
+                if reading.undeclaredModules.contains(module) {
+                    accumulator.undeclared.insert(normalized(prefix))
+                }
             }
         }
     }
@@ -351,11 +408,50 @@ extension ModuleResolver {
     /// One value rather than five parallel `inout` parameters: each collector needs all of them, and threading them separately pushes the signatures past the parameter limit.
     struct Accumulator {
         var map: [String: String] = [:]
+        /// Prefixes in `map` whose module is a target's name kept only because its build settings rename it in a way this tool cannot read.
+        var undeclared: Set<String> = []
+        /// Module → the target's own name, for each target whose name is not already its module's.
+        var targetNames: [String: String] = [:]
         var excluded: [String] = []
         var unmappedManifests: [String] = []
         var inputPaths: [String] = []
         var projectDirectories: [String] = []
+        var packageDirectories: [String] = []
         var survey = Survey()
         var hasher = SHA256()
+
+        mutating func recordTarget(_ target: String, module: String? = nil) {
+            let module = module ?? C99ExtendedIdentifier.spelling(of: target)
+            if module != target {
+                targetNames[module] = target
+            }
+        }
+    }
+}
+
+extension ModuleResolver {
+    /// One prefix the build files claim, and the module it resolves to.
+    struct PrefixEntry {
+        var prefix: String
+        var module: String
+        /// False where the module is a target's own name, kept only because its build settings rename it in a way this tool cannot read.
+        var isDeclared: Bool
+    }
+
+    /// The XcodeGen target that claims a source prefix, and what its settings make of its module.
+    struct XcodeGenClaim {
+        var target: String
+        var setting: ModuleNameSetting.Outcome
+
+        var module: String {
+            if case let .named(name) = setting {
+                return name
+            }
+            return C99ExtendedIdentifier.spelling(of: target)
+        }
+
+        var isDeclared: Bool {
+            setting != .unknown
+        }
     }
 }

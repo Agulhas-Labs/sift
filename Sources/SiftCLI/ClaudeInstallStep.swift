@@ -25,6 +25,12 @@ struct ClaudeInstallStep {
     /// Who answers the allow-rule questions, for the terminal or its absence.
     let prompt: AllowRunPrompt
 
+    /// Both blocks of allow rules, added without asking, as `install-hook --allow-run` does.
+    var allowRun = false
+
+    /// The lookups block alone, added without asking, as `install-hook --allow-lookups` does.
+    var allowLookups = false
+
     /// Installs ``binary`` into the Claude Code configuration, printing to `output`.
     func run(output: CommandOutput) throws -> InstallStepReport {
         // Not named with `--settings`: `install-hook` finds the same file through the environment set below, and only an
@@ -33,6 +39,8 @@ struct ClaudeInstallStep {
         var hook = try InstallHookCommand.parse([])
         hook.output = output
         hook.prompt = prompt
+        hook.allowRun = allowRun ? true : nil
+        hook.allowLookups = allowLookups
         hook.arguments = arguments
         hook.environment = environment
         hook.executable = executable

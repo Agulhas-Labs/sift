@@ -40,7 +40,7 @@ import Testing
         let log = directory.appendingPathComponent("usage.jsonl")
         try [
             logLine(session: "audited", served: answer.utf8.count, source: source.utf8.count),
-            logLine(session: "elsewhere", served: 1000, source: 5_000_000),
+            logLine(session: "elsewhere", served: 1000, source: 90000),
         ].joined(separator: "\n").appending("\n").write(to: log, atomically: true, encoding: .utf8)
         return Fixture(directory: directory, transcript: transcript, log: log, sessionGross: source.utf8.count - answer.utf8.count)
     }
@@ -48,7 +48,7 @@ import Testing
     private static func logLine(session: String, served: Int, source: Int) -> String {
         let entry: [String: Any] = [
             "ts": "2026-10-01T10:00:00Z", "tool": "digest", "target": relative, "root": "/repo", "ms": 4, "ok": true,
-            "session": session, "outBytes": served, "srcBytes": source,
+            "session": session, "outBytes": served, "srcBytes": source, "via": "hook", "intercepted": "window",
         ]
         let data = (try? JSONSerialization.data(withJSONObject: entry)) ?? Data()
         return String(bytes: data, encoding: .utf8) ?? ""
@@ -62,7 +62,7 @@ import Testing
 
         let report = TranscriptAudit.render(projectsDirectory: projects, transcript: fixture.transcript.path, usageLog: fixture.log)
 
-        #expect(report.contains("    saving    \(TokenEstimate.saved(bytes: fixture.sessionGross)), \(TokenEstimate.basis(bytes: fixture.sessionGross)): every measured call the usage log holds for this session"))
+        #expect(report.contains("    saving    \(TokenEstimate.saved(bytes: fixture.sessionGross)), \(TokenEstimate.basis(bytes: fixture.sessionGross)): the 1 intercepted read the usage log priced for this session"))
     }
 
     /// Without `--transcript` the window's own figure is unchanged: every session's calls count.
@@ -70,11 +70,11 @@ import Testing
     func aWindowAuditStillCountsEverySession() throws {
         let fixture = try Self.fixture()
         let projects = fixture.directory.appendingPathComponent("projects")
-        let gross = fixture.sessionGross + 5_000_000 - 1000
+        let gross = fixture.sessionGross + 90000 - 1000
 
         let report = TranscriptAudit.render(projectsDirectory: projects, usageLog: fixture.log)
 
-        #expect(report.contains("\(TokenEstimate.saved(bytes: gross)), \(TokenEstimate.basis(bytes: gross)): every measured call the usage log holds for this window"))
+        #expect(report.contains("\(TokenEstimate.saved(bytes: gross)), \(TokenEstimate.basis(bytes: gross)): the 2 intercepted reads the usage log priced for this window"))
     }
 }
 

@@ -61,7 +61,7 @@ struct RunTotalsLineTests {
         let report = try TestSources.runReport("swift-test-mixed-xctest-failure", invokedAs: ["swift", "test"], exitCode: 1)
         let line = try #require(Self.totalsLine(of: Self.answer(report, exitCode: 1)))
 
-        #expect(line == "totals: ✘ failed · XCTest 1 test, 1 failure · Swift Testing 1 test in 1 suite")
+        #expect(line == "totals: ✘ failed · XCTest 1 test, 1 failure, 0 skipped · Swift Testing 1 test in 1 suite, 0 skipped")
         #expect(!line.contains("passed"))
     }
 
@@ -73,7 +73,7 @@ struct RunTotalsLineTests {
         let report = try TestSources.runReport("swift-test-xctest-only-failure", invokedAs: ["swift", "test"], exitCode: 1)
         let line = try #require(Self.totalsLine(of: Self.answer(report, exitCode: 1)))
 
-        #expect(line == "totals: ✘ failed · XCTest 1 test, 1 failure · Swift Testing 0 tests in 0 suites")
+        #expect(line == "totals: ✘ failed · XCTest 1 test, 1 failure, 0 skipped · Swift Testing 0 tests in 0 suites")
         #expect(!line.contains("0 tests in 0 suites passed"))
     }
 
@@ -199,7 +199,7 @@ struct RunTotalsLineTests {
 
         // One of each shape, from one process — so there is one bundle here, and nothing to sum.
         #expect(report.testProcessOpenings == 2)
-        #expect(line == "totals: ✘ failed · XCTest 1 test, 1 failure · Swift Testing 1 test in 1 suite")
+        #expect(line == "totals: ✘ failed · XCTest 1 test, 1 failure, 0 skipped · Swift Testing 1 test in 1 suite, 0 skipped")
         #expect(!line.contains("across"))
         #expect(!line.contains("2 tests"))
     }
@@ -219,7 +219,7 @@ struct RunTotalsLineTests {
         let report = filter.finish(exitCode: 1)
         let line = try #require(Self.totalsLine(of: Self.answer(report, exitCode: 1)))
 
-        #expect(line == "totals: ✘ failed · XCTest 16 tests across 2 bundles, 3 failures")
+        #expect(line == "totals: ✘ failed · XCTest 16 tests across 2 bundles, 3 failures, 0 skipped")
     }
 
     /// The case the line exists for: a bundle that never built printed nothing at all — no opening, no counter, no tally — while every line that did print says `passed`.
@@ -373,7 +373,7 @@ struct RunTotalsLineTests {
         #expect(carrying.filter { $0.hasPrefix("totals:") }.count == 1)
 
         let line = try #require(Self.totalsLine(of: answer))
-        #expect(line == "totals: ✘ failed · Swift Testing 2 tests in 1 suite, 2 failures")
+        #expect(line == "totals: ✘ failed · Swift Testing 2 tests in 1 suite, 2 failures, 0 skipped")
     }
 
     /// The clause is owed even when the *only* process that opened is the XCTest one and the process that never closed is the Swift Testing helper — the crash probe's own shape: the helper opens on `Test run started.`, the XCTest harness never gets to its own `Executed …` because it dies first, and the helper closes its own tally regardless.
@@ -490,11 +490,11 @@ struct RunTotalsLineTests {
         let passing = try TestSources.runReport("xcodebuild-test-execute-success", invokedAs: invocation, exitCode: 0)
         let passingAnswer = RunReportRenderer(kind: .xcodebuild, workingDirectory: Self.workingDirectory)
             .render(passing, exitCode: 0, logURL: nil)
-        #expect(try #require(Self.totalsLine(of: passingAnswer)) == "totals: ✔ passed · Swift Testing 2658 tests in 290 suites")
+        #expect(try #require(Self.totalsLine(of: passingAnswer)) == "totals: ✔ passed · Swift Testing 2658 tests in 290 suites, 0 skipped")
 
         let failing = try TestSources.runReport("xcodebuild-test-execute-failure-environmental", invokedAs: invocation, exitCode: 65)
         let failingAnswer = RunReportRenderer(kind: .xcodebuild, workingDirectory: Self.workingDirectory)
             .render(failing, exitCode: 65, logURL: nil)
-        #expect(try #require(Self.totalsLine(of: failingAnswer)) == "totals: ✘ failed · Swift Testing 2658 tests in 290 suites, 666 failures")
+        #expect(try #require(Self.totalsLine(of: failingAnswer)) == "totals: ✘ failed · Swift Testing 2658 tests in 290 suites, 666 failures, 0 skipped")
     }
 }

@@ -45,7 +45,7 @@ public final class SiftEngine: @unchecked Sendable {
         config = try SiftConfig.load(repoRoot: root)
         configMtime = Self.mtime(of: ConfigFile.url(repoRoot: root))
         store = try IndexStore(databasePath: storesNothing ? IndexLocation.memory.databasePath : IndexLocation.resolve(databasePath: Self.indexPath(in: root)).databasePath)
-        enumerator = FileEnumerator(repoRoot: root, config: config, gitListing: { try gitContext.visibleSwiftFiles() })
+        enumerator = FileEnumerator(repoRoot: root, config: config, gitListing: { try gitContext.visibleSwiftFiles() }, markdownListing: { try gitContext.visibleMarkdownFiles() })
         resolver = ModuleResolver(repoRoot: root, config: config)
         indexer = Indexer(repoRoot: root, store: store, enumerator: enumerator, resolver: resolver)
         resolutionStamps = Self.stamps(of: resolver.inputPaths + resolver.watchedDirectories, under: root)
@@ -80,10 +80,11 @@ public final class SiftEngine: @unchecked Sendable {
         })
 
         if try store.counts().files == 0 || indexedHead == nil {
-            try await indexer.fullIndex(storeBuiltAt: storeBuiltAt)
-            try store.setMetaValue(head, forKey: "indexed_head")
-            try store.setMetaValue(resolver.fingerprint, forKey: "resolution_fingerprint")
+            // Resuming: rows a killed or cancelled build stored are kept where their files still match them, so
+            // successive attempts converge on a build none of them could finish alone (Docs/Design.md §6.9).
+            try await indexer.fullIndex(storeBuiltAt: storeBuiltAt, resuming: true)
             try store.setMetaValue(currentDirtyPaths.sorted().joined(separator: "\n"), forKey: "last_dirty")
+            try indexer.markBuilt(atHead: head)
             return try freshness(head: head, dirtyCount: dirty.count)
         }
 
@@ -163,7 +164,7 @@ public final class SiftEngine: @unchecked Sendable {
         guard let reloaded = try? SiftConfig.load(repoRoot: repoRoot) else { return }
         config = reloaded
         let gitContext = git
-        enumerator = FileEnumerator(repoRoot: repoRoot, config: config, gitListing: { try gitContext.visibleSwiftFiles() })
+        enumerator = FileEnumerator(repoRoot: repoRoot, config: config, gitListing: { try gitContext.visibleSwiftFiles() }, markdownListing: { try gitContext.visibleMarkdownFiles() })
         resolver = ModuleResolver(repoRoot: repoRoot, config: config)
         indexer = Indexer(repoRoot: repoRoot, store: store, enumerator: enumerator, resolver: resolver)
         resolutionStamps = Self.stamps(of: resolver.inputPaths + resolver.watchedDirectories, under: repoRoot)
@@ -244,9 +245,7 @@ public final class SiftEngine: @unchecked Sendable {
     @discardableResult
     public func fullIndex() async throws -> Int {
         let indexed = try await indexer.fullIndex(storeBuiltAt: storeBuiltAt)
-        let head = try git.head() ?? Freshness.unbornHead
-        try store.setMetaValue(head, forKey: "indexed_head")
-        try store.setMetaValue(resolver.fingerprint, forKey: "resolution_fingerprint")
+        try indexer.markBuilt(atHead: git.head() ?? Freshness.unbornHead)
         return indexed
     }
 
@@ -336,12 +335,15 @@ public final class SiftEngine: @unchecked Sendable {
         renderer.siblingRoots = { [weak self] target in self?.siblingPointers(target: target) ?? [] }
         let owner = XcodeProjectOwner(repoRoot: repoRoot)
         renderer.projectOwner = { owner.hint(forFileAt: $0) }
-        renderer.projectDirectories = resolver.projectDirectories
+        renderer.takeModuleFacts(from: resolver)
         renderer.declarationSource = { [repoRoot] row in
             guard case let .lines(lines, _) = SourceSlicer.slice(of: row, under: repoRoot) else { return nil }
             return lines
         }
         renderer.fileSource = { [repoRoot] path in try? String(contentsOf: repoRoot.appendingPathComponent(path), encoding: .utf8) }
+        renderer.nonCodeMentions = { [repoRoot, enumerator] name in
+            NonCodeMentions.scan(name: name, swiftFiles: enumerator.swiftFiles(), markdownFiles: enumerator.markdownFiles(), under: repoRoot)
+        }
         let input: SemanticInput = options.includeSemantic
             ? whereSemanticInput()
             : .inactive(note: "semantic disabled (--syntactic)")
@@ -369,9 +371,8 @@ public final class SiftEngine: @unchecked Sendable {
         let links = try options.range.flatMap { diff.isEmpty ? nil : try RangeLinks(from: $0.from, to: .revision($0.to), git: git) }
         let changes = links.map { $0.kept(diff, enumerator: enumerator) } ?? diff.filter { enumerator.isIndexable(relativePath: $0.path) }
         let excludedByConfig = diff.filter { enumerator.isNarrowedAwayByConfig(relativePath: $0.path) }.map(\.path)
-        let scanner = NameMentionScanner(repoRoot: repoRoot, enumerator: enumerator)
         var renderer = AffectedRenderer(store: store, repositoryRoot: repoRoot, projectDirectories: resolver.projectDirectories)
-        renderer.mentions = { await scanner.mentions(of: $0) }
+        renderer.readingWorkingTree(enumerator: enumerator, git: git, changes: changes, range: options.range)
         let output = try await renderer.render(
             changes: changes,
             excludedByConfig: excludedByConfig,
@@ -380,7 +381,7 @@ public final class SiftEngine: @unchecked Sendable {
         )
         var updated = freshness
         updated.semantic = output.axis
-        return updated.headerLine + "\n" + output.body
+        return try updated.headerLine + "\n" + options.uncommittedNote(git: git, enumerator: enumerator) + output.body
     }
 
     /// The suites that reference the type or top-level function `name` declares, for the line `sift run` adds under a refused `--filter`; `nil` where the index declares no such thing or no test reaches it.
@@ -421,9 +422,9 @@ public final class SiftEngine: @unchecked Sendable {
         return (freshness.headerLine + "\n" + RunReconciliationRenderer().render(reconciliation), reconciliation.isGreen)
     }
 
-    /// The same join over outcomes a wrapped run has already parsed, for `sift run` to note under its answer; `logURL` only names the run, and `executedNothing` says its closing counts showed a run of no test, which reconciles as zero reported.
-    public func reconcileRun(_ outcomes: RunTestOutcomes, loggedAt logURL: URL?, executedNothing: Bool = false) throws -> RunReconciliation {
-        try RunReconciliationReader(store: store, repositoryRoot: repoRoot).reconcile(outcomes, loggedAt: logURL, executedNothing: executedNothing)
+    /// The same join over outcomes a wrapped run has already parsed, for `sift run` to note under its answer; `logURL` only names the run, `packageDirectory` is the repository-relative directory of the package it tested (empty for the root), and `executedNothing` says its closing counts showed a run of no test, which reconciles as zero reported.
+    public func reconcileRun(_ outcomes: RunTestOutcomes, loggedAt logURL: URL?, packageDirectory: String = "", executedNothing: Bool = false) throws -> RunReconciliation {
+        try RunReconciliationReader(store: store, repositoryRoot: repoRoot, packageDirectory: packageDirectory).reconcile(outcomes, loggedAt: logURL, executedNothing: executedNothing)
     }
 
     /// A structural digest of a change for review: which declarations a range added, removed, or changed, who calls the changed ones, and everything else it touched.
@@ -470,7 +471,7 @@ public final class SiftEngine: @unchecked Sendable {
         if let probed = probedStore {
             return probed
         }
-        let discovered = IndexStoreDiscovery(repoRoot: repoRoot, config: config).discover()
+        let discovered = storeDiscovery().discover()
         probedStore = .some(discovered)
         return discovered
     }
@@ -485,7 +486,7 @@ public final class SiftEngine: @unchecked Sendable {
     /// Asked again with what is left of it when the store is replaced during the open, so a query that has to open the store there now still waits no longer than one budget in all — past it, that open goes on in the background and the answer says warming, which is then true.
     private func semanticInput(budget: TimeInterval) -> SemanticInput {
         let started = Date()
-        let discovery = IndexStoreDiscovery(repoRoot: repoRoot, config: config)
+        let discovery = storeDiscovery()
         let discovered = discovery.discover()
         probedStore = .some(discovered)
         // A store with no cache to name is one whose units directory went between discovery and now, and "no store" is
@@ -499,16 +500,17 @@ public final class SiftEngine: @unchecked Sendable {
         // Reused only while discovery yields the same cache, which names the store's directory as well as its path: a
         // store deleted and rebuilt at one path is another store, even when its newest unit is no newer.
         if let opened = openedSemanticStore, opened.cache == cache, opened.newestUnitDate >= anchor {
-            return .active(SemanticContext(store: opened, repoRoot: repoRoot, rejectedSettings: rejected))
+            return .active(SemanticContext(store: opened, repoRoot: repoRoot, rejectedSettings: rejected, outsideNote: outsideNote(of: discovered, rejected: rejected)))
         }
         if let failure = semanticFailure, failure.cache == cache, failure.anchor >= anchor {
             return .openFailed(note: failure.note)
         }
         let afterOpen = afterSemanticOpen
         let beforeRead = beforeSemanticRead
+        let root = repoRoot
         let key = BudgetedOpen<SemanticStore>.Key(path: cache.directory.path, anchor: anchor)
         let outcome = semanticOpener.open(key: key, budget: budget) {
-            let opened = try SemanticStore(discovered: discovered, newestUnitDate: anchor, cache: cache, beforeRead: beforeRead)
+            let opened = try SemanticStore(discovered: discovered, repoRoot: root, newestUnitDate: anchor, cache: cache, beforeRead: beforeRead)
             afterOpen()
             return opened
         }
@@ -537,9 +539,9 @@ public final class SiftEngine: @unchecked Sendable {
         case let .opened(opened):
             openedSemanticStore = opened
             semanticFailure = nil
-            return .active(SemanticContext(store: opened, repoRoot: repoRoot, rejectedSettings: rejected))
+            return .active(SemanticContext(store: opened, repoRoot: repoRoot, rejectedSettings: rejected, outsideNote: outsideNote(of: discovered, rejected: rejected)))
         case let .failed(error):
-            let note = "index store found (\(discovered.provenance.name)) but failed to open: \(SemanticOpenFailure.cause(of: error))"
+            let note = "index store found (\(discovered.label)) but failed to open: \(SemanticOpenFailure.cause(of: error))"
             semanticFailure = SemanticFailure(note: note, cache: cache, anchor: anchor)
             return .openFailed(note: note)
         }
@@ -547,17 +549,17 @@ public final class SiftEngine: @unchecked Sendable {
 
     /// The semantic axis a query in this tree would see right now, judged from discovery and file state alone — never by opening the index store.
     ///
-    /// A doctor command cannot pay the cost a real open can carry: on a store another process already holds warm, opening it here means ingesting it again from cold, which is exactly the ingestion the freshness contract exists to avoid paying twice (Docs/Design.md §2). So this runs the two comparisons a resolved query runs per cited file, over every file at once, since a report naming no declaration has no smaller set to check: a stored file's own change moment (``FileChangeStat``), refreshed by `ensureFresh` whenever the working tree edits it, against the store's build anchor (`SemanticContext.buildAnchor(newestUnit:)`, the one expression a query uses too); and a file gone from the tree, which here means one the ``DeletionLedger`` dates after that anchor — dropped by this index, or seeded from what git still recorded when the store had no ledger — and that is still missing, since a report that never opens the store can reach no other trace of it. Both are worded as what file state showed (`SemanticAxis.staleByFileState`). `unresolved` is a per-declaration fact a resolved query computes from refusals no report without a declaration can have (`SemanticAxis.of(refusals:occurrences:)`), and whether the store opens at all, or is still reading past a query's budget, only a real open can tell — all three are left unclaimed rather than guessed, and the lines under the header say so (``statusAxisNote``).
+    /// A doctor command cannot pay the cost a real open can carry: on a store another process already holds warm, opening it here means ingesting it again from cold, which is exactly the ingestion the freshness contract exists to avoid paying twice (Docs/Design.md §2). So this runs the two comparisons a resolved query runs per cited file, over every file at once, since a report naming no declaration has no smaller set to check: a stored file's own change moment (``FileChangeStat``), refreshed by `ensureFresh` whenever the working tree edits it, against the store's build anchor (`SemanticContext.buildAnchor(newestUnit:)`, which a query measures only a file with no unit of its own against, so a file a partial build skipped shows only on a query); and a file gone from the tree, which here means one the ``DeletionLedger`` dates after that anchor — dropped by this index, or seeded from what git still recorded when the store had no ledger — and that is still missing, since a report that never opens the store can reach no other trace of it. Both are worded as what file state showed (`SemanticAxis.staleByFileState`). `unresolved` is a per-declaration fact a resolved query computes from refusals no report without a declaration can have (`SemanticAxis.of(refusals:occurrences:)`), and whether the store opens at all, or is still reading past a query's budget, only a real open can tell — all three are left unclaimed rather than guessed, and the lines under the header say so (``statusAxisNote``).
     private func statusAxis(discovered: DiscoveredStore?) throws -> SemanticAxis {
         guard let discovered else { return .noStoreInStatus }
         let newestUnit = Self.newestUnit(of: discovered) ?? .distantPast
         let buildAnchor = SemanticContext.buildAnchor(newestUnit: newestUnit)
-        let newerFileCount = try store.fileInventory().values.filter { $0.mtime > buildAnchor }.count
-        let deletedFileCount = try store.deletionLedger().paths(droppedAfter: buildAnchor).filter { path in
+        let newerFiles = try store.fileInventory().values.filter { $0.mtime > buildAnchor }.map(\.path)
+        let deletedFiles = try store.deletionLedger().paths(droppedAfter: buildAnchor).filter { path in
             !FileManager.default.fileExists(atPath: repoRoot.appendingPathComponent(path).path)
-        }.count
-        guard newerFileCount > 0 || deletedFileCount > 0 else { return .fresh }
-        return .staleByFileState(newerFiles: newerFileCount, deletedFiles: deletedFileCount)
+        }
+        guard !newerFiles.isEmpty || !deletedFiles.isEmpty else { return .fresh }
+        return .staleByFileState(StaleFiles(changed: newerFiles.count, deleted: deletedFiles.count, path: newerFiles.first ?? deletedFiles.first))
     }
 
     /// The status/doctor report: freshness, counts, size, modules, config presence.
@@ -580,7 +582,7 @@ public final class SiftEngine: @unchecked Sendable {
         let configPath = repoRoot.appendingPathComponent(".sift.json").path
         let hasConfig = FileManager.default.fileExists(atPath: configPath)
         lines.append("config: \(hasConfig ? ".sift.json" : "none (defaults)")")
-        let rejected = IndexStoreDiscovery(repoRoot: repoRoot, config: config).rejectedSettings()
+        let rejected = storeDiscovery().rejectedSettings()
         lines.append(Self.storeStatusLine(discovered: discovered, rejected: rejected))
         try lines.append(contentsOf: ParseErrorNotice.statusLines(files: store.filesWithParseErrors()))
         let guessed = try store.filesWithGuessedModule()
@@ -628,7 +630,7 @@ extension SiftEngine {
     ///
     /// Naming the build command is true in both and sufficient in only one. A worktree has no build directory of its own, so a repository whose checkout answers semantically every day answers nothing here, and the caller is in a state they did not create and probably have not noticed. **The obvious repair is the one thing this must never do.** The checkout's store describes a *different tree*: at a different commit it would name callers that do not exist here and miss ones that do, which is the confidently wrong answer that pinning the root to the caller's tree exists to kill — an honest gap turned into a lie, in exchange for looking more complete.
     ///
-    /// The worktree case is the one every builder agent hits, on every `where` and every `digest`, so the note it gets stays one line: which state this is, and where the rest of the reasoning lives (``HelpTopics``' `worktree-index` topic — the checkout not being borrowed, and why, is said there in full, not dropped). A plain checkout still gets the build command and the config key inline, on `affected`; `where` carries ``whereNoStoreNote(from:)`` in its place.
+    /// The worktree case is the one every builder agent hits, on every `where` and every `digest`, so the note it gets stays one line: which state this is, and where the rest of the reasoning lives (``HelpTopics``' `worktree-index` topic — the checkout not being borrowed, and why, is said there in full, not dropped). A plain checkout still gets the build command and the config key inline, on `affected`; `where` carries the degraded note ``whereNoStoreCause(from:)`` reads from it in its place.
     ///
     /// No path is named, per the Answer Contract's Wording rule. The header already names the tree.
     ///
@@ -648,30 +650,55 @@ extension SiftEngine {
         return "\(noStoreLead)\(rejection)\(worktreeOpening)\(howToBuild). \(syntaxOnlyTail)"
     }
 
-    /// `where`'s one-line form of a ``noStoreNote(for:rejected:root:)``: which tree has no store, each setting passed over, and the help topic that carries the recipe.
+    /// The header's reading of a ``noStoreNote(for:rejected:root:)``: no store in this worktree, or none for this tree yet.
     ///
-    /// `where` is asked again and again in a tree with no store, and the recipe it used to carry inline ran to some 1,600 characters on every answer. The recipe is not dropped: the `answers` topic's `(index store)` section and the `worktree-index` topic quote the same ``buildCommandNote`` and ``nestedStoreNote``, and `status` and `affected` still carry it in full. A worktree whose root holds a `Package.swift` keeps its one build command, since a pointer alone sent readers to `grep` instead.
-    ///
-    /// Read back from the note rather than built beside it, so the two cannot disagree on the tree, a rejected setting or a cut-short walk: the markers read here are the ones the note is written with. A note it does not recognise comes back unchanged.
-    static func whereNoStoreNote(from note: String) -> String {
-        guard note.hasPrefix(noStoreLead) else { return note }
-        let body = note.dropFirst(noStoreLead.count)
-        let worktree = body.range(of: worktreeOpening)
-        let rejection = (worktree ?? body.range(of: checkoutRecipeOpening)).map { body[..<$0.lowerBound] } ?? ""
-        let passedOver = rejection.isEmpty ? "" : " — " + rejection.dropLast(2)
-        let absence = worktree == nil ? "no index store for this tree yet" : "no index store in this worktree"
-        let pointer = if worktree == nil {
-            "how to build one: sift help answers, section (index store)"
-        } else if note.contains(worktreePackageBuild) {
-            "build: sift run -- swift build --build-tests (sift help worktree-index)"
-        } else {
-            "how to build one: sift help worktree-index"
+    /// Read back from the note by the same marker ``whereNoStoreCause(from:)`` reads, so the header and the note cannot name different trees.
+    static func noStoreAxis(from note: String) -> SemanticAxis {
+        if note.hasPrefix(outsideLead), let end = note.range(of: outsideRemedyOpening) {
+            return .noStoreCovering(String(note[note.index(note.startIndex, offsetBy: outsideLead.count) ..< end.lowerBound]))
         }
-        let cutShort = note.hasSuffix(inTreeWalkTruncatedClause) ? inTreeWalkTruncatedClause : ""
-        return "\(absence)\(passedOver); \(pointer)\(cutShort)"
+        return .noStore(inWorktree: note.hasPrefix(noStoreLead) && note.dropFirst(noStoreLead.count).contains(worktreeOpening))
     }
 
-    /// How the mode line of a `where` or `affected` answer opens when no store answered: the mode, and where to read what it means.
+    /// The cause `where`'s degraded note gives for a ``noStoreNote(for:rejected:root:)``: the build remedy, each setting passed over, and a cut-short in-tree walk.
+    ///
+    /// Read back from the note by the markers it is written with, as ``noStoreAxis(from:)`` reads it, so the header and the note cannot name different trees. A note it does not recognise is kept whole as the remedy.
+    static func whereNoStoreCause(from note: String) -> DegradedNote.Cause {
+        if note.hasPrefix(outsideLead) {
+            let tail = note.range(of: ". " + syntaxOnlyTail)?.lowerBound ?? note.endIndex
+            let passedOver = note.range(of: "; passed over: ").map { String(note[$0.upperBound ..< tail]) }
+            return .noStore(remedy: DegradedNote.outsideRemedy, passedOver: passedOver.map { [$0] } ?? [], cutShort: "")
+        }
+        guard note.hasPrefix(noStoreLead) else { return .noStore(remedy: note, passedOver: [], cutShort: "") }
+        let body = note.dropFirst(noStoreLead.count)
+        let worktree = body.range(of: worktreeOpening)
+        let rejection = (worktree ?? body.range(of: checkoutRecipeOpening)).map { String(body[..<$0.lowerBound].dropLast(2)) } ?? ""
+        let remedy = if worktree == nil {
+            DegradedNote.checkoutRemedy
+        } else if note.contains(worktreePackageBuild) {
+            DegradedNote.packageRemedy
+        } else {
+            DegradedNote.worktreeRemedy
+        }
+        let cutShort = note.hasSuffix(inTreeWalkTruncatedClause) ? inTreeWalkTruncatedClause : ""
+        return .noStore(remedy: remedy, passedOver: rejection.isEmpty ? [] : [rejection], cutShort: cutShort)
+    }
+
+    /// Why a store failed to open, as the note an `.openFailed` input carries says it: the text after `failed to open: `, or the whole note.
+    static func openFailureCause(of note: String) -> String {
+        note.range(of: "failed to open: ").map { String(note[$0.upperBound...]) } ?? note
+    }
+
+    /// Which store failed to open, as the note an `.openFailed` input carries names it: the primary store's label (`index store found (<label>) but …`) or the in-tree store's path (`in-tree store <path> failed …`); `nil` when the note names none.
+    static func openFailureStore(of note: String) -> String? {
+        for (prefix, terminator) in [("index store found (", ")"), ("in-tree store ", " failed to open")] where note.hasPrefix(prefix) {
+            let rest = note.dropFirst(prefix.count)
+            return rest.range(of: terminator).map { String(rest[..<$0.lowerBound]) }
+        }
+        return nil
+    }
+
+    /// How the degraded note of a `where` or `affected` answer opens when no store answered: the mode, and where to read what it means.
     ///
     /// What matching by written name gives up is the same on every such answer, so it is said once in the `answers` help topic and not on each one. What follows this opening is the part that differs between answers: no store, still warming, or failed to open.
     static var degradedModeOpening: String {
@@ -681,6 +708,16 @@ extension SiftEngine {
     /// How a ``noStoreNote(for:rejected:root:)`` opens, before any rejected setting.
     private static var noStoreLead: String {
         "no index store for this tree yet — "
+    }
+
+    /// How the note opens for a query about files outside every open store's package, before the store's own scope.
+    private static var outsideLead: String {
+        "no index store covers these files; "
+    }
+
+    /// What follows the store's scope in that note, before its remedy.
+    private static var outsideRemedyOpening: String {
+        " — "
     }
 
     /// What opens a checkout's recipe in a ``noStoreNote(for:rejected:root:)``, after any rejected setting.
@@ -707,7 +744,7 @@ extension SiftEngine {
             return "index store: none found — \(rejection)build one: \(buildCommandNote). \(nestedStoreNote)."
         }
         let passedOver = rejected.isEmpty ? "" : "; passed over: " + rejected.joined(separator: "; ")
-        return "index store: \(discovered.provenance.name) — \(discovered.path.path)\(passedOver)"
+        return "index store: \(discovered.label) — \(discovered.path.path)\(passedOver)"
     }
 
     /// What `status` says under its header whenever it found a store: how its semantic field was judged, what it counted, and every case it can miss.
@@ -717,7 +754,7 @@ extension SiftEngine {
         "The semantic field is judged from files against the index store's last build, without opening the store.",
         "It counts files changed since that build, and files deleted since it: ones this index saw go itself.",
         "It also counts ones git already showed as deleted when this index first started keeping that count.",
-        "Only a query shows a declaration the store has no record of, unbuilt test files, a store that fails to open, or still loading.",
+        "Only a query shows a declaration the store has no record of, unbuilt test files, a file a partial build skipped, a store that fails to open, or still loading.",
         "Some deletions show only on a query until a clean build: a file deleted, then built over without cleaning.",
         "So do two more: a file git never tracked, whose only record here was lost to a reset or an older binary.",
         "And a file deleted by a commit older than the build, reached later without a commit of its own — a "
@@ -751,16 +788,18 @@ extension SiftEngine {
         #endif
     }()
 
-    /// Where a store lands that discovery does not look: the config key, and what it must point at.
+    /// Where discovery looks, and for a store anywhere else, the config line that points at it.
     ///
-    /// The key resolves against the repository root, so the example carries the package's own directory — the root package's `.build/out` or `.build/debug/index/store` is a plausible value for a nested one and is rejected. Both of SwiftPM's layouts are named, Swift Build's first as the default: an example naming only the native one sends the reader to a directory the default build never writes. Said only of a *SwiftPM* build of the nested package: an Xcode build of it is found by the DerivedData scan same as any other target, with nothing to set. No trailing period, as ``buildCommandNote``.
+    /// The places are named so a reader who built into a directory of their own choosing can tell whether it is one of them, and each is one ``IndexStoreDiscovery/discover()`` probes: an ignored directory in general is not, since the in-tree walk serves only `where`, beside a primary. The key resolves against the repository root, so the example carries the build directory's own path. A SwiftPM build of a nested package is searched, so only a custom `-derivedDataPath` needs the key. No trailing period, as ``buildCommandNote``.
     ///
     /// Not `private`, for the same reason as ``buildCommandNote``: ``HelpTopics``' `worktree-index` topic quotes it rather than keeping a second copy that could drift.
-    static let nestedStoreNote = "A SwiftPM build of a package nested below the repo root, or a custom "
-        + "-derivedDataPath outside the tree's ignored directories, needs indexStorePath set in .sift.json, pointing at the store directory itself — "
-        + "the one holding v<N>/units, relative to the repo root: <Pkg>/.build/out for a package in <Pkg> "
-        + "(<Pkg>/.build/debug/index/store under --build-system native), not <Pkg>/.build itself; "
-        + "<path>/Index.noindex/DataStore for a custom -derivedDataPath"
+    static let nestedStoreNote = "Discovery searches the repo root's .build, the .build of each package nested below "
+        + "it (a directory holding a Package.swift), Xcode's own DerivedData, and "
+        + "-derivedDataPath <Pkg>/.build/DerivedData where <Pkg> is the repo root or a directory holding a Package.swift; "
+        + "any other custom -derivedDataPath needs indexStorePath set in .sift.json, "
+        + "pointing at the store directory itself — the one holding v<N>/units, relative to the repo root: "
+        + "<path>/Index.noindex/DataStore for a custom -derivedDataPath <path>, "
+        + "as in {\"indexStorePath\": \"<path>/Index.noindex/DataStore\"}"
 
     /// How ``inMemoryIndexNote`` opens, public so the transcript reader that skips the line (`SourcePassthrough.firstPartLine(of:)`) matches the renderer's own text rather than a retyped copy.
     public static var inMemoryIndexNoteOpening: String {
@@ -781,7 +820,7 @@ extension SiftEngine {
     static let syntaxOnlyTail = "Until then, declarations still answer from syntax; callers, "
         + "overrides and references do not."
 
-    /// What the `where` mode line adds when the in-tree walk (``InTreeStoreWalk``) hit its cap with directories still unvisited (Docs/Design.md §2) — a store beyond where it stopped may exist.
+    /// What the degraded `where` note adds when the in-tree walk (``InTreeStoreWalk``) hit its cap with directories still unvisited (Docs/Design.md §2) — a store beyond where it stopped may exist.
     ///
     /// Not `private`: `WhereRenderer` matches this exact suffix to suppress the project hint in that case, since "build it with -derivedDataPath inside the tree" is exactly the advice a reader who already did that does not need repeated.
     static let inTreeWalkTruncatedClause = "; in-tree walk cut short at \(InTreeStoreWalk.visitCap) directories"
@@ -907,17 +946,35 @@ public extension SiftEngine {
         var renderer = try DigestRenderer(store: store, moduleNames: store.moduleNames(), repoRoot: repoRoot)
         renderer.siblingRoots = { [weak self] target in self?.siblingPointers(target: target) ?? [] }
         renderer.config = config
+        renderer.isUnreadablyRenamed = { [resolver] in resolver.isUnreadablyRenamed($0) }
         return renderer
     }
 }
 
 /// Split from the class body to keep it under SwiftLint's type-body-length cap.
 private extension SiftEngine {
+    /// Discovery for this tree, told which directories hold a SwiftPM package so a `-derivedDataPath` build into one's own `.build` is found.
+    func storeDiscovery() -> IndexStoreDiscovery {
+        var discovery = IndexStoreDiscovery(repoRoot: repoRoot, config: config)
+        discovery.packageDirectories = resolver.packageDirectories
+        return discovery
+    }
+
+    /// The no-store note a query about files outside `discovered`'s package takes, where it is a nested package's store; `nil` for a store answering for the whole tree.
+    func outsideNote(of discovered: DiscoveredStore, rejected: [String]) -> String? {
+        guard !discovered.package.isEmpty else { return nil }
+        let rejection = rejected.isEmpty ? "" : "; passed over: " + rejected.joined(separator: "; ")
+        return "\(Self.outsideLead)\(discovered.label) answers only for files in \(discovered.package)\(Self.outsideRemedyOpening)"
+            + "\(DegradedNote.outsideRemedy)\(rejection). \(Self.syntaxOnlyTail)"
+    }
+}
+
+extension SiftEngine {
     /// What `where` reads: the primary store's input with the in-tree stores joined behind it, or, where there is no primary store, the in-tree stores alone.
     ///
     /// The walk runs before the primary's budget starts, and nothing here changes what the primary path remembers, so `affected`, `diff`, `status` and the deletion ledger see exactly the primary store. A primary still warming or failed answers as it would without the in-tree stores.
     func whereSemanticInput() -> SemanticInput {
-        let discovery = IndexStoreDiscovery(repoRoot: repoRoot, config: config)
+        let discovery = storeDiscovery()
         let candidates = inTree.discover(discovery)
         let started = Date()
         let input = semanticInput(budget: openBudget)
@@ -947,7 +1004,9 @@ private extension SiftEngine {
             return .unavailable(note: note + Self.inTreeWalkTruncatedClause)
         }
     }
+}
 
+private extension SiftEngine {
     /// When the build's index store was last written, by its newest unit — or `nil` with no store, or no unit, to date.
     ///
     /// Discovery only, never an open: `status` anchors on the same date, and a store with no deletion ledger is seeded from git history since it (`Indexer.seedDeletionLedgerIfAbsent(listed:storeBuiltAt:at:)`).
@@ -983,10 +1042,20 @@ public extension SiftEngine {
     func search(query: String, offset: Int = 0, count: Bool = false) async throws -> String {
         let parsed = try StructuralQuery(query)
         let result = await StructuralSearch(repoRoot: repoRoot, enumerator: enumerator).run(parsed)
+        let note = await typeBodyNote(for: parsed, result: result)
         let body = count
-            ? SearchRenderer.renderCount(result: result, query: parsed, moduleFor: resolver.module(for:))
-            : SearchRenderer.render(result: result, query: parsed, offset: offset)
+            ? SearchRenderer.renderCount(result: result, query: parsed, typeBodyNote: note, moduleFor: resolver.module(for:))
+            : SearchRenderer.render(result: result, query: parsed, offset: offset, typeBodyNote: note)
         return Freshness.liveHeaderLine(tree: tree) + "\n" + (parsed.readingNote.map { $0 + "\n" } ?? "") + body
+    }
+
+    /// The extra miss line for a type-kind query whose body term missed, `nil` for any other answer.
+    ///
+    /// The query is re-scanned for extensions, which the type's own declaration did not hold.
+    private func typeBodyNote(for query: StructuralQuery, result: StructuralSearch.Result) async -> String? {
+        guard result.matches.isEmpty, let extensionQuery = query.extensionQueryForTypeBodyMiss(eliminations: result.eliminations) else { return nil }
+        let found = await StructuralSearch(repoRoot: repoRoot, enumerator: enumerator).run(extensionQuery).matches.count
+        return query.typeBodyMissLine(extensionQuery: extensionQuery, found: found)
     }
 
     /// Ranks the working tree's declarations by how close their syntactic shape is to `target`'s — the helper that already exists, shown before another one is written.

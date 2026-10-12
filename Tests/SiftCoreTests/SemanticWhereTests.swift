@@ -78,7 +78,7 @@ struct SemanticWhereTests {
             let greet = try await engine.lookup(symbol: "greet()", freshness: freshness)
             let base = try await engine.lookup(symbol: "Base", freshness: freshness)
 
-            #expect(helper.contains("mode: syntactic + semantic (index store via .build)"))
+            #expect(!helper.contains("stores:"), "one store answered and nothing was passed over, so there is no note about the stores")
             #expect(helper.contains("semantic: fresh"))
             #expect(helper.contains("callers of Lib.helper() (1):"))
             #expect(helper.contains("callGreet"))
@@ -122,7 +122,7 @@ struct SemanticWhereTests {
 
         #expect(greet.contains("REFUSED"))
         #expect(greet.contains("rebuild with `sift run -- swift build`, then retry"))
-        #expect(greet.contains("semantic: stale (1 file changed since last build)"))
+        #expect(greet.contains("semantic: stale since last build (1 file changed: Sources/Lib/Base.swift)"))
         #expect(helper.contains("semantic: fresh"))
         #expect(helper.contains("callers of Lib.helper() (1):"))
     }
@@ -146,8 +146,8 @@ struct SemanticWhereTests {
         let output = try await engine.lookup(symbol: "helper()", freshness: freshness)
 
         #expect(output.contains("REFUSED"))
-        #expect(output.contains("semantic: stale (1 file changed since last build)"))
-        #expect(output.contains("syntactic call sites"))
+        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Lib/Caller.swift)"))
+        #expect(output.contains("call sites by written name"))
         #expect(output.contains("in Lib.callGreet()") || output.contains("in callGreet()"))
     }
 
@@ -358,8 +358,8 @@ struct SemanticWhereTests {
             )
 
             // Silently dropping the flag would let a sweep read a clean answer as "nothing to change".
-            #expect(output.contains("references: UNAVAILABLE"))
-            #expect(output.contains("grep instead"))
+            #expect(output.contains("--syntactic: uses not asked for, sites by written name"))
+            #expect(!output.contains("references: UNAVAILABLE"))
         }
     }
 
@@ -386,8 +386,8 @@ struct SemanticWhereTests {
 
         let output = try await engine.lookup(symbol: "helper()", freshness: freshness, options: WhereOptions(includeSemantic: false))
 
-        #expect(output.contains("semantic: syntactic-only"))
-        #expect(output.contains("semantic disabled (--syntactic)"))
+        #expect(output.contains("semantic: off (--syntactic)"))
+        #expect(output.contains("--syntactic: callers, overrides or references not asked for, sites by written name"))
         #expect(!output.contains("callers of"))
     }
 
@@ -508,7 +508,7 @@ extension SemanticWhereTests {
         let stale = try await engine.lookup(symbol: "stale", freshness: freshness)
 
         #expect(stale.components(separatedBy: "REFUSED").count - 1 == 1)
-        #expect(stale.contains("semantic REFUSED for 3 declarations: their files were changed since the last build; rebuild with `sift run -- swift build`, then retry"))
+        #expect(stale.contains("semantic REFUSED for 3 declarations: their files are new since the last build; rebuild with `sift run -- swift build`, then retry"))
         // The declarations section above still names every file — only the refusal notice itself drops the per-file breakdown.
         #expect(!stale.contains("REFUSED —"))
     }

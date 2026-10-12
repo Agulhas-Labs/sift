@@ -85,8 +85,10 @@ struct GrepLogCallIdTests {
     @Test
     func aPartialAlternationAnswerIsLoggedAgainstItsCall() async throws {
         let root = try MCPTestRepo.make(declaring: "Alpha")
+        let pallets = (1 ... 26).map { "func pallet\($0)(first: Depot = Depot(), second: Depot = Depot()) {}" }.joined(separator: "\n")
         try MCPTestRepo.add([
             "Package.swift": "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"App\", targets: [.target(name: \"App\")])\n",
+            "Sources/App/Stock/Aisles/Bays/Racks/Shelves/Pallets.swift": "\(pallets)\n",
             "Sources/App/Depot.swift": "public struct Depot {\n    public init() {}\n}\n",
         ], to: root)
         try MCPTestRepo.build(root)
@@ -134,7 +136,7 @@ struct GrepLogCallIdTests {
         defer { recording.cleanup() }
         let payload: [String: Any] = [
             "tool_name": "Bash",
-            "tool_input": ["command": "xcodebuild build-for-testing -scheme Gizmo -derivedDataPath build"],
+            "tool_input": ["command": "xcodebuild test-without-building -scheme Gizmo -derivedDataPath build"],
             "tool_use_id": "toolu_g1",
         ]
 

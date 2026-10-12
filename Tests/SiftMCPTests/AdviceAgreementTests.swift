@@ -158,7 +158,7 @@ struct AdviceAgreementTests {
 
         let leg: [String: Any] = [
             "tool_name": "Bash",
-            "tool_input": ["command": "xcodebuild build-for-testing -scheme Gizmo -derivedDataPath build"],
+            "tool_input": ["command": "xcodebuild test-without-building -scheme Gizmo -derivedDataPath build"],
         ]
         #expect(Self.hookLookup(leg, noting: recording.log) == nil)
         #expect(recording.rules == ["gateLeg"])

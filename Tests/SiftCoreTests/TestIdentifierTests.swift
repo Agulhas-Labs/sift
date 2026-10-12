@@ -116,14 +116,14 @@ struct TestIdentifierTests {
 
     @Test
     func aModuleNameIsASwiftIdentifierWhateverTheTargetIsCalled() throws {
-        // The substitution is the measured half; the leading `_` is the other half of Xcode's
-        // `c99ext_identifier` rule, since a module name cannot begin with a digit.
+        // Measured with xcodebuild -showBuildSettings and swift package describe: a leading digit is replaced by `_`,
+        // not prefixed with one, so `2FA Tests` builds `_FA_Tests`.
         let punctuated = try #require(TestIdentifier(enumerated: "Demo-Tests.iOS/SpacedTests/testCountsUp()"))
         let leadingDigit = try #require(TestIdentifier(enumerated: "2FA Tests/SpacedTests/testCountsUp()"))
         let alreadyAnIdentifier = try #require(TestIdentifier(enumerated: "DemoUnitTests/CalculatorTests/testAddition()"))
 
         #expect(punctuated.moduleName == "Demo_Tests_iOS")
-        #expect(leadingDigit.moduleName == "_2FA_Tests")
+        #expect(leadingDigit.moduleName == "_FA_Tests")
         #expect(alreadyAnIdentifier.moduleName == "DemoUnitTests")
     }
 

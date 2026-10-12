@@ -16,10 +16,14 @@ public struct StructuralQuery: Sendable {
     public let labelDroppedNotes: [String]
     /// A full-sentence note for each `name:/…/` value that did not compile and was read as the words it plainly spells, quoting the regex engine's reason.
     public let patternNotes: [String]
+    /// Whether any piece was read as other than it was sent: a bare word as `name:`, a misspelt field, a regex as words.
+    private let rewritten: Bool
 
     /// Parses `text`; throws `EngineError.malformedQuery` naming the valid fields when a term is unusable, the heal that produced an unhealable piece named alongside it.
     public init(_ text: String) throws {
-        let spelled = try Self.pieces(text).map(Self.readingBareTerms).map { try Self.readingSpellings($0) }
+        let sent = try Self.pieces(text)
+        let spelled = try sent.map(Self.readingBareTerms).map { try Self.readingSpellings($0) }
+        rewritten = !sent.map(String.init).elementsEqual(spelled.map(\.piece))
         guard !spelled.isEmpty else {
             throw EngineError.malformedQuery("empty query — \(Self.usage)")
         }
@@ -98,7 +102,10 @@ public struct StructuralQuery: Sendable {
         let namesADeclaration = field == .calls || field == .uses || field == .name
         var note: Note? = spellingNote
         if !widened.isEmpty {
-            let sentence = "read \(reading) — labels are not indexed, so this matches every \(Self.matchNoun(field.rawValue)) named \(widened.joined(separator: " or ")), whatever its labels."
+            let qualified = read.contains { $0.qualified }
+            let why = qualified ? "callees are indexed by base name, so a qualifier is dropped and" : "labels are not indexed, so"
+            let whatever = qualified ? "whatever its type or labels" : "whatever its labels"
+            let sentence = "read \(reading) — \(why) this matches every \(Self.matchNoun(field.rawValue)) named \(widened.joined(separator: " or ")), \(whatever)."
             note = .labelDropped(reading: reading, sentence: sentence)
         } else if value != (namesADeclaration ? SymbolNaming.unbackticked(written) : written) {
             // Backticks dropped from a name are not a reading worth saying; anything else that changed the value is.
@@ -114,7 +121,7 @@ public struct StructuralQuery: Sendable {
     /// The query's terms as written: its whitespace-separated words, except that a `/…/` value holding whitespace stays one term.
     ///
     /// A word whose value opens a `/` it does not close runs to the first later word that ends in `/`, its whitespace kept as written; a word that starts a `field:` term ends the search, so a term is never swallowed into a regex, and with no closer the words stay as they were split. An opening word whose value holds a `|` is refused rather than run on (`path:/a|name:x b/`): its alternatives could end at the space as well as at the closer, so no one reading is the one meant.
-    private static func pieces(_ text: String) throws -> [Substring] {
+    static func pieces(_ text: String) throws -> [Substring] {
         let words = text.split(whereSeparator: \.isWhitespace)
         var pieces: [Substring] = []
         var index = words.startIndex
@@ -225,16 +232,38 @@ public struct StructuralQuery: Sendable {
     }
 
     /// One alternative read exactly as its field reads a single value: backticks dropped from a name, a kind word spelt as the kind, and a `calls:`/`uses:`/`name:` spelling with parentheses read down to its base name — `widened` naming it when labels were dropped.
-    private static func readingAlternative(_ alternative: String, field: Field) throws -> (value: String, widened: String?) {
+    ///
+    /// A dotted `calls:`/`uses:` value (`Parser.parse`, `.parse`, `Parser.parse(source:)`) is read down to its base name too, since no qualifier is indexed: `qualified` says one was dropped, and the answer then also matches other types' same-named callees, so it is always `widened`.
+    private static func readingAlternative(_ alternative: String, field: Field) throws -> AlternativeReading {
         let namesADeclaration = field == .calls || field == .uses || field == .name
         // A name written in backticks is matched by the name the index holds, which drops them around an ordinary word.
-        let value = namesADeclaration ? SymbolNaming.unbackticked(alternative) : alternative
+        var value = namesADeclaration ? SymbolNaming.unbackticked(alternative) : alternative
         if field == .kind, let wanted = kindSpellings[value] {
-            return (wanted, nil)
+            return AlternativeReading(value: wanted, widened: nil, qualified: false)
         }
-        guard namesADeclaration, NamePattern.regexBody(value) == nil, value.contains("(") || value.contains(")") else { return (value, nil) }
+        var qualified = false
+        if field == .calls || field == .uses, NamePattern.regexBody(value) == nil, !NamePattern.isOperatorName(value), let base = Self.unqualified(value) {
+            value = base
+            qualified = true
+        }
+        guard namesADeclaration, NamePattern.regexBody(value) == nil, value.contains("(") || value.contains(")") else {
+            return AlternativeReading(value: value, widened: qualified ? value : nil, qualified: qualified)
+        }
         let (base, hasLabels) = try Self.baseCalleeName(field: field.rawValue, value: value)
-        return (base, hasLabels ? base : nil)
+        return AlternativeReading(value: base, widened: hasLabels || qualified ? base : nil, qualified: qualified)
+    }
+
+    /// `value` with its qualifier dropped — `parse` for `Parser.parse` and `.parse`, `parse(source:)` for `Parser.parse(source:)` — or `nil` when it is no dotted chain of identifiers before any parenthesis.
+    private static func unqualified(_ value: String) -> String? {
+        let open = value.firstIndex(of: "(") ?? value.endIndex
+        let parts = value[value.startIndex ..< open].split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count > 1, parts.dropFirst().allSatisfy(Self.isIdentifier), parts[0].isEmpty || Self.isIdentifier(parts[0]) else { return nil }
+        return String(parts[parts.count - 1]) + String(value[open ..< value.endIndex])
+    }
+
+    private static func isIdentifier(_ piece: some StringProtocol) -> Bool {
+        guard let first = piece.first, first.isLetter || first == "_" else { return false }
+        return piece.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
     }
 
     /// The alternatives joined back into one value, two or more `/…/` alternatives joined into one regex.
@@ -316,10 +345,6 @@ public struct StructuralQuery: Sendable {
     ///
     /// Read down to what `BodyFacts` actually records, which is the base name alone; no argument list is stored to match against instead — not the labels, and not even the arity, so `rendered(_:)` matches a two-argument `rendered(_:_:)` too. Only a bare `()` is answered as a plain spelling fix; anything inside the parentheses means the answer now matches more than the value named, and the caller is told so. Any other parenthesized shape (unbalanced parentheses, a nested call, a qualified callee) refuses rather than silently matching nothing.
     private static func baseCalleeName(field: String, value: String) throws -> (base: String, hasLabels: Bool) {
-        func isIdentifier(_ piece: some StringProtocol) -> Bool {
-            guard let first = piece.first, first.isLetter || first == "_" else { return false }
-            return piece.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
-        }
         let noun = field == Field.name.rawValue ? "name" : "call"
         func malformed(_ detail: String) -> EngineError {
             .malformedQuery("\"\(field):\(value)\" \(detail); \(StructuralQuery.usage)")
@@ -401,10 +426,13 @@ public struct StructuralQuery: Sendable {
     }
 
     /// The answer's echo line: the query as parsed, then how each alternation or pattern was read, so an alternation is told apart from a literal name holding a `|`.
-    var echo: String {
+    ///
+    /// `nil` where the parse read the query exactly as sent: the call carries it, and the echo would only repeat it (Docs/AnswerContract.md §3).
+    var echo: String? {
         let readings = terms.compactMap { term in
             term.reading.map { "\(term.negated ? "!" : "")\(term.field.rawValue): \($0)" }
         }
+        guard rewritten || !readings.isEmpty else { return nil }
         return (["search \(source)"] + readings).joined(separator: " — ")
     }
 
@@ -422,6 +450,13 @@ public struct StructuralQuery: Sendable {
 }
 
 private extension StructuralQuery {
+    /// One alternative as `readingAlternative` read it: its value, the base name it widened to when labels or a qualifier were dropped, and whether a qualifier was.
+    struct AlternativeReading {
+        let value: String
+        let widened: String?
+        let qualified: Bool
+    }
+
     /// A reading a piece was healed under: a plain spelling that joins the shared "spelling(s) search takes" line, or a full sentence for a value healed down to a base name that dropped its argument list — which widens what the answer matches and must say so on its own line.
     enum Note {
         case plain(String)
@@ -637,5 +672,36 @@ public extension StructuralQuery {
         case forceTry
         case forceCast
         case optionalChain
+    }
+}
+
+extension StructuralQuery {
+    /// The query with its `kind:` terms replaced by `kind:extension`, where a miss is one a type's body term can explain: a non-negated body term removed the last declarations, and every `kind:` is a type kind other than `extension`.
+    ///
+    /// A type is matched on its own declaration's body, which holds its members but not its extensions', so `kind:struct calls:X` misses a struct whose only call to `X` sits in an `extension` of it. Re-scanning for extensions counts exactly those. `nil` where the miss is not of that shape.
+    func extensionQueryForTypeBodyMiss(eliminations: [Int: Int]) -> StructuralQuery? {
+        let applied = appliedOrder
+        guard let position = eliminations.keys.max(), applied.indices.contains(position) else { return nil }
+        let eliminating = applied[position]
+        guard eliminating.field.isBodyScoped, !eliminating.negated else { return nil }
+        let kindTerms = terms.filter { $0.field == .kind }
+        guard !kindTerms.isEmpty, kindTerms.allSatisfy(Self.namesOnlyTypeKinds) else { return nil }
+        let kept = (try? Self.pieces(source))?.filter { !$0.hasPrefix("kind:") }
+        guard let kept, !kept.isEmpty else { return nil }
+        return try? StructuralQuery((["kind:extension"] + kept).joined(separator: " "))
+    }
+
+    private static func namesOnlyTypeKinds(_ term: Term) -> Bool {
+        guard !term.negated else { return false }
+        let values = term.alternatives.isEmpty ? [term.value] : term.alternatives
+        return values.allSatisfy { SymbolKind(rawValue: $0)?.isTypeDeclaration == true }
+    }
+
+    /// The line a type-kind miss carries: the count of extensions the extension query finds, and that query.
+    ///
+    /// `nil` when no extension matches, since extensions cannot explain the miss.
+    func typeBodyMissLine(extensionQuery: StructuralQuery, found: Int) -> String? {
+        guard found > 0 else { return nil }
+        return "a type is matched on its own declaration's body, not its extensions' — \(found) extension(s) match: search '\(extensionQuery.source)'"
     }
 }

@@ -128,7 +128,7 @@ struct RunOutputFilterTests {
     }
 
     @Test
-    func aPassingXcodebuildRunIsTenLinesOutOfEightHundred() throws {
+    func aPassingXcodebuildRunIsTwelveLinesOutOfEightHundred() throws {
         let report = try TestSources.runReport("xcodebuild-test-success")
 
         #expect(report.totalLines > 800)
@@ -138,14 +138,15 @@ struct RunOutputFilterTests {
         ])
         #expect(report.errors.isEmpty)
         #expect(report.testFailures.isEmpty)
-        // Two summary lines and the three warnings the build genuinely raised; nothing else survives.
+        // Two summary lines, the three warnings the compiler and linker raised and the one line the metadata tool logged with a timestamp; nothing else survives.
         #expect(report.warnings.count == 3)
-        // And the answer they make is those five plus a headline, a warnings heading, a blank line and
-        // the receipt — nine lines over eight hundred, which the receipt states about itself.
+        #expect(report.toolLog.count == 1)
+        // And the answer they make is those six plus a headline, a warnings heading and a tool-log heading, a blank
+        // line above each and the receipt — twelve lines over eight hundred, which the receipt states about itself.
         let answer = RunReportRenderer(kind: .xcodebuild, workingDirectory: URL(fileURLWithPath: "/Users/dev/Gizmo"))
             .render(report, exitCode: 0, logURL: nil)
-        #expect(answer.split(separator: "\n", omittingEmptySubsequences: false).count == 9)
-        #expect(answer.contains("(\(report.totalLines) lines in, 9 out)"))
+        #expect(answer.split(separator: "\n", omittingEmptySubsequences: false).count == 12)
+        #expect(answer.contains("(\(report.totalLines) lines in, 12 out)"))
     }
 
     @Test
@@ -162,12 +163,16 @@ struct RunOutputFilterTests {
     }
 
     @Test
-    func aTimestampedToolLogIsNotReadAsADiagnostic() throws {
+    func aTimestampedToolLogWarningIsKeptApartFromTheBuildsWarnings() throws {
         let report = try TestSources.runReport("xcodebuild-test-success")
 
-        // `… appintentsmetadataprocessor[60634:31513990] warning: Metadata extraction skipped …` looks
-        // like a diagnostic and is not one; only a line number or a tool naming itself earns that reading.
+        // `… appintentsmetadataprocessor[60634:31513990] warning: Metadata extraction skipped …` is a line the
+        // tool logged, named by its tool and located in no file, and no warning of the build's.
         #expect(!report.warnings.contains { $0.message.hasPrefix("Metadata extraction skipped") })
+        let warning = try #require(report.toolLog.first { $0.message.hasPrefix("Metadata extraction skipped") })
+
+        #expect(warning.source == "appintentsmetadataprocessor")
+        #expect(warning.path == nil)
     }
 
     @Test
@@ -395,12 +400,13 @@ struct RunOutputFilterTests {
         #expect(missing.message == #"unable to find utility "xctest", not a developer tool or in PATH"#)
     }
 
-    /// The false positive that rule has to clear: a timestamped tool log naming a severity is not a diagnostic.
+    /// The false positive that rule has to clear: a tool log line that is not the whole timestamped shape is not a diagnostic.
     ///
     /// The two are discriminable without guessing — a log prefix carries whitespace and a `[pid:tid]` bracket, and a path carries neither.
     @Test
     func aTimestampedToolLogIsStillNotADiagnostic() {
-        #expect(RunDiagnostic.parse("2026-08-18 10:00:00.000 xcodebuild[123:456]: warning: unrecognised option") == nil)
+        // A tool-log line with the whole date, time and `[pid:tid]` shape is read now, as a diagnostic naming its tool and no file.
+        #expect(RunDiagnostic.parse("2026-08-18 10:00:00.000 xcodebuild[123:456]: warning: unrecognised option")?.described == "xcodebuild: warning: unrecognised option")
         #expect(RunDiagnostic.parse("xcodebuild[123:456]: error: could not attach") == nil)
         #expect(RunDiagnostic.parse("note[7]: warning: nothing here names a file") == nil)
         // And the tool names that were always allowed to stand where a path would still are.
@@ -933,7 +939,7 @@ extension RunOutputFilterTests {
         let answer = RunReportRenderer(kind: .swiftTest, workingDirectory: URL(fileURLWithPath: "/Users/dev/Noted"))
             .render(report, exitCode: 1, logURL: nil)
         let totals = answer.split(separator: "\n").filter { $0.hasPrefix("totals:") }
-        #expect(totals == ["totals: ✘ failed · Swift Testing 2 tests in 0 suites, 1 failure"])
+        #expect(totals == ["totals: ✘ failed · Swift Testing 2 tests in 0 suites, 1 failure, 0 skipped"])
     }
 
     /// An XCTest counter or a test's ending at the start of a line inside a failure's note is the note's text, under both tools.
@@ -973,7 +979,7 @@ extension RunOutputFilterTests {
         // XCTest's real counters, one per bundle, are still read beside the quoted one.
         #expect(report.summaryLines.filter { $0.hasPrefix("Executed ") }.count == 2)
         #expect(totals == [
-            "totals: ✘ failed · XCTest 2 tests across 2 bundles, 2 failures · Swift Testing 4 tests in 0 suites across 2 bundles, 3 failures",
+            "totals: ✘ failed · XCTest 2 tests across 2 bundles, 2 failures, 0 skipped · Swift Testing 4 tests in 0 suites across 2 bundles, 3 failures, 0 skipped",
         ])
     }
 

@@ -11,6 +11,14 @@ public extension InPlaceShape.Match {
         }
     }
 
+    /// The file each call reading only windows of its file reads, spelled out against ``directory``, with the windows it reads it through; a whole read, or a call reading no file, names none.
+    var windowReads: [(path: String, windows: [LineWindow])] {
+        calls.indices.compactMap { index in
+            guard windowed[index], let path = calls[index].readPath else { return nil }
+            return (SwiftTree.resolve(readPath: path, relativeTo: directory) ?? path, calls[index].windows)
+        }
+    }
+
     /// This match without the reads the predicate holds of — handed the read's path spelled out against ``directory``, the windows the call reads it through, and whether the call answers nothing but those windows (``windowed``) rather than a read of the whole file — or `nil` where no call is left.
     ///
     /// The predicate says which reads the hook would let through standing alone: a window of a file the context has located, a whole read of a file whose whole digest it holds or that it wrote. Such a read still prints its source, which no answer to the rest reproduces, so what is left no longer covers the whole command — a compound line's literals, which placed the whole line's output, go with it — and the line runs (``runsOtherStatements``): an answer would swallow the source the context asked for in place of a digest it already holds. A call that is no read (a search answered beside the reads) is always kept.

@@ -70,7 +70,7 @@ public struct HelpTopics {
         could not name what went wrong, not as a filter that failed.
 
         **A plain `swift test` is checked against the tests the index declares** — an unfiltered, serial \
-        `swift test` of the package at the repository's root carries one more line under `totals:`, \
+        `swift test` of a package, at the repository's root or nested in it (`--package-path` or its own directory), carries one more line under `totals:`, \
         `inventory: 3411 declared, 3411 reported` when the two agree, and `inventory: 3 declared to run, 2 \
         reported — 1 never reported: …` naming the tests that never reported, and any that reported more than \
         once, when they do not. A runner's tally counts whatever reported, so a test process that died takes \
@@ -82,11 +82,15 @@ public struct HelpTopics {
         so one that started and never ended is never reported. \
         **It is a note and never a verdict: the exit code is the wrapped command's either \
         way** (a run that executed no test exits 4 for its zero, not for this line), and that run is reconciled \
-        as zero reported, `inventory: 3 declared, 0 reported — 3 never reported: …`. A filtered, skipped or `--parallel` run, a nested package's run and an `xcodebuild` run print \
-        nothing, since each runs a set the root manifest does not bound. A run in scope that could not be \
+        as zero reported, `inventory: 3 declared, 0 reported — 3 never reported: …`. A filtered, skipped or `--parallel` run prints \
+        nothing, since each runs a set the package's manifest does not bound. **An `xcodebuild` test of a package's `<Name>-Package` scheme** \
+        (Xcode's over every test target), from the package's directory with no Xcode project named or beside it, is checked as that `swift test` is; \
+        any other prints `inventory: not checked — …` saying why, unless `-only-testing`, `-skip-testing`, `-testPlan` or a test configuration narrows it. A run in scope that could not be \
         checked prints the one line saying why, `inventory: not checked — …`: the checkout has no index yet, \
         which this never builds; the inventory could not be read; every test the index declares was lifted \
         out of the counts; or bringing it up to date and reconciling took longer than 20 s.
+
+        **An `xcodebuild` build or test of a stale generated project says so first** — when an XcodeGen `project.yml` beside the `.xcodeproj` holds Swift files its `project.pbxproj` does not list, one line, `project: Apps/Gizmo.xcodeproj does not list 1 Swift file its spec Apps/project.yml holds (GizmoTests.swift) — run xcodegen generate`, comes before the command's output. It is a note and never a verdict, and prints nothing where the spec or project cannot be read.
 
         **A test process that crashed is a failure** — `✘ swift test — exit 1 — test process crashed`, the \
         runtime's `File.swift:12: Fatal error: …` line, the test it was in, how many selected tests never started, \
@@ -110,7 +114,7 @@ public struct HelpTopics {
         entirely, because one key covering a build, a test and a clean alike makes any fraction over them a \
         fraction over nothing. **A machine that mostly runs `xcodebuild` will see little here at first** — \
         runs recorded before the log kept an action carry none and stay set aside permanently, so the \
-        population builds only from new runs.
+        population builds only from new runs.\n\n\(RuleTopicNotes.run)
         """
     }
 
@@ -125,14 +129,14 @@ public struct HelpTopics {
         \(AnswerHeaderNotes.body)
 
         **The header's `semantic:` is the mode that produced this answer, not a property of the tree.** \
-        `digest` never opens the store, so it says `syntactic-only`; `status` judges from file timestamps, \
-        so it can say `stale (2 files changed since last build)`; `where` consults the store, so it can say \
-        `fresh`. A file counts as changed when its contents or its file status moved past the build, so a copy that \
-        preserves modification times still reads as changed. On one tree you can therefore see all three in a row: \
-        `status` stale, `digest` syntactic-only, `where` fresh (it asked about a symbol in a file no edit touched). \
-        In a tree with no index store yet, such as a fresh worktree, `digest` still says `syntactic-only` and \
-        `where` says `none (no index store — see note)`: `digest` never asked for the store, `where` asked and \
-        found none. They do not contradict; read the one on the answer you are acting on.
+        `digest` never opens the store, so its header carries no `semantic:` field; `status` judges from file \
+        timestamps, so it can say `stale since last build (2 files changed)`; `where` consults the store, so it \
+        can say `fresh`. A file counts as changed when its contents or its file status moved past the build, so a \
+        copy that preserves modification times still reads as changed. On one tree you can therefore see `status` \
+        stale and `where` fresh (it asked about a symbol in a file no edit touched). In a tree with no index store \
+        yet, `where` says `\(SemanticAxis.noStore(inWorktree: false).rendered)`, and in a fresh worktree \
+        `\(SemanticAxis.noStore(inWorktree: true).rendered)`: it asked and found none. They do not contradict; \
+        read the one on the answer you are acting on.
 
         **Syntactic answers** — digests, declarations, extensions — are never stale. Files dirty in the \
         working tree are reparsed before the answer is built, so an edit you just made is already reflected.
@@ -153,6 +157,8 @@ public struct HelpTopics {
         second carries a `(+N more)` the file that settles your question can be inside the count — it tells \
         you to run `sift status`, which lists every one.
 
+        \(AnswerHeaderNotes.staleHeader)
+
         **Semantic answers** — callers, overrides, store-recorded conformers — come from the build's index \
         store, and only a build refreshes it. A symbol whose file changed since the last build is **refused \
         with "build the project"** rather than answered from stale data. Take that literally: re-running the \
@@ -163,8 +169,8 @@ public struct HelpTopics {
 
         **(index store)** With no index store — none has been built for this tree — `where` answers \
         declarations from syntax, and callers, overrides and references do not answer. **To build one:** \
-        \(SiftEngine.buildCommandNote). **A nested package needs one more step:** \
-        \(SiftEngine.nestedStoreNote). `status` and `affected` carry this recipe in full; a `where` \
+        \(SiftEngine.buildCommandNote). **Anywhere else needs one more step:** \
+        \(SiftEngine.nestedStoreClause). `status` and `affected` carry this recipe in full; a `where` \
         answer carries a one-line pointer here.
 
         **Call sites.** A name-matched site is a lead to verify, not a resolved fact: the scan matched a \
@@ -281,8 +287,7 @@ public struct HelpTopics {
         keeps every occurrence the last build compiled, deleted files included, so `where` can name a caller \
         in a file that no longer exists. Those rows carry `(file deleted since last build)` — or `(file \
         changed since last build)` where the file survives but has been written since — sort after the live \
-        ones, and are counted out in the section heading and in the header's `stale (N occurrence files \
-        deleted since last build)`. The changed label is decided on the later of the file's mtime and its \
+        ones, and are counted out in the section heading and in the header's `stale since last build (…)`. The changed label is decided on the later of the file's mtime and its \
         ctime, so an edit whose mtime was put back (`touch -r`, `cp -p`) still carries it, and so does a file \
         rewritten with the bytes that were built — it over-warns and never under-warns. **Read the label as "do \
         not act on this row"**: an unlabelled row in the same section is unaffected and still resolved. \
@@ -290,8 +295,8 @@ public struct HelpTopics {
         delete just orphaned from one that was already dead — and a build is the only thing that clears them.
 
         **`sift status` reports the same axis without opening the store**, from file state against the \
-        store's last build, so its header reads `stale (N files changed since last build, M files deleted since \
-        last build)` — each part only when its count is not zero. A file counts as changed when its contents or its file status \
+        store's last build, so its header reads `stale since last build (N files: C changed, D deleted)` — each \
+        part only when its count is not zero, and one file named. A file counts as changed when its contents or its file status \
         moved past the build, so a copy that preserves modification times still reads as changed. It says *files*, not *occurrence \
         files*: having read no occurrence, it knows a file was written or removed after the build, not that the store cites it. It \
         may over-warn, and the lines under its header name what it cannot see, which only a query shows.
@@ -318,7 +323,7 @@ public struct HelpTopics {
 
         **How `sift status` knows a server is actually still running.** It confirms one is, by checking \
         each recorded process against the start time the kernel holds for it, plus when and why the last \
-        one stopped — a stale pid file left behind by a crash reads as a live server otherwise.
+        one stopped — a stale pid file left behind by a crash reads as a live server otherwise.\n\n\(RuleTopicNotes.toolsMissing)
 
         Every query resolves against one repository root. In a session spanning several repos, or rooted \
         above them all, pass `root:` with the repo's absolute path — but a missing one is not a dead end: \
@@ -357,7 +362,7 @@ private extension HelpTopics {
         what it builds, so the shape of a view is answerable without opening it — and views are the \
         biggest files in an app repo and the most wasteful to read whole. `digest Type.member` is the \
         one-call version of the digest-then-ranged-Read loop, for when you know what you want rather than \
-        still looking.
+        still looking.\n\n\(RuleTopicNotes.readingCode)
 
         **`digest` and `where` with `--at <rev>`, for a past commit.** "Was this already declared at the \
         base?" is answered from a parse of that revision's files that name the target, read through git — \
@@ -454,8 +459,7 @@ private extension HelpTopics {
         says so; it is not unused. Every query also lists the Swift string literals holding the text, each \
         with its enclosing declaration and `file:line` — the whole answer in a repo with no catalog, where \
         the wording lives in the source. Only text inside a literal counts, never a comment. Literal \
-        matching is smart case: any uppercase letter in the query makes it case-sensitive, an all-lowercase \
-        query stays case-insensitive.
+        matching ignores case: `"Warnings"` finds the literal `"WARNINGS"`.
 
         **`affected`, read as a lower bound and nothing else.** It reports; it does not run anything, and \
         it never decides what to skip — reflection, `#selector`, string-keyed lookups, macro-generated \
@@ -473,7 +477,7 @@ public extension HelpTopics {
     private static var refusalsBody: String {
         """
         The hook's own accounting, and the shapes it never interrupts — the nuance behind "a lookup of \
-        Swift source is answered in place, or let through." (This is `pre-tool-use`'s accounting; the \
+        Swift source — a shell command, a Grep, a Glob, or a whole-file Read — is answered in place, or let through." (This is `pre-tool-use`'s accounting; the \
         separate `post-tool-use` nudge never denies a call, so none of it applies there.)
 
         **The outcome is one of two.** Where the index's answer accounts for everything the command \
@@ -485,9 +489,7 @@ public extension HelpTopics {
         from disk. Where it is not — no answered shape for this lookup, \
         an attempt withheld, a budget overrun — the command runs exactly as it would have without the \
         hook. Nothing is ever refused with a bare "call this instead": that cost about four times what \
-        the call it named could save. The one exception is a lookup sent in the same message as the \
-        index call it would be offered, which is held back with a pointer at that call, because its \
-        answer arrives in the same batch of results and so the pointer costs no round trip. The miss is still counted, by `sift audit` and the share, so a \
+        the call it named could save. The miss is still counted, by `sift audit` and the share, so a \
         shape the hook cannot yet answer stays visible as one.
 
         **What counts as a search that went around the index.** `grep -n` and `sed -n '/pattern/p'` on a \
@@ -583,9 +585,9 @@ public extension HelpTopics {
         draws `sift run -- <command>` once, because there is no answer to hand back for a build — no \
         digest of one — and what the refusal spares is a whole build or test log instead of the one \
         sentence a lookup's refusal would cost. The identical re-run is allowed, on the same ledger and \
-        the same terms as any other denial. It is still worth reaching for unasked. The judgement is the \
-        hook's, so a command that reaches you undenied was one it decided against, or one it had no \
-        answer for, not one it missed. A linter run carrying `--quiet` draws none: the flag already drops \
+        the same terms as any other denial. It is still worth reaching for unasked. A command the hook \
+        lets through is one it had no smaller answer for; that is not a recommendation to run it that \
+        way — `digest` and `where` are still the cheaper first call. A linter run carrying `--quiet` draws none: the flag already drops \
         the progress lines, so there is no log for the wrapping to spare.
 
         **A build the user's own rules speak for runs as written.** Where an ask or deny rule of theirs matches anything the line \
@@ -722,7 +724,7 @@ public extension HelpTopics {
             summary: "Reading `sift build --analyse` — the clean build it runs, the slowest bodies and expressions, the totals that are never added, and when it refuses.",
             body: buildOutputBody
         ),
-    ]
+    ] + [AffectedHelpTopic.topic]
 }
 
 /// Kept apart from the struct's own body (rather than one more `private static var` beside `runBody`): `type_body_length` counts a type's own declaration, not its extensions.

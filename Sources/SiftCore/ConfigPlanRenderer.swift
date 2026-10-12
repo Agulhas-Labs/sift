@@ -9,6 +9,25 @@ struct ConfigPlanRenderer {
         20
     }
 
+    /// The files a build file claims under a rename this tool cannot read, each prefix listed with no module beside it: the one draft to hand is the target's own name, and the build is known to replace it.
+    private static func unreadableRenameLines(_ plan: ConfigPlan) -> [String] {
+        guard !plan.unreadableRenames.isEmpty else { return [] }
+        var lines = [
+            "⚠ \(plan.unreadableRenameFileCount) file(s) under \(plan.unreadableRenames.count) target path(s) belong to a target whose settings rename its module",
+            "  in a way this tool cannot read (a `$(…)` reference, an xcconfig `#include` or one that is missing,",
+            "  a per-configuration or conditional value, a settings group, a quoted xcconfig value). Answers name their module after the target, which the build replaces, and open with a",
+            "  `⚠ module guessed` banner naming the files. No module is proposed for them: add each prefix",
+            "  to moduleMap with the module the build really produces:",
+        ]
+        for group in plan.unreadableRenames.prefix(groupCap) {
+            lines.append("    \"\(group.prefix)\"   — \(group.fileCount) file(s)")
+        }
+        if plan.unreadableRenames.count > groupCap {
+            lines.append("    … \(plan.unreadableRenames.count - groupCap) more path(s)")
+        }
+        return lines
+    }
+
     static func render(plan: ConfigPlan, wrote: String?) -> String {
         let manifestSuffix = plan.manifestsScanned > 0 ? " (+\(plan.manifestsScanned) build manifest(s))" : ""
         var lines = ["scanned \(plan.filesScanned) Swift source file(s)\(manifestSuffix)"]
@@ -33,9 +52,16 @@ struct ConfigPlanRenderer {
         }
 
         lines.append("")
+        let renames = unreadableRenameLines(plan)
+        lines += renames
         if plan.unresolvedGroups.isEmpty {
-            lines.append("every file's module comes from a build file — no moduleMap needed")
+            if renames.isEmpty {
+                lines.append("every file's module comes from a build file — no moduleMap needed")
+            }
         } else {
+            if !renames.isEmpty {
+                lines.append("")
+            }
             lines.append("⚠ \(plan.unresolvedFileCount) file(s) in \(plan.unresolvedGroups.count) group(s) have NO declaring build file.")
             lines.append("  Until mapped, answers guess their module from the path's first component, so")
             lines.append("  `digest <Module>` and `where Module.Type` are wrong for them — every such answer")

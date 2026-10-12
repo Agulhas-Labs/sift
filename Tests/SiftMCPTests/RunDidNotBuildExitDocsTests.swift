@@ -24,11 +24,7 @@ struct RunDidNotBuildExitDocsTests {
     /// The agent guide says the did-not-build exit is the filtered run's, not any build failure's.
     @Test
     func theAgentGuideScopesTheDidNotBuildExitToAFilteredRun() throws {
-        let root = URL(filePath: #filePath)
-            .deletingLastPathComponent() // SiftMCPTests
-            .deletingLastPathComponent() // Tests
-            .deletingLastPathComponent()
-        let guide = try String(contentsOf: root.appendingPathComponent("Sift.md"), encoding: .utf8)
+        let guide = try #require(HelpTopics.topic(named: "run-output")).body
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
 
         #expect(guide.contains("except \(RunTestSelector.exitCode) (a `--filter` run that executed no test) and \(RunTestSelector.didNotBuildExitCode) (such a run that did not build)"))

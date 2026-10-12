@@ -82,8 +82,8 @@ import Testing
             }
         }
 
-        #expect((rules.first == "noLookup") == whole)
-        #expect(rules.last == "noLookup")
+        #expect((rules.first == ReplayVerdict.logged("digestHeldWindow")) == whole)
+        #expect(rules.last == ReplayVerdict.logged("locatedWindow"))
     }
 
     /// A guard, passing before and after this rule: the file's whole digest, by path as the server or the replay records it or of the type the file is named for, excuses a window of it however wide.

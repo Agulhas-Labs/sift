@@ -33,11 +33,12 @@ public struct SuppressionLog: Sendable {
     /// Records that a built suggestion was withheld for a lookup under `directory`, and which gate withheld it.
     ///
     /// `rule` because there is more than one gate, and a rate that cannot say *which* gate fired is the same shape of blindness as no rate at all — one over-firing rule inside a healthy total is invisible. `symbol` is optional for the same reason the gates differ: a search the index could not have served often names no symbol at all, which is precisely why it was withheld. `call` is the `tool_use_id` of the call judged, where the harness gave one, so the audit can find this verdict again for that call.
-    public func note(symbol: String?, directory: String?, rule: String, call: String? = nil) {
-        var entry: [String: Any] = [
-            "ts": ISO8601DateFormatter().string(from: Date()),
-            "rule": rule,
-        ]
+    ///
+    /// `fields` are written beside those for a rule that has more to say, never over them: an `overTime` names the shapes that overran and the back-off they armed (``InPlaceOverrun/suppressionFields``).
+    public func note(symbol: String?, directory: String?, rule: String, call: String? = nil, fields: [String: Any] = [:]) {
+        var entry: [String: Any] = fields
+        entry["ts"] = ISO8601DateFormatter().string(from: Date())
+        entry["rule"] = rule
         if let symbol {
             entry["symbol"] = symbol
         }
@@ -86,5 +87,63 @@ public struct SuppressionLog: Sendable {
             calls[call] = why
         }
         return calls
+    }
+
+    /// The `tool_use_id`s of the calls the log at `fileURL` records the hook standing aside from — backing off, or an answer that ran out of time — each with the cause it logged.
+    ///
+    /// Apart from ``callsLetThrough(in:prefix:)`` because the two mean different things: every entry that reads back is a lookup scored out of `cold`, and these stay misses and only gain a name. Same rules otherwise: only an entry naming its call counts, the last wins, and only the first `prefix` bytes are read where it is given.
+    public static func callsStoodAside(in fileURL: URL, prefix: Int? = nil) -> [String: StoodAside] {
+        callsStoodAside(from: withheldEntries(in: fileURL, prefix: prefix))
+    }
+
+    /// ``callsStoodAside(in:prefix:)`` over entries already read, so an audit parses the log once for this and ``overruns(from:since:until:root:)``.
+    static func callsStoodAside(from entries: [[String: Any]]) -> [String: StoodAside] {
+        var calls: [String: StoodAside] = [:]
+        for entry in entries {
+            guard let why = (entry["symbol"] as? String).flatMap(InPlaceAnswerer.Withholding.init(rawValue:)).flatMap(StoodAside.init(logged:)),
+                  let call = entry["call"] as? String
+            else { continue }
+            calls[call] = why
+        }
+        return calls
+    }
+
+    /// How many `overTime` entries in the log at `fileURL` record a real overrun — an answer that ran past its budget and armed a back-off, so naming shapes — stamped within `since` up to `until` (exclusive), or all of them where an edge is `nil`, and logged from `root` or a directory beneath it where one is given.
+    ///
+    /// An `overTime` with no shapes is a line whose budget was spent before its Swift leg was asked: nothing overran, so it is no cause of a back-off and is not counted. Entries written before shapes were logged carry none and so count in no total.
+    public static func overruns(in fileURL: URL, prefix: Int? = nil, since: Date? = nil, until: Date? = nil, root: String? = nil) -> Int {
+        overruns(from: withheldEntries(in: fileURL, prefix: prefix), since: since, until: until, root: root)
+    }
+
+    /// ``overruns(in:prefix:since:until:root:)`` over entries already read.
+    ///
+    /// The `root` test is the one `usage --root` applies to a logged call's root: canonically compared, the directory itself or beneath it.
+    static func overruns(from entries: [[String: Any]], since: Date? = nil, until: Date? = nil, root: String? = nil) -> Int {
+        let stamp = ISO8601DateFormatter()
+        return entries.filter { entry in
+            guard entry["symbol"] as? String == InPlaceAnswerer.Withholding.overTime.rawValue,
+                  let shapes = entry["shapes"] as? [String], !shapes.isEmpty
+            else { return false }
+            if let root, (entry["dir"] as? String).map({ CanonicalPath.of($0).isWithin(root) }) != true {
+                return false
+            }
+            guard since != nil || until != nil else { return true }
+            guard let moment = (entry["ts"] as? String).flatMap(stamp.date(from:)) else { return false }
+            return since.map { moment >= $0 } ?? true && until.map { moment < $0 } ?? true
+        }.count
+    }
+
+    /// The parsed `answerWithheld` entries of the log whose withholding is one the hook stood aside for, so a log of thousands of other lines is not parsed.
+    static func withheldEntries(in fileURL: URL, prefix: Int?) -> [[String: Any]] {
+        guard let whole = try? Data(contentsOf: fileURL) else { return [] }
+        let data = prefix.map { whole.prefix($0) } ?? whole
+        let markers = StoodAside.allCases.map { Data("\"\($0.rawValue)\"".utf8) }
+        return data.split(separator: 0x0A, omittingEmptySubsequences: true).compactMap { line in
+            guard markers.contains(where: { line.range(of: $0) != nil }),
+                  let entry = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  entry["rule"] as? String == "answerWithheld"
+            else { return nil }
+            return entry
+        }
     }
 }

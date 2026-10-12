@@ -137,14 +137,14 @@ struct CrossModuleTypeUsageWhereTests {
         try await engine.awaitSemanticStore()
         let freshness = try await engine.ensureFresh()
 
-        let output = try await engine.lookup(symbol: "Alpha.Widget", freshness: freshness)
+        let output = try await engine.lookup(symbol: "Alpha.Widget", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
         #expect(output.contains("used by Alpha.Widget: 4 references in 2 files — 4 production · 0 tests"))
         #expect(output.contains("Sources/Beta/Widget.swift (2):\n    :8  | func make() -> Alpha.Widget {\n    :9  | Alpha.Widget()"))
         #expect(output.contains("Sources/Beta/Consumer.swift (2):\n    :3  | public func consume() -> Alpha.Widget {\n    :4  | Alpha.Widget()"))
         // The false claim itself, which is what makes this worse than the silence the section replaced.
         #expect(!output.contains("which is the type spelling its own name"))
-        #expect(!output.contains("inside its own declaration or its extensions in this module, which is not use"))
+        #expect(!output.contains("inside its own declaration or its extensions in this module"))
     }
 
     /// A nested type's extension is not the top-level type's, even in the same module, so a module check would not have settled this and the extended type's own identity has to.
@@ -157,7 +157,7 @@ struct CrossModuleTypeUsageWhereTests {
         try await engine.awaitSemanticStore()
         let freshness = try await engine.ensureFresh()
 
-        let output = try await engine.lookup(symbol: "Alpha.Item", freshness: freshness)
+        let output = try await engine.lookup(symbol: "Alpha.Item", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
         // `extension Outer.Item` matches `LIKE '%.' || 'Item'`, so its body's uses of the top-level `Item` were dropped.
         #expect(output.contains("used by Alpha.Item: 2 references in 1 file — 2 production · 0 tests"))
@@ -177,12 +177,12 @@ struct CrossModuleTypeUsageWhereTests {
         try await engine.awaitSemanticStore()
         let freshness = try await engine.ensureFresh()
 
-        let output = try await engine.lookup(symbol: "Alpha.Gizmo", freshness: freshness)
+        let output = try await engine.lookup(symbol: "Alpha.Gizmo", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
         #expect(output.contains("used by Alpha.Gizmo: 1 reference in 1 file — 1 production · 0 tests"), "\(output)")
         #expect(output.contains("Sources/Beta/Extras.swift (1):\n    :3  | public extension Gizmo {"), "\(output)")
         // The same-module extension's header is still the type declaring itself, said as such.
-        #expect(output.contains("1 more line inside its own declaration or its extensions in this module, which is not use"), "\(output)")
+        #expect(output.contains("1 more line inside its own declaration or its extensions in this module"), "\(output)")
         #expect(!output.contains("Sources/Alpha/Sizing.swift ("), "\(output)")
         #expect(output.contains("1 extension in another module counted as use — deleting the type breaks that module"), "\(output)")
         #expect(!output.contains("no uses of Alpha.Gizmo"), "\(output)")
@@ -272,7 +272,7 @@ struct CrossModuleTypeUsageWhereTests {
         let sharedFile = try engine.store.fileRow(path: "Shared/Extras.swift")
         #expect(sharedFile?.moduleGuessed == true)
 
-        let output = try await engine.lookup(symbol: "App.Thing", freshness: freshness)
+        let output = try await engine.lookup(symbol: "App.Thing", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
         // Its own header (line 3), the return type (line 4), and the call inside the body (line 5) — none of them
         // excluded, since only a same-module extension's own span is: an other-module extension's span (and every

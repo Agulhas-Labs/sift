@@ -6,7 +6,7 @@ import Foundation
 
 /// The lookups the index owned and lost on a judgement of worth, counted by which rule made that judgement rather than pooled into one number.
 ///
-/// One counter per ``TextSearch/Rule``, mirroring ``TextSearchCauses`` for the other half: the rules argue for different things — `contextLines` and `severalNames` are the index giving a weaker answer than was asked, `filteredOutput` is a pipeline asking for lines no index answer prints, `retryAllowed` is a refusal whose identical re-run the hook already let through, `notSmaller` is a window whose answer would have cost no less than the lines it prints, `linesNotShown` is a window whose answer would not show the lines it asks for, `notWorthTheTurn` is a whole read whose digest spares less than the turn after it costs — and a reader acting on the row has to know which one they are looking at. ``TranscriptTally/withheldOnWorth`` is the sum, so the report's row and the lines under it can never disagree.
+/// One counter per ``TextSearch/Rule``, mirroring ``TextSearchCauses`` for the other half: the rules argue for different things — `contextLines` and `severalNames` are the index giving a weaker answer than was asked, `filteredOutput` is a pipeline asking for lines no index answer prints, `retryAllowed` is a refusal whose identical re-run the hook already let through, `notSmaller` is a window whose answer would have cost no less than the lines it prints, `linesNotShown` is a window whose answer would not show the lines it asks for, `notWorthTheTurn` is a whole read whose digest spares less than the turn after it costs, or a `Read` window whose answer spares less than its expected re-run — and a reader acting on the row has to know which one they are looking at. ``TranscriptTally/withheldOnWorth`` is the sum, so the report's row and the lines under it can never disagree.
 public struct WithholdOnWorthCauses: Sendable, Equatable, Codable {
     /// A grep of one named file printing context around its matches, where the pattern is not a member's declaration.
     public var contextLines: Int
@@ -24,7 +24,7 @@ public struct WithholdOnWorthCauses: Sendable, Equatable, Codable {
     public var linesNotShown: Int
     /// A search printing only the names of the files it matches.
     public var filesOnly: Int
-    /// A whole read of a Swift file the hook let run, its digest sparing less than the turn after it costs.
+    /// A whole read of a Swift file the hook let run, its digest sparing less than the turn after it costs, or a `Read` window whose answer spares less than its expected re-run.
     public var notWorthTheTurn: Int
 
     public init(contextLines: Int = 0, severalNames: Int = 0, filteredOutput: Int = 0, retryAllowed: Int = 0, notSmaller: Int = 0, linesNotShown: Int = 0, filesOnly: Int = 0, notWorthTheTurn: Int = 0, namedFiles: Int = 0) {

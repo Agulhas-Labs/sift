@@ -120,7 +120,7 @@ struct ProjectedValueCallTests {
         let output = try await Self.lookup("PV.init(projectedValue:)", in: root, built: false)
         let sites = WhereAnswerRepetitionTests.sitesOnePerLine(output)
 
-        #expect(output.contains("syntactic call sites — by written name"), "\(output)")
+        #expect(output.contains("call sites by written name"), "\(output)")
         for site in Self.projectedSites {
             #expect(sites.split(separator: "\n").contains { $0.hasSuffix(site) }, "\(site) missing from\n\(output)")
         }

@@ -29,7 +29,7 @@ struct WhereNestedTypeOutsideTests {
         }
         try TestSources.commitAll(in: root, message: "a nested type, unbuilt")
         let engine = try SiftEngine(directory: root)
-        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh())
+        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
     }
 
     /// The fixture every gate below adds one thing to: a top-level function writing Foundation's `URL` bare, and one writing the nested type's whole path.
@@ -50,7 +50,7 @@ struct WhereNestedTypeOutsideTests {
     func aBareNameAtTheTopLevelIsCountedApart() async throws {
         let url = try await WhereQualifiedProtocolNoteTests.answer("Net.URL", source: Self.plain)
 
-        #expect(url.contains("\"URL\" used by 1 line in 1 file — "), "\(url)")
+        #expect(url.contains("\"URL\" (1 use by written name in 1 file) — "), "\(url)")
         #expect(url.contains(Self.setApart(2)), "\(url)")
         #expect(url.contains("\n    :6  | func check(_ x: Net.URL) { x.fetched() }"), "\(url)")
         #expect(!url.contains(":3  |"), "\(url)")
@@ -62,7 +62,7 @@ struct WhereNestedTypeOutsideTests {
     func aQualifiedNameAtTheTopLevelKeepsTheLine() async throws {
         let url = try await WhereQualifiedProtocolNoteTests.answer("Net.URL", source: "enum Net { struct URL { func fetched() {} } }\nfunc check(_ x: Lib.Net.URL) { x.fetched() }\nfunc again() { Net.URL().fetched() }\n")
 
-        #expect(url.contains("\"URL\" used by 2 lines in 1 file — "), "\(url)")
+        #expect(url.contains("\"URL\" (2 uses by written name in 1 file) — "), "\(url)")
         #expect(!url.contains(Self.anyClause), "\(url)")
     }
 

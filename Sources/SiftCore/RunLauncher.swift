@@ -13,7 +13,7 @@ public struct RunLauncher: Sendable {
     private let knownRoot: URL??
     /// Where this run's transcript is written, when that is not the directory the command runs in.
     ///
-    /// `nil` — every real invocation — files the transcript under the working directory, which is what makes `sift run` leave a receipt in the repository it just ran in. A caller driving this launcher *inside* another repository's test process is not a real invocation: it inherits that process's working directory and would otherwise write into, and prune, a run log that is nothing to do with it.
+    /// `nil` — every real invocation — files the transcript under the repository root the run resolved, beside the index and every other `.sift/` file, even when the command runs in a nested package; only where no repository encloses the directory does it fall back to the working directory. That is what makes `sift run` leave a receipt in the repository it just ran in, where its readers look. A caller driving this launcher *inside* another repository's test process is not a real invocation: it inherits that process's working directory and would otherwise write into, and prune, a run log that is nothing to do with it.
     private let runLogDirectory: URL?
 
     public init(workingDirectory: URL) {
@@ -80,7 +80,7 @@ extension RunLauncher {
             streams?.remove()
         }
         let started = streams.map { Self.arguments(arguments, writingTo: $0) } ?? arguments
-        let log = RunLog.open(inDirectory: runLogDirectory ?? workingDirectory)
+        let log = RunLog.open(inDirectory: runLogDirectory ?? repositoryRoot ?? workingDirectory)
         progress?.begin(arguments, kind: kind, logPath: log?.partURL.path)
         let pipe = Pipe()
         let finish: () -> Int32

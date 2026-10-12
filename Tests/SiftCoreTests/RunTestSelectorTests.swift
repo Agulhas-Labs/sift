@@ -21,7 +21,7 @@ struct RunTestSelectorTests {
             .render(report, exitCode: 0, logURL: nil)
         let lines = answer.split(separator: "\n").map(String.init)
         #expect(lines.first == "✘ swift test — nothing ran: no test matched --filter aFailingTest (the command exited 0; sift run exits 4)")
-        #expect(lines.contains { $0.hasPrefix("totals: ✘ nothing ran — no test matched --filter aFailingTest") })
+        #expect(!lines.contains { $0.hasPrefix("totals:") })
         #expect(!answer.contains("✔"))
     }
 

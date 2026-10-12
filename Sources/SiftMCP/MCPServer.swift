@@ -321,7 +321,7 @@ public actor MCPServer {
                 return try MeasuredAnswer(text: engine.digest(targets: targets, at: revision, options: options))
             }
             let digest = try engine.measuredDigest(targets: targets, options: options)
-            let answer = freshness.noting(digest).headerLine + "\n" + digest.text
+            let answer = freshness.noting(digest).syntacticHeaderLine + "\n" + digest.text
             return MeasuredAnswer(
                 text: Freshness.placing([Self.spacedTargetNote(arguments: arguments, missed: digest.missed)], under: answer),
                 bytes: digest.bytes,

@@ -24,7 +24,24 @@ public struct Freshness: Sendable {
     }
 
     public var headerLine: String {
-        "\(WorkingTree.fieldOpening)\(tree.rendered)\(WorkingTree.fieldSeparator)head: \(headShort)  \(movementFields)  semantic: \(semantic.rendered)"
+        syntacticHeaderLine + "  semantic: \(semantic.rendered)"
+    }
+
+    /// The header for an answer read from the index alone, which never consults the build's store (`digest`): ``headerLine`` without the `semantic:` field.
+    ///
+    /// A field that cannot vary for a verb measures nothing, and on `digest` it would say `syntactic-only` on every answer (Docs/Design.md §2, *One header line*). Every other verb keeps the field, since on each of them it can vary.
+    public var syntacticHeaderLine: String {
+        "\(WorkingTree.fieldOpening)\(tree.rendered)\(WorkingTree.fieldSeparator)head: \(headShort)  \(movementFields)"
+    }
+
+    /// The tree and commit a run answer names on its `raw:` line, in the words of this header: `Widget @ cc94af6 (clean)`, or `(dirty: 3)` for a tree that has moved.
+    ///
+    /// The tree alone is named where there is no repository to name a commit, and the tree and commit alone where the dirty state could not be read. Written beside ``syntacticHeaderLine`` so a run answer and a query answer cannot name a checkout in two vocabularies. `dirtyCount` is what the header's own `dirty:` counts, the `.swift` paths git reports changed, so the two agree on one checkout; `nil` is a count git would not give, and says nothing about the tree rather than `clean`. A run has no index to read, so unlike the header this stamp cannot see `parse_errors:`; an unborn branch is never `clean`, as in the header.
+    public static func stamp(of tree: WorkingTree, headShort: String?, dirtyCount: Int?) -> String {
+        guard let headShort else { return tree.rendered }
+        guard let dirtyCount else { return "\(tree.rendered) @ \(headShort)" }
+        let movement = headShort != unbornHead && dirtyCount == 0 ? "clean" : "dirty: \(dirtyCount)"
+        return "\(tree.rendered) @ \(headShort) (\(movement))"
     }
 
     /// The two fields saying how far the tree has moved from `head:` and what could not be read, or the one word `clean` for both.
@@ -75,9 +92,9 @@ public struct Freshness: Sendable {
 
     /// The header for an answer read live from the working tree rather than from stored rows — `search` and `strings`.
     ///
-    /// The tree and nothing else. `head:`, `dirty:` and `parse_errors:` describe the index, which these two never open, so stating them would mean bringing an index up to date for a line about something the answer did not use. What such an answer does need is its subject: without it a subagent in a worktree could not tell which checkout a search had been run over, which is the one question the `tree:` field exists to settle. No semantic axis either, since nothing here consults the build's store.
+    /// The tree and nothing else. `head:`, `dirty:` and `parse_errors:` describe the index, which these two never open, so stating them would mean bringing an index up to date for a line about something the answer did not use. What such an answer does need is its subject: without it a subagent in a worktree could not tell which checkout a search had been run over, which is the one question the `tree:` field exists to settle. No semantic axis either, since nothing here consults the build's store. That nothing stored can go stale is true of every such answer, so it is said once per session and not here.
     public static func liveHeaderLine(tree: WorkingTree) -> String {
-        "\(WorkingTree.fieldOpening)\(tree.rendered)\(WorkingTree.fieldSeparator)source: working tree, read live — nothing stored to go stale"
+        "\(WorkingTree.fieldOpening)\(tree.rendered)\(WorkingTree.fieldSeparator)source: live"
     }
 
     /// `answer` with `notes` placed directly under its header line.

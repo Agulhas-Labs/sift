@@ -27,7 +27,7 @@ struct CallSiteHeadingTests {
         try TestSources.commitAll(in: root, message: "fixture")
 
         let output = try await Self.lookup("Depot.run", in: root)
-        let heading = try #require(output.split(separator: "\n").first { $0.hasPrefix(NameMatchedSites.headingOpening) })
+        let heading = try #require(output.split(separator: "\n").first { $0.hasPrefix("\"") && $0.contains(" by written name") })
 
         #expect(heading.utf8.count < 200)
         #expect(!heading.contains("A property is read"))
@@ -35,7 +35,7 @@ struct CallSiteHeadingTests {
         #expect(!heading.contains("A function is named"))
         #expect(!heading.contains("An initializer is called"))
         #expect(!heading.contains("argument labels could reach"))
-        #expect(heading.contains("sift help answers (call sites)"))
+        #expect(output.contains("sift help answers"))
     }
 
     /// "labels narrowed" appears on the heading only where narrowing actually dropped a site for this answer.
@@ -67,7 +67,7 @@ struct CallSiteHeadingTests {
         try TestSources.commitAll(in: root, message: "fixture")
 
         let narrowed = try await Self.lookup("Depot.run", in: root)
-        let narrowedHeading = try #require(narrowed.split(separator: "\n").first { $0.hasPrefix(NameMatchedSites.headingOpening) })
+        let narrowedHeading = try #require(narrowed.split(separator: "\n").first { $0.hasPrefix("\"") && $0.contains(" by written name") })
         #expect(narrowedHeading.contains("labels narrowed"))
 
         let untouched = try TestSources.makeTempRepo()
@@ -78,7 +78,7 @@ struct CallSiteHeadingTests {
         )
         try TestSources.commitAll(in: untouched, message: "fixture")
         let plain = try await Self.lookup("Depot.run", in: untouched)
-        let plainHeading = try #require(plain.split(separator: "\n").first { $0.hasPrefix(NameMatchedSites.headingOpening) })
+        let plainHeading = try #require(plain.split(separator: "\n").first { $0.hasPrefix("\"") && $0.contains(" by written name") })
         #expect(!plainHeading.contains("labels narrowed"))
     }
 

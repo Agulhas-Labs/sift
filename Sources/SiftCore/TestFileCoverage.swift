@@ -13,6 +13,8 @@ struct TestFileCoverage: Equatable {
     /// Whether no indexed test file has a unit in any store, so the test targets were never built.
     let neverBuilt: Bool
     let provenance: DiscoveredStore.Provenance
+    /// The package directory a SwiftPM store was built in (``DiscoveredStore/package``).
+    var package = ""
 
     /// The count the axis reads as `partial`: every file without a unit where the test targets were never built, and none where a test build ran, since no build would add the rest.
     var partialCount: Int {
@@ -22,7 +24,7 @@ struct TestFileCoverage: Equatable {
     /// The build that adds the files, or empty where no build would.
     var build: String {
         guard neverBuilt else { return "" }
-        return provenance == .swiftPMBuild ? "build with `sift run -- swift build --build-tests`" : "build the test target"
+        return provenance == .swiftPMBuild ? "build with `\(DiscoveredStore.swiftPMBuildCommand(package: package, buildTests: true))`" : "build the test target"
     }
 
     /// How the files are named where a test build ran and no build would add them.

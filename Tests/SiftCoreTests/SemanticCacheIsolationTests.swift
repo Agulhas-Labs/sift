@@ -215,7 +215,7 @@ struct SemanticCacheIsolationTests {
         engine.openBudget = 300
         let back = try await engine.lookup(symbol: "Base.greet", freshness: engine.ensureFresh())
 
-        #expect(warming.contains("still warming"), "the first open was left running: \(warming)")
+        #expect(warming.contains("index store still loading"), "the first open was left running: \(warming)")
         #expect(!back.contains("failed to open"), "the set-aside open was remembered as the store's failure: \(back)")
         #expect(back.contains("semantic: fresh"), "\(back)")
         #expect(WhereStoreSiteTextTests.located(back).contains("Sources/Lib/Caller.swift:2"), "\(back)")
@@ -246,7 +246,7 @@ struct SemanticCacheIsolationTests {
         let discovered = DiscoveredStore(path: store, provenance: .swiftPMBuild, newestUnit: nil)
 
         do {
-            _ = try SemanticStore(discovered: discovered, newestUnitDate: Date(), cache: cache) {
+            _ = try SemanticStore(discovered: discovered, repoRoot: root, newestUnitDate: Date(), cache: cache) {
                 try? manager.moveItem(at: store, to: away)
                 try? manager.moveItem(at: storeV2, to: store)
                 try? manager.setAttributes([.posixPermissions: 0o555], ofItemAtPath: isdb.path)

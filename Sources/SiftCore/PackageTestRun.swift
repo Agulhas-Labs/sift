@@ -72,7 +72,7 @@ private extension PackageTestRun {
             return TestRunResult(answer: answer, exitCode: built.exitCode)
         }
         let buildSeconds = Date().timeIntervalSince(started)
-        let log = RunLog.open(inDirectory: packageDirectory)
+        let log = RunLog.open(inDirectory: repositoryRoot)
         let listing = try listTests(loggingTo: log)
         if let interrupted = interruptedResult() {
             return interrupted
@@ -109,7 +109,7 @@ private extension PackageTestRun {
             candidates: inventory.map { PackageShardPlanner.neverListed(declaredIn: $0, listed: tests, repositoryRoot: repositoryRoot) } ?? [],
             listed: tests
         ) {
-            let log = RunLog.open(inDirectory: packageDirectory)
+            let log = RunLog.open(inDirectory: repositoryRoot)
             let listing = try listTests(loggingTo: log)
             return Relisting(tests: listing.tests, exitCode: listing.exitCode, logPath: log?.url.path)
         }

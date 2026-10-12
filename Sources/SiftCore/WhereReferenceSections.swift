@@ -8,51 +8,67 @@ extension WhereRenderer {
     ///
     /// Grouped rather than listed flat because the caller is sweeping: a rename or delete is done file by file, and a flat list of 103 hits would spend 63 of them past the list cap. Counts are of *distinct lines*, matching what the lines actually list, so the header and the listing always reconcile; two occurrences on one line are one place to edit.
     ///
-    /// The file list pages on the same offset cursor digest uses, so a sweep bigger than one page stays in-tool. Lines hidden *within* a file (past `lineListCap`) have no cursor — those still name grep, because a sweep that looks complete but isn't is the one failure mode this section exists to prevent.
+    /// The file list pages on the same offset cursor digest uses, so a sweep bigger than one page stays in-tool. No file's lines are capped: a line left to a grep is a site the rename misses, the one failure mode this section exists to prevent.
     ///
     /// A file the tree no longer has keeps its line list — a delete sweep reads this section precisely to tell a reference the unit itself orphaned from one that was already orphaned — but it is labelled, and within a page it sorts after the surviving files so the actionable ones are read first.
     ///
     /// **The cursor pages the alphabetical list, never the display order.** Liveness changes *as the sweep runs*: page one's files get edited, drop out of the live group, and a cursor keyed to that order then skips as many files as moved — silently, in the multi-page sweep this section exists for. A page's contents must depend only on the offset and the file names, so live-first ordering is applied to the page after it is cut.
+    ///
+    /// **A function's references are folded against its callers** (Docs/Design.md §2, *The callers/references fold*): the store records a call and a function handed on unapplied alike as references, so `callers of` above has already listed most of these lines. `callSitesAbove` holds each line it listed on a row of its own, `path:line`; those are counted in the heading, `K of them the call sites above`, and not listed again, and the files and the cursor are the rest's. A line `callers of` only counted — a caller's later sites, a caller past its cap — is listed here, so every line is listed once, above or here, on every page.
     func referenceSection(
         for qualified: String,
         hits: [SemanticStore.Hit],
         offset: Int,
         context: SemanticContext,
         occurrences: OccurrenceFreshness,
+        paging: SyntacticSweepPaging? = nil,
+        callSitesAbove: Set<String> = [],
+        generatedMentions: Int = 0,
         shown: (SemanticStore.Hit) -> Void = { _ in }
     ) -> [String] {
-        let grouped = ReferencedFiles(hits: hits, context: context, occurrences: occurrences)
+        let all = ReferencedFiles(hits: hits, context: context, occurrences: occurrences)
+        let rest = hits.filter { !callSitesAbove.contains("\(context.relativePath($0.path)):\($0.line)") }
+        let grouped = rest.count == hits.count ? all : ReferencedFiles(hits: rest, context: context, occurrences: occurrences)
         let files = grouped.paths
-        var details = ["\(grouped.sites) in \(files.count) file\(files.count == 1 ? "" : "s")"]
-        // A rename sweeps the wrapper's `$flag` and `_flag` spellings too, so the heading names the ones its lines hold.
-        if !grouped.siblings.isEmpty {
-            details.append("including \(grouped.siblings.joined(separator: " and "))")
+        var details = ["\(all.sites) in \(all.paths.count) file\(all.paths.count == 1 ? "" : "s")"]
+        if all.sites > grouped.sites {
+            details.append("\(all.sites - grouped.sites) of them the call sites above")
         }
-        details.append(contentsOf: Self.driftDetails(states: grouped.states))
+        // A rename sweeps the wrapper's `$flag` and `_flag` spellings too, so the heading names the ones its lines hold.
+        if !all.siblings.isEmpty {
+            details.append("including \(all.siblings.joined(separator: " and "))")
+        }
+        details.append(contentsOf: Self.driftDetails(states: all.states))
+        // The store records the storage and accessors a macro generates as references written nowhere, so they are not listed, and the count says how many were left out.
+        if generatedMentions > 0 {
+            details.append("\(generatedMentions) more line\(generatedMentions == 1 ? "" : "s") a macro generated, not listed")
+        }
         var block = ["", "references to \(qualified) (\(details.joined(separator: ", "))):"]
         let skipped = min(max(0, offset), files.count)
-        if skipped > 0 {
+        // Registered with the answer's pager on every page, so a list past its end elsewhere knows this one continues.
+        let pastEnd = paging?.pastEnd(ofOutsideList: files.count)
+        if PastEndLine.applies(offset: offset, count: files.count) {
+            block.append("  " + (pastEnd ?? PastEndLine.text(offset: offset, count: files.count, noun: "files")))
+        } else if skipped > 0 {
             block.append("  (…\(skipped) file\(skipped == 1 ? "" : "s") skipped)")
         }
         // Cut the page alphabetically — an order-invariant cursor — then order only what it holds.
         let cut = Array(files.dropFirst(skipped).prefix(Self.listCap))
         let page = grouped.liveFirst(cut)
-        let listed = grouped.fileLines(page)
-        grouped.handOn(hits, listedIn: page, relativePath: context.relativePath, to: shown)
+        // A sweep is the rename view: a line left to a grep is a site the rename misses, so no file's lines are capped.
+        let listed = grouped.fileLines(page, listsEveryLine: true)
+        grouped.handOn(rest, listedIn: page, relativePath: context.relativePath, listsEveryLine: true, to: shown)
         block.append(contentsOf: listed.rows)
         let hiddenFiles = max(0, files.count - skipped - page.count)
         if hiddenFiles > 0 {
             block.append("  truncated: \(hiddenFiles) more file\(hiddenFiles == 1 ? "" : "s") — pass offset \(skipped + page.count) to continue")
-        }
-        if listed.hiddenLines > 0 {
-            block.append("  note: \(listed.hiddenLines) line\(listed.hiddenLines == 1 ? "" : "s") past the per-file cap in the files above — grep those files before sweeping")
         }
         return block
     }
 
     /// A type's usage: the verdict a deletion decision is made from, then the files that back it.
     ///
-    /// Compact rather than the sweep's full paged listing, because this one is on *every* answer about a type. The question it settles is not "which lines do I edit" but "is anything using this, and is any of it production" — a count, with the lines under it so the count can be checked rather than believed. `--refs` stays the rename view, and the truncation marker points there rather than at a cursor this section does not carry.
+    /// Compact rather than the sweep's full paged listing, because this one is on *every* answer about a type. The question it settles is not "which lines do I edit" but "is anything using this, and is any of it production" — a count. In a plain answer the count stands alone, ending `— where --refs <pointing> lists them`, since a question about where a type is did not ask for its uses; under `standsInForSearch` the lines follow so the count can be checked rather than believed, for a caller standing the answer in for a search's lines. `--refs` stays the rename view, and the truncation marker points there rather than at a cursor this section does not carry.
     ///
     /// The split is read from the file's own imports (``TestFileRecognition/isTestFile(imports:)``), the signal the rest of the index already uses, never from where the file sits: a path prefix would be this repo's layout asserted about somebody else's. A path the index has no row for is counted apart rather than guessed into either side, and named for which of the two it is: a file the deletion ledger saw leave the tree, or one the index never held, such as a build-generated source. **The verdict names that rule beside the number**, because the rule has an edge a reader has to know about: a helper written inside a test target that imports neither framework — a fixture builder, a deadline — counts as production, and a deletion is decided on that number.
     ///
@@ -62,19 +78,22 @@ extension WhereRenderer {
     func usageSection(
         for qualified: String,
         hits: [SemanticStore.Hit],
-        excludedLines: Int,
+        excludedLines: Int = 0,
         otherModuleExtensions: Int = 0,
-        otherModuleExtensionsGuessed: Bool = false,
+        otherModuleExtensionsGuessed: Set<GuessedModuleNotice.Reason> = [],
         aliasDeclarationLines: Int = 0,
-        sweepFollows: Bool,
+        options: WhereOptions,
         aliasFoldCapped: Bool = false,
         conformanceLines: Set<String> = [],
         isAlias: Bool = false,
-        offset: Int = 0,
+        pointing: String,
         context: SemanticContext,
         occurrences: OccurrenceFreshness,
         shown: (SemanticStore.Hit) -> Void = { _ in }
     ) throws -> [String] {
+        let sweepFollows = options.includeReferences
+        let offset = options.offset
+        let pointer = sweepFollows || options.standsInForSearch ? nil : pointing
         let grouped = ReferencedFiles(hits: hits, context: context, occurrences: occurrences)
         let files = grouped.paths
         let deleted = try Set(store.deletionLedger().entries.keys)
@@ -90,9 +109,8 @@ extension WhereRenderer {
         if conformances > 0 {
             verdict += ", \(conformances) of them the conformance\(conformances == 1 ? "" : "s") listed below"
         }
-        // What decided the split is said, not only the number it produced: a test-target helper importing neither
-        // framework counts as production, and a reader who cannot see that reads the number as "by directory".
-        verdict += " — " + split.tally.joined(separator: " · ") + ", split on the XCTest or Testing import, never the path"
+        // What decides the split, the XCTest or Testing import and never the path, is said once per session.
+        verdict += " — " + split.tally.joined(separator: " · ")
         var clauses = Self.driftDetails(states: grouped.states)
         // A folded line is named for what it is written as, because the reader who goes to check it will not find
         // this type's name there: the alias is what is spelled at the site, and the store recorded the use on it.
@@ -121,13 +139,13 @@ extension WhereRenderer {
         }
         // Never dropped in silence: a count that quietly excluded sites is the same defect as a count that never existed.
         if excludedLines > 0 {
-            clauses.append("\(excludedLines) more line\(excludedLines == 1 ? "" : "s") inside its own declaration or its extensions in this module, which is not use")
+            clauses.append("\(excludedLines) more line\(excludedLines == 1 ? "" : "s") inside its own declaration or its extensions in this module")
         }
         // The other half of the same rule, said beside it: an extension in another module is that module building
         // on the type, so it breaks when the type goes and is counted — and a reader who sees its header in the
         // listing needs telling why it is not "its own".
         if otherModuleExtensions > 0 {
-            let guessedNote = otherModuleExtensionsGuessed ? " (module guessed from the path)" : ""
+            let guessedNote = GuessedModuleNotice.Reason.countNote(for: otherModuleExtensionsGuessed)
             clauses.append(otherModuleExtensions == 1
                 ? "1 extension in another module counted as use — deleting the type breaks that module\(guessedNote)"
                 : "\(otherModuleExtensions) extensions in other modules counted as uses — deleting the type breaks those modules\(guessedNote)")
@@ -144,7 +162,7 @@ extension WhereRenderer {
         if !clauses.isEmpty {
             verdict += "; " + clauses.joined(separator: "; ")
         }
-        var block = ["", verdict]
+        var block = ["", verdict + (sweepFollows ? "" : pointer.map { " — where --refs \($0) lists them" } ?? "")]
         // Under `--refs` the verdict stands alone and the sweep's own listing, the next section, carries the lines.
         // The two sets are deliberately not the same — the sweep lists every reference, the type's own declaration
         // and extensions included, where usage lists only the ones that are use — and listing a subset directly
@@ -156,6 +174,11 @@ extension WhereRenderer {
         // anyway, named as unused, the same as digest's single-page neighbours block.
         if offset > 0 {
             block.append("(offset \(offset) unused — this section pages under --refs, not here)")
+        }
+        guard pointer == nil else {
+            // Every use is handed on though none is listed, so a refused declaration's scan by name still leaves out the lines this one resolved.
+            listedHits.forEach(shown)
+            return block
         }
         let page = rest.liveFirst(Array(rest.paths.prefix(Self.listCap)))
         let listed = rest.fileLines(page, namingAliases: true)
@@ -278,12 +301,15 @@ extension WhereRenderer {
                 try fold.aliases.append(AliasFold.Alias(name: row.name, spelling: store.qualifiedName(of: row), row: row))
                 fold.declarationSpans[row.path, default: []].append(row.line ... max(row.line, row.endLine))
                 let spelling = try store.qualifiedName(of: row)
-                let written = context.store.references(ofUSR: aliasUSR, sources: &sources).map { hit in
+                let (aliasHits, aliasGenerated) = context.store.referencesAndGeneratedMentions(ofUSR: aliasUSR, sources: &sources)
+                fold.generatedLines.formUnion(aliasGenerated)
+                let written = aliasHits.map { hit in
                     var marked = hit
                     marked.writtenAs = spelling
                     return marked
                 }
-                fold.hits.append(contentsOf: written)
+                // A clause written as an alias of this alias is recorded, implicit, against this one too, at the same site: the later alias is the spelling written there.
+                fold.hits = AliasFold.excluding(fold.hits, recordedAt: written) + written
                 // The next round looks for aliases of *this* alias, so what a covering declaration must spell is
                 // its name, not the original type's: `typealias Box = Crate` names `Crate` and never names `Gizmo`.
                 next.append(contentsOf: written.map { Aliasing(hit: $0, name: row.name) })
@@ -291,6 +317,20 @@ extension WhereRenderer {
             frontier = next
         }
         return fold
+    }
+
+    /// The store's references to `usr`, less its implicit records of a site written as one of its typealiases (``AliasFold/ownReferences(_:)``), with the fold of those typealiases (``aliasFold(referencedAt:named:excluding:context:sources:)``), which `asked` is passed on to.
+    func foldedReferences(
+        ofUSR usr: String,
+        named: String,
+        excluding asked: String? = nil,
+        context: SemanticContext,
+        sources: inout SemanticStore.SourceLines
+    ) throws -> (own: [SemanticStore.Hit], fold: AliasFold) {
+        let (recorded, generatedLines) = context.store.referencesAndGeneratedMentions(ofUSR: usr, sources: &sources)
+        var fold = try aliasFold(referencedAt: recorded, named: named, excluding: asked, context: context, sources: &sources)
+        fold.generatedLines.formUnion(generatedLines)
+        return (fold.ownReferences(recorded), fold)
     }
 
     /// The typealias declarations whose own span holds one of these reference hits **and whose own text spells the name the hit is a reference to** — the aliases these references are the aliasing of.
@@ -324,7 +364,7 @@ extension WhereRenderer {
         for site in sites {
             headers[relativePath(site.path), default: []].insert(site.line)
         }
-        let guessedModulePaths = try Set(store.filesWithGuessedModule().map(\.path))
+        let guessedModules = try GuessedModuleNotice.reasons(for: store.filesWithGuessedModule(), isUnreadablyRenamed: isUnreadablyRenamed)
         var own = OwnSpans(spans: [row.path: [row.line ... max(row.line, row.endLine)]])
         for extended in try ExtensionPaths.extensions(ofTypeNamed: row.name, in: store) {
             let span = extended.line ... max(extended.line, extended.endLine)
@@ -334,9 +374,7 @@ extension WhereRenderer {
                 // Either side's module can be the one that was guessed rather than declared — a single-target
                 // project with no build file can guess the extension's own directory as a second module, or
                 // guess the declaring type's directory as one while a build file names the extension's plainly.
-                if guessedModulePaths.contains(extended.path) || guessedModulePaths.contains(row.path) {
-                    own.otherModuleExtensionsGuessed = true
-                }
+                own.otherModuleExtensionsGuessed.formUnion([extended.path, row.path].compactMap { guessedModules[$0] })
                 continue
             }
             own.spans[extended.path, default: []].append(span)
@@ -378,6 +416,8 @@ extension WhereRenderer {
         var declarationSpans: [String: [ClosedRange<Int>]] = [:]
         /// `true` when ``WhereRenderer/typealiasFoldCap`` stopped the fold, which makes the count a lower bound and is said in the verdict.
         var reachedCap = false
+        /// The `path:line` of each mention a macro generated that the sweep sets aside, on the symbol asked about and on every alias the fold followed.
+        var generatedLines: Set<String> = []
 
         /// The alias declarations the fold followed.
         var aliases: [Alias] = []
@@ -385,6 +425,19 @@ extension WhereRenderer {
 }
 
 extension WhereRenderer.AliasFold {
+    /// The type's own `references` less each one the store recorded at the site of one of the fold's hits: what the fold's hits are merged with, and what a sweep of the type's own name lists.
+    ///
+    /// A clause written through an alias, `class Via: Footing`, is recorded against the alias where it is written and again, implicit, against the class the alias names, at the same file, line and column. The second record is no line that spells the type's own name: counted with the alias's, it made the line the type's own and lost its "written as" attribution, and a rename sweep listed a line a rename leaves alone.
+    func ownReferences(_ references: [SemanticStore.Hit]) -> [SemanticStore.Hit] {
+        Self.excluding(references, recordedAt: hits)
+    }
+
+    /// `hits` less each one a hit of `others` was recorded at by the same unit — file, line and column — which no two names written in code share: the implicit record the store makes of a name an alias stands for, beside the alias's own.
+    static func excluding(_ hits: [SemanticStore.Hit], recordedAt others: [SemanticStore.Hit]) -> [SemanticStore.Hit] {
+        let sites = Set(others.filter { $0.column > 0 }.map(Site.init))
+        return hits.filter { $0.column == 0 || !sites.contains(Site($0)) }
+    }
+
     /// A typealias declaration the fold followed.
     struct Alias {
         /// The name an inheritance clause writes.
@@ -394,6 +447,21 @@ extension WhereRenderer.AliasFold {
         /// The declaration's row, whose file, line and column place it in a parse of that file.
         let row: SymbolRow
     }
+
+    /// Where one unit recorded a hit: what an alias's reference and the store's implicit record of the name it stands for share.
+    struct Site: Hashable {
+        let unit: String
+        let path: String
+        let line: Int
+        let column: Int
+
+        init(_ hit: SemanticStore.Hit) {
+            unit = hit.unit
+            path = hit.path
+            line = hit.line
+            column = hit.column
+        }
+    }
 }
 
 extension WhereRenderer {
@@ -402,8 +470,8 @@ extension WhereRenderer {
         /// Per file, repo-relative, the line spans of the type's declaration and of its extensions in its own module.
         var spans: [String: [ClosedRange<Int>]]
         var otherModuleExtensions = 0
-        /// Whether any of `otherModuleExtensions` was counted only because its file's module was guessed rather than declared — a single-target project can guess two directories into two "modules" and split one real module in two, so the count is real but its reason is worth saying.
-        var otherModuleExtensionsGuessed = false
+        /// Why any of `otherModuleExtensions` was counted only because its file's module was guessed rather than declared — a single-target project can guess two directories into two "modules" and split one real module in two, so the count is real but its reason is worth saying.
+        var otherModuleExtensionsGuessed: Set<GuessedModuleNotice.Reason> = []
     }
 
     /// A reference hit together with the name written at it — what a typealias declaration covering that hit must itself spell for the hit to be that alias's aliasing of it.
@@ -540,7 +608,7 @@ extension WhereRenderer {
         /// Marking the rows a typealias fold reached with the spelling written there is what the usage verdict asks for and the rename sweep does not: a sweep's siblings are named in its heading, where a folded row is a line that spells no form of this type's name at all and is unfindable from the row without it.
         ///
         /// A row's text is read from the file as it stands, so a file the tree has written since the build, or no longer has, prints its rows without it: the line the store names may have moved, and the text now on it would be another line's.
-        func fileLines(_ subset: [String], namingAliases: Bool = false) -> (rows: [String], hiddenLines: Int) {
+        func fileLines(_ subset: [String], namingAliases: Bool = false, listsEveryLine: Bool = false) -> (rows: [String], hiddenLines: Int) {
             var rows: [String] = []
             var hiddenLines = 0
             if listsSiteText {
@@ -553,12 +621,13 @@ extension WhereRenderer {
                 }
                 return (rows, 0)
             }
+            let cap = listsEveryLine ? Int.max : WhereRenderer.lineListCap
             for path in subset {
                 let recorded = lines(in: path)
-                var rendered = recorded.prefix(WhereRenderer.lineListCap).map(String.init).joined(separator: ", ")
-                if recorded.count > WhereRenderer.lineListCap {
-                    hiddenLines += recorded.count - WhereRenderer.lineListCap
-                    rendered += ", +\(recorded.count - WhereRenderer.lineListCap) more"
+                var rendered = recorded.prefix(cap).map(String.init).joined(separator: ", ")
+                if recorded.count > cap {
+                    hiddenLines += recorded.count - cap
+                    rendered += ", +\(recorded.count - cap) more"
                 }
                 rows.append("  \(path) (\(recorded.count)): \(rendered)\(stateByPath[path]?.marker ?? "")\(namingAliases ? aliasSuffix(path) : "")")
             }
@@ -573,8 +642,8 @@ extension WhereRenderer {
         }
 
         /// Hands each of `hits` that `fileLines` prints a line number for, over the same `subset`, to `shown`: a line past the per-file cap is only counted, and listed with its text there is no such cap.
-        func handOn(_ hits: [SemanticStore.Hit], listedIn subset: [String], relativePath: (String) -> String, to shown: (SemanticStore.Hit) -> Void) {
-            let perFile = listsSiteText ? Int.max : WhereRenderer.lineListCap
+        func handOn(_ hits: [SemanticStore.Hit], listedIn subset: [String], relativePath: (String) -> String, listsEveryLine: Bool = false, to shown: (SemanticStore.Hit) -> Void) {
+            let perFile = listsSiteText || listsEveryLine ? Int.max : WhereRenderer.lineListCap
             let listed = Set(subset.flatMap { path in lines(in: path).prefix(perFile).map { "\(path):\($0)" } })
             for hit in hits where listed.contains("\(relativePath(hit.path)):\(hit.line)") {
                 shown(hit)

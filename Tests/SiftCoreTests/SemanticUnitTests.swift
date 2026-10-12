@@ -9,14 +9,9 @@ import Testing
 /// Which of the index store's occurrences stand for a use, and how many build units a listed line was recorded by — the one rule callers, reads and writes, an enum case's uses, references, overrides and conformers are all read by — pinned on a real build.
 @Suite(.temporaryDirectories, .serialized)
 struct SemanticUnitTests {
-    /// What a property's reads and writes cannot show, as the answer words it — spelled out so a change to the wording is a change a test sees.
-    static var propertyBoundary: String {
-        "reads and writes: written code only — the store records none made by a synthesized conformance (Equatable, Hashable, Codable) or by name at runtime, so a short or empty list is not proof a property is unused"
-    }
-
-    /// What an enum case's uses cannot show, as the answer words it.
-    static var caseBoundary: String {
-        "uses: written code only — the store records none made by a synthesized conformance (CaseIterable, a raw value's init(rawValue:), Codable) or by name at runtime, so a short or empty list is not proof a case is unused"
+    /// What every property's and case's uses cannot show, which answers once carried and the session now hears once (Docs/Design.md §2, *standing caveats*).
+    static var writtenCodeBoundary: String {
+        "written code only"
     }
 
     /// The core module's declarations, with `theme` declared as given — a second commit that re-spells it is a changed member to `sift diff`.
@@ -211,7 +206,9 @@ struct SemanticUnitTests {
             #expect(callers.contains("callers of GizmoCore.ping() (3):"))
             #expect(callers.contains("    :6  spans()  | ping() == 1"))
             #expect(!WhereStoreSiteTextTests.located(callers).contains("Checks.swift:5"))
-            #expect(references.contains("  Tests/GizmoTests/Checks.swift (1):\n    :6  | ping() == 1"))
+            // The sweep counts the three written lines, each the call site listed above, and no fourth for the macro's copy.
+            #expect(references.contains("references to GizmoCore.ping() (3 in 3 files, 3 of them the call sites above):"))
+            #expect(!WhereStoreSiteTextTests.located(references).contains("Checks.swift:5"))
         }
     }
 
@@ -274,19 +271,21 @@ struct SemanticUnitTests {
 
             #expect(output.contains("reads and writes of GizmoCore.Point.x (1):"))
             #expect(output.contains("    :15  same() — referenced  | public func same() -> Bool { Point(x: 1, y: 2) == Point(x: 1, y: 2) }"))
-            #expect(output.contains(Self.propertyBoundary))
+            #expect(!output.contains(Self.writtenCodeBoundary))
         }
     }
 
-    /// What only synthesized code uses has no occurrence at all — a property only a `Codable` conformance reads, a case only `CaseIterable` and `init(rawValue:)` reach — so the empty case says what the store cannot see, directly under it, rather than reading as dead code.
+    /// What only synthesized code uses has no occurrence at all — a property only a `Codable` conformance reads, a case only `CaseIterable` and `init(rawValue:)` reach — which the session is told once, so the empty case is the verdict alone.
     @Test
     func whatOnlySynthesizedCodeUsesSaysTheStoreCannotSeeIt() async throws {
         try await Self.withBuiltEngine { engine, freshness in
             let theme = try await SemanticStoreWarmUp.settled { try await engine.lookup(symbol: "Prefs.theme", freshness: freshness) }
             let low = try await SemanticStoreWarmUp.settled { try await engine.lookup(symbol: "Tone.low", freshness: freshness) }
 
-            #expect(theme.contains("no reads or writes of GizmoCore.Prefs.theme recorded in the store\n" + Self.propertyBoundary))
-            #expect(low.contains("no uses of GizmoCore.Tone.low recorded in the store\n" + Self.caseBoundary))
+            #expect(theme.contains("no reads or writes of GizmoCore.Prefs.theme recorded in the store"))
+            #expect(low.contains("no uses of GizmoCore.Tone.low recorded in the store"))
+            #expect(!theme.contains(Self.writtenCodeBoundary))
+            #expect(!low.contains(Self.writtenCodeBoundary))
         }
     }
 

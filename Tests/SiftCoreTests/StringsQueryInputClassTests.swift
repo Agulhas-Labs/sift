@@ -91,9 +91,9 @@ struct StringsQueryInputClassTests {
     @Test(arguments: [
         (".title", ["title"]),
         ("%@ against", ["against"]),
-        ("  Hello  ", ["Hello"]),
+        ("  Hello  ", ["hello"]),
         ("  hello  ", ["hello"]),
-        ("°C", ["C"]),
+        ("°C", ["c"]),
         ("%lld items", ["lld", "items"]),
         ("a.b-c", ["a", "b", "c"]),
         ("%%%", []),

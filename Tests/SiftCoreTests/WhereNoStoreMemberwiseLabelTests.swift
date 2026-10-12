@@ -23,8 +23,8 @@ struct WhereNoStoreMemberwiseLabelTests {
         let declaring = "struct Gizmo {\n    let weight: Int\n    var isReady: Bool\n}\n\nextension Gizmo {\n    static let spare = Gizmo(weight: 1, isReady: false)\n}\n"
         let output = try await Self.answer("Gizmo.isReady", declaring: declaring)
 
-        #expect(output.contains("references: all sites by written name, paged by file"), "\(output)")
-        #expect(output.contains("\"isReady\" (1 use by name, plus 2 calls passing it as isReady: to the memberwise init, in 2 files"), "\(output)")
+        #expect(output.contains("no store for callers, overrides or references; sites by written name"), "\(output)")
+        #expect(output.contains("\"isReady\" (1 use by written name, plus 2 calls passing it as isReady: to the memberwise init, in 2 files"), "\(output)")
         #expect(output.contains(":7  in Gizmo.spare  | static let spare = Gizmo(weight: 1, isReady: false)"), "\(output)")
         #expect(output.contains(":2  in stock().gizmo  | let gizmo = Gizmo(weight: 2, isReady: true)"), "\(output)")
         #expect(output.contains(":3  in stock()  | return gizmo.isReady"), "\(output)")

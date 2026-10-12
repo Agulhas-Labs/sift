@@ -25,7 +25,7 @@ struct RunProgressVerdictTests {
         let logPath = try #require(ended.logPath)
         #expect(FileManager.default.fileExists(atPath: logPath), "\(logPath)")
         let raw = try #require(printed.split(separator: "\n").first { $0.hasPrefix("raw: ") })
-        let named = try #require(raw.dropFirst("raw: ".count).split(separator: " ").first?.split(separator: "/").last)
+        let named = try #require((raw.components(separatedBy: " · ").last ?? "").split(separator: " ").first?.split(separator: "/").last)
         #expect(URL(fileURLWithPath: logPath).lastPathComponent == String(named), "\(raw)")
     }
 

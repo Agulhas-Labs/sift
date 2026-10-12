@@ -82,7 +82,7 @@ struct TypealiasUsageWhereTests {
         try await engine.awaitSemanticStore()
         let freshness = try await engine.ensureFresh()
 
-        let output = try await engine.lookup(symbol: "Crate", freshness: freshness)
+        let output = try await engine.lookup(symbol: "Crate", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
         // Crate.go() and Crate() are its own; Box() is Crate's own alias, folded in the same way Crate folds into
         // Gizmo's verdict — all three land in the one test file, none in production.
@@ -150,7 +150,7 @@ struct TypealiasUsageWhereTests {
         let output = try await engine.lookup(symbol: "Nickname", freshness: freshness)
 
         #expect(output.contains(
-            "no references to Lib.Nickname recorded in the store — counts the alias's own name, and any typealias of it, not the type it names, which may still be used directly, under its own name, without it; check comments and strings with grep"
+            "no references to Lib.Nickname recorded in the store — counts the alias's own name, and any typealias of it, not the type it names, which may still be used directly, under its own name, without it; where --refs lists comments, strings and Markdown under not code"
         ))
         // The reading this must not permit: nothing here says or implies Nickname itself is used.
         #expect(!output.contains("used by Lib.Nickname"))
@@ -284,7 +284,7 @@ struct TypealiasUsageWhereTests {
         let swept = try await engine.lookup(symbol: "Nickname", freshness: freshness, options: WhereOptions(includeReferences: true))
 
         #expect(swept.contains(
-            "no uses of Lib.Nickname recorded in the store — every reference recorded is another typealias naming it, which is another name for it rather than use of it, and nothing uses those either, so they go with it — the references listed above are those lines — counts the alias's own name, and any typealias of it, not the type it names, which may still be used directly, under its own name, without it; check comments and strings with grep"
+            "no uses of Lib.Nickname recorded in the store — every reference recorded is another typealias naming it, which is another name for it rather than use of it, and nothing uses those either, so they go with it — the references listed above are those lines — counts the alias's own name, and any typealias of it, not the type it names, which may still be used directly, under its own name, without it; comments, strings and Markdown are listed under not code below"
         ), "\(swept)")
         // The one explanation it can never be: an alias's own declaration is a definition, and definitions are
         // not references, so nothing it says about itself is ever in the count this sentence is denying.
@@ -379,7 +379,7 @@ struct TypealiasUsageWhereTests {
 
         let output = try await engine.lookup(symbol: "Crate", freshness: freshness)
 
-        #expect(output.contains("callers/overrides: NOT ANSWERED"), "\(output)")
+        #expect(output.contains("no store for uses; sites by written name"), "\(output)")
         #expect(output.contains("no use spelled \"Crate\" anywhere — no construction, no member reached through it, and no annotation"), "\(output)")
     }
 }

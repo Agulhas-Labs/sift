@@ -7,24 +7,28 @@ import SiftCore
 @testable import SiftMCP
 import Testing
 
-/// Every face that prints the saving states its baseline and that it leans high, always and once: `usage` in its headline and the report page in the caption under its figure, whether or not a floor note fires beneath them.
+/// Every face that prints the saving states what it was priced on, always and once, and none says it leans high: `usage` in its headline and the report page in the caption under its figure, whether or not an unpriced call sits beside it.
 @Suite(.temporaryDirectories)
 struct SavingBaselineOnceTests {
-    /// A usage-log line the server writes at a fixed second: a digest weighs its source, a `where` records no source and so is unweighed.
-    private static func logLine(tool: String, target: String, served: Int, source: Int?) -> String {
+    /// A usage-log line at a fixed second: an intercepted window carries what the hook intercepted, a `where` records no source and so is unpriced.
+    private static func logLine(tool: String, target: String, served: Int, source: Int?, intercepted: String? = nil) -> String {
         var entry: [String: Any] = [
             "ts": "2026-10-01T10:00:00Z", "tool": tool, "target": target, "root": "/repo", "ms": 4, "ok": true,
             "session": "session", "outBytes": served,
         ]
         entry["srcBytes"] = source
+        if let intercepted {
+            entry["via"] = "hook"
+            entry["intercepted"] = intercepted
+        }
         let data = (try? JSONSerialization.data(withJSONObject: entry)) ?? Data()
         return String(bytes: data, encoding: .utf8) ?? ""
     }
 
-    /// A usage log of one digest, with a `where` beside it when `unweighed` says so, which is what makes the floor note fire.
+    /// A usage log of one intercepted window, with a `where` beside it when `unweighed` says so, which is what adds the unpriced count.
     private static func log(in directory: URL, unweighed: Bool) throws -> URL {
         let file = directory.appendingPathComponent("usage.jsonl")
-        var lines = [logLine(tool: "digest", target: "Depot", served: 1000, source: 41000)]
+        var lines = [logLine(tool: "digest", target: "Depot", served: 1000, source: 41000, intercepted: "window")]
         if unweighed {
             lines.append(logLine(tool: "where", target: "Depot", served: 90, source: nil))
         }
@@ -67,7 +71,7 @@ struct SavingBaselineOnceTests {
         report.components(separatedBy: text).count - 1
     }
 
-    /// `usage` with nothing unweighed has no floor note, and still says the figure leans high, in its headline.
+    /// `usage` states what the figure was priced on once in its headline, with or without unpriced calls beside it, and never says it leans high.
     @Test(arguments: [false, true])
     func usageStatesTheBaselineOnceInItsHeadline(unweighed: Bool) throws {
         let directory = try TemporaryDirectory.make("baseline-once-usage")
@@ -75,12 +79,13 @@ struct SavingBaselineOnceTests {
         let report = try UsageReport.render(fileURL: Self.log(in: directory, unweighed: unweighed))
         let headline = report.split(separator: "\n").first { $0.hasPrefix("estimated savings — ") }
 
-        #expect(headline?.hasSuffix("; \(TokenEstimate.baseline)") == true)
-        #expect(Self.occurrences(of: "leans high", in: report) == 1)
-        #expect(report.contains("leaves out what was not weighed") == unweighed)
+        #expect(headline?.contains("(\(TokenEstimate.baseline))") == true)
+        #expect(Self.occurrences(of: TokenEstimate.baseline, in: report) == 1)
+        #expect(!report.contains("leans high"))
+        #expect(report.contains("other call unpriced") == unweighed)
     }
 
-    /// The report page says it in the caption under its figure, once, floor note or none.
+    /// The report page says it in the caption under its figure, once, unpriced calls or none.
     @Test(arguments: [false, true])
     func theReportPageStatesTheBaselineOnceUnderItsFigure(unweighed: Bool) throws {
         let directory = try TemporaryDirectory.make("baseline-once-page")
@@ -90,7 +95,8 @@ struct SavingBaselineOnceTests {
 
         #expect(caption?.contains("<p class=\"caption\">") == true)
         #expect(caption?.contains(TokenEstimate.baseline) == true)
-        #expect(Self.occurrences(of: "leans high", in: page) == 1)
-        #expect(page.contains("leaves out what was not weighed") == unweighed)
+        #expect(Self.occurrences(of: TokenEstimate.baseline, in: page) == 1)
+        #expect(!page.contains("leans high"))
+        #expect(page.contains("other call unpriced") == unweighed)
     }
 }

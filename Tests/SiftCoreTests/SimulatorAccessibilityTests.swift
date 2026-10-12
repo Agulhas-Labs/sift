@@ -41,7 +41,7 @@ struct SimulatorAccessibilityTests {
         // An action that executes no test bundle, and none at all.
         ["xcodebuild", "-scheme", "Gizmo", "-destination", "platform=iOS Simulator,name=iPhone 17", "build"],
         ["xcodebuild", "-scheme", "Gizmo", "-destination", "platform=iOS Simulator,name=iPhone 17", "build-for-testing"],
-        // `test` standing as an option's value is not an action, so this invocation's action goes unread.
+        // `test` standing as an option's value is not an action, so this invocation is the default build.
         ["xcodebuild", "-scheme", "test", "-destination", "platform=iOS Simulator,name=iPhone 17"],
         // A test run with no destination at all, and a tool this reader does not wrap.
         ["xcodebuild", "-scheme", "Gizmo", "test"],

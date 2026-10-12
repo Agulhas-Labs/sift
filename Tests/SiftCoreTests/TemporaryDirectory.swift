@@ -11,8 +11,10 @@ import Testing
 struct TemporaryDirectory {
     @TaskLocal private static var current: Scope?
 
-    /// A fresh, empty `$TMPDIR/sift-<purpose>-<UUID>`, removed with everything in it when the current scope ends.
-    static func make(_ purpose: String, sourceLocation: SourceLocation = #_sourceLocation) throws -> URL {
+    /// A fresh, empty `$TMPDIR/<prefix>-<purpose>-<UUID>`, removed with everything in it when the current scope ends.
+    ///
+    /// The prefix is `sift` unless a test needs a path that names nothing of the tool, to prove a scan does not match on it.
+    static func make(_ purpose: String, prefix: String = "sift", sourceLocation: SourceLocation = #_sourceLocation) throws -> URL {
         guard let scope = current else {
             Issue.record(
                 Comment(rawValue: "a temporary directory (sift-\(purpose)-…) was asked for outside any scope: give the suite `.temporaryDirectories`, wrap the call in `TemporaryDirectory.withScope`, or make it on the test's task before handing it to a thread"),
@@ -20,7 +22,7 @@ struct TemporaryDirectory {
             )
             throw OutsideAnyScope(purpose: purpose)
         }
-        let directory = try create(purpose)
+        let directory = try create(purpose, prefix: prefix)
         scope.file(directory)
         return directory
     }
@@ -66,8 +68,8 @@ struct TemporaryDirectory {
         return Scope()
     }()
 
-    private static func create(_ purpose: String) throws -> URL {
-        let directory = root.appendingPathComponent("sift-\(purpose)-\(UUID().uuidString)", isDirectory: true)
+    private static func create(_ purpose: String, prefix: String = "sift") throws -> URL {
+        let directory = root.appendingPathComponent("\(prefix)-\(purpose)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         return directory
     }

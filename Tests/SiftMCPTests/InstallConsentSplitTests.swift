@@ -130,8 +130,8 @@ struct InstallConsentSplitTests {
         #expect(try Self.allowRules(at: settings) == nil)
         let lines = run.printed.split(separator: "\n").filter { $0.hasPrefix("permissions: nothing added") }
         #expect(lines.count == 1)
-        #expect(lines.first?.contains("sift install-hook --allow-run") == true)
-        #expect(lines.first?.contains("sift install-hook --allow-lookups") == true)
+        #expect(lines.first?.contains(" install-hook --allow-run") == true)
+        #expect(lines.first?.contains(" install-hook --allow-lookups") == true)
     }
 
     /// The flags answer without a question, at a terminal or without one.

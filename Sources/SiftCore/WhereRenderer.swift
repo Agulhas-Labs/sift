@@ -25,6 +25,18 @@ struct WhereRenderer {
     var declarationSource: ((SymbolRow) -> [String]?)?
     /// Supplies a repo-relative file's current text, or `nil` where it cannot be read: it tells which `#if` a declaration's `#else` is the other branch of.
     var fileSource: ((String) -> String?)?
+    /// Supplies what the working tree holds of a bare name outside code, for the `not code` section a `--refs` answer ends with; with none, the answer carries no section.
+    var nonCodeMentions: ((String) async -> NonCodeMentions)?
+    /// The revision an `--at` answer reads, as written, or `nil` for the working tree's: its degraded note names it, and its `--refs` answer says in one line in place of the `not code` section that its comments are not read.
+    var revision: String?
+    /// Whether a guessed file's build file renames its module through a setting this tool cannot read, so a count told apart by its module says that rather than that it was guessed from the path.
+    var isUnreadablyRenamed: (String) -> Bool = { _ in false }
+
+    /// What the working tree's module resolution says that an answer needs: where its projects are, and which guessed modules are unreadable renames.
+    mutating func takeModuleFacts(from resolver: ModuleResolver) {
+        projectDirectories = resolver.projectDirectories
+        isUnreadablyRenamed = { [resolver] in resolver.isUnreadablyRenamed($0) }
+    }
 
     static var listCap: Int {
         40
@@ -43,33 +55,6 @@ struct WhereRenderer {
     /// Semantic relations are resolved for at most this many declarations per query.
     static var semanticDeclCap: Int {
         5
-    }
-
-    /// The two boundaries a resolved reference sweep carries, on one line: what the store records is code, and only what this repository's own build compiled, with the sibling-repo and uncompiled-target cases named.
-    static var referenceBoundaryLine: String {
-        "references: code only (not comments or strings) and this repo's own build only (a sibling repo or an uncompiled target has no occurrence here) — check those before deleting"
-    }
-
-    /// What an answer says about the half of the question the semantic pass did not answer — one line, not the paragraph this used to be.
-    ///
-    /// The full reasoning (why an empty fallback list is not "nothing uses this", what a name-matched fallback does and does not match) lives once in `sift help worktree-index`, and the `mode:` line directly above already names this call's semantic state and what to do about it, so this points there rather than repeating either. Worded to hold in every state it is shown for — including `.warming` and `.openFailed`, where a store exists but this call still could not read it — so it never claims "no index store" when the mode line above says otherwise.
-    ///
-    /// Called only when the caller asked for callers/overrides at all — `render` skips it for `--syntactic`, which turned them off on purpose.
-    static func absenceNotice(standIn: StandIn, isType: Bool = false) -> String {
-        // A type's default section is headed "used by", never "callers/overrides" — its declarations have
-        // neither — so the no-store notice standing in for that section names the same word, or a reader
-        // comparing the header this answer would have carried against the one in front of them finds no match.
-        let label = isType ? "used by" : "callers/overrides"
-        let opening = "\(label): NOT ANSWERED from the index store"
-        // Said only on the type's own notice, since the reader of the answer may never open the help topic that
-        // carries the full reasoning: the syntactic stand-in matches the type's written name and the names of the
-        // typealiases of it the index holds, so a use under any other name — an alias declared inside a function
-        // body, or a string literal — is invisible to it, and an empty list here is not "nothing uses this".
-        let caveat = isType ? " (by written name — an empty list is not \"unused\")" : ""
-        guard standIn != .nothing else {
-            return opening + caveat + " (a subscript has no name-matched fallback either); see the mode line above."
-        }
-        return opening + caveat + "; see the mode line above."
     }
 
     /// Line numbers listed per file in a grouped reference line before the remainder is counted instead.
@@ -98,59 +83,39 @@ struct WhereRenderer {
         // resolved to: a type's usage is answered by default, so the two reference boundaries below belong on that
         // answer whether or not --refs was passed, and they are printed above the answer they qualify.
         let declarations = try ExtensionPaths.orSpelled(query, resolved: resolveDeclarations(query: query), in: store)
-        var lines = ["where \(query)"]
+        let semanticTargets = try SemanticTargets.of(declarations, in: store)
+        // A nested package's store answers for that package's files alone, so a query about none of them takes the no-store path.
+        let semantic = semantic.answering(forFiles: declarations.map(\.path))
+        // No echo of the query: the call carries it, and the declaration rows name what it resolved to.
+        var lines: [String] = []
         var axis: SemanticAxis = .syntacticOnly
-        // Where the two reference boundaries go, held open while the semantic pass decides whether there is anything
-        // for them to bound. They are printed above the answer they qualify, but only the pass knows whether that
-        // answer exists: a row refused for staleness resolves no reference or usage material at all, and the
-        // declaration kinds alone cannot see that coming.
-        var boundaryPoint: Int?
         var undeclared = UndeclaredInitializer(store: store, semantic: semantic.context, callSites: callSites, declarationSource: declarationSource)
         let sweepsByName = try isSweptByName(declarations, query: query, semantic: semantic, options: options, undeclared: undeclared)
         if sweepsByName {
             undeclared.paging = paging
         }
+        // One note under the header where the store's relations are withheld: why, what, and the remedy, in place of
+        // the mode line, the absence notice and the references line that said one thing three times. Under an open
+        // store, a note about the stores only where there is something to say of them; `semantic:` says the rest.
+        let degraded = WhereDegradedNote(revision: revision, standIn: standIn(for: semanticTargets), isAskedOfTheStore: isAskedOfTheStore).line(semantic: semantic, sample: semanticTargets)
         switch semantic {
-        case let .inactive(note):
-            lines.append("\(SiftEngine.degradedModeOpening)\(note)")
+        case .inactive:
+            axis = revision == nil ? .off : .syntacticOnly
         case let .unavailable(note):
-            // One short line naming the tree and the help topic, never the recipe itself: a tree with no store is
-            // asked of again and again, and the recipe on every answer was most of what each one said.
-            lines.append("\(SiftEngine.degradedModeOpening)\(SiftEngine.whereNoStoreNote(from: note))")
-            axis = .noStore
-        case let .warming(note):
-            lines.append("\(SiftEngine.degradedModeOpening)\(note)")
+            axis = SiftEngine.noStoreAxis(from: note)
+        case .warming:
             axis = .warming
-        case let .openFailed(note):
-            lines.append("\(SiftEngine.degradedModeOpening)\(note)")
+        case .openFailed:
             axis = .openFailed
         case let .active(context):
-            // Named here too, not only on the no-store path: a rejected setting did not act whether or not
-            // some other probe went on to find a store, and "found via DerivedData" alone reads as the key
-            // having never been seen at all.
-            lines.append(WhereStoreLines.modeLine(context, answeredBy: []))
-            boundaryPoint = lines.count
+            _ = WhereStoreLines.placeStoresNote(context, answeredBy: [], in: &lines)
         }
-        // Callers and overrides come only from the index store, so a query without one is not answering half
-        // the question at all — and `mode: syntactic` alone leaves that to be inferred. The inference a reader
-        // makes is that a short list is a small answer rather than a partial one, which is how a rename sweep
-        // run in a git worktree — where there is never a store, because a worktree has no build directory of
-        // its own — silently misses every site it should have found.
-        //
-        // Skipped for `.inactive`: that case is `--syntactic`, which turned callers/overrides off on purpose,
-        // so there is nothing withheld to disclose — the notice would be announcing a refusal nobody asked
-        // to be spared.
-        if !semantic.isActive, !semantic.isInactive {
-            let sample = declarations.prefix(Self.semanticDeclCap)
-            lines.append(Self.absenceNotice(
-                standIn: standIn(for: sample),
-                isType: sample.contains { $0.kind.isTypeDeclaration || $0.kind == .associatedType || $0.kind == .extensionKind }
-            ))
+        // Said only above a list matched by written name: an answer resolving no declaration lists none, unless it is
+        // an initializer nobody declared, whose answer places the note itself below.
+        if !declarations.isEmpty, let degraded {
+            lines.append(degraded)
         }
-        if options.includeReferences, let line = referencesLine(semantic: semantic, sweepsByName: sweepsByName, declares: !declarations.isEmpty) {
-            lines.append(line)
-        }
-        let narrowingSlot = lines.count
+        var narrowingSlot = lines.count
         // The banner is resolved last but printed here, above the answer it qualifies — the same placement lesson refusals taught: a caveat below the content is a caveat read after the decision.
         var bannerSlot = lines.count
         var citedPaths: [String] = []
@@ -160,6 +125,10 @@ struct WhereRenderer {
             // A type built only through an initializer nobody declared under it is answered with where it is built,
             // never as a path that does not resolve: the other types' inits that answer listed are not what was asked.
             if let answer = try await undeclared.answer(for: query) {
+                if let degraded {
+                    lines.insert(degraded, at: narrowingSlot)
+                    bannerSlot += 1
+                }
                 lines += paging.settle(answer.body)
                 if let banner = try parseErrorNotice(touching: answer.cited).banner {
                     lines.insert(banner, at: bannerSlot)
@@ -197,6 +166,7 @@ struct WhereRenderer {
                     lines.insert(absence, at: bannerSlot)
                 }
                 lines.append("no declarations found")
+                lines.append(contentsOf: WhereDegradedNote.pointer(semantic: semantic))
                 lines.append(contentsOf: siblingPointerLines(for: query))
                 return Output(body: lines.joined(separator: "\n"), axis: axis)
             }
@@ -210,6 +180,7 @@ struct WhereRenderer {
             for row in candidates {
                 lines.append("  \(row.name) — \(row.kind.rawValue) — \(row.module) — \(row.path):\(row.line)")
             }
+            lines.append(contentsOf: WhereDegradedNote.pointer(semantic: semantic))
             lines.append(contentsOf: siblingPointerLines(for: query))
             return Output(body: lines.joined(separator: "\n"), axis: axis)
         }
@@ -223,7 +194,10 @@ struct WhereRenderer {
 
         let compact = declarations.count > Self.compactDeclarationThreshold
         lines.append("declarations (\(declarations.count)):")
-        for row in declarations.prefix(Self.listCap) {
+        // A type's own declaration leads its extensions, whatever its file sorts as: it is the row that says what the
+        // name is, and a reader who takes the head of a long list of extensions would otherwise never see it.
+        let listed = declarations.filter { $0.kind != .extensionKind } + declarations.filter { $0.kind == .extensionKind }
+        for row in listed.prefix(Self.listCap) {
             citedPaths.append(row.path)
             try lines.append(row.declarationLine(qualifiedName: qualifiedName(of: row), compact: compact, condition: IfConfigLabel.label(for: row, source: fileSource)))
         }
@@ -241,35 +215,32 @@ struct WhereRenderer {
         var conformerBlocks: [String: ConformersOnce] = [:]
         var writtenNameChecks: [String: WrittenNameCheck] = [:]
         if case let .active(context) = semantic {
-            let wrapperSites = try await WrapperAttributeSites.find(for: declarations.prefix(Self.semanticDeclCap), in: store, callSites: callSites, context: context)
-            let outcome = try appendSemanticSections(for: declarations, context: context, wrapperSites: wrapperSites, options: options, into: &lines)
+            let wrapperSites = try await WrapperAttributeSites.find(for: semanticTargets, in: store, callSites: callSites, context: context, projectDirectories: projectDirectories)
+            let outcome = try appendSemanticSections(for: declarations, query: query, context: context, wrapperSites: wrapperSites, options: options, paging: paging, into: &lines)
             axis = outcome.axis
-            unanswered = outcome.refused + declarations.prefix(Self.semanticDeclCap).filter { $0.kind == .operatorKind }
+            // An overload past the ceiling is resolved by no store query, so under --refs its call sites are listed by written name.
+            unanswered = try outcome.refused + semanticTargets.filter { $0.kind == .operatorKind } + (options.includeReferences ? SemanticTargets.pastCeiling(declarations, in: store) : [])
+            let listingJudge = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories)
             listedAbove = { site in
-                outcome.listsAlready(site) { path in ((try? store.fileRow(path: path))?.mtime ?? 0) > context.buildAnchor }
+                outcome.listsAlready(site, modifiedSinceBuild: listingJudge.writtenSinceBuild(file:))
             }
             typeUseListedAbove = outcome.listsTypeUse
             conformerBlocks = outcome.conformerBlocks
             writtenNameChecks = outcome.writtenNameChecks
-            if !outcome.answeredBy.isEmpty, let modeIndex = lines.firstIndex(where: { $0.hasPrefix("mode: ") }) {
-                lines[modeIndex] = WhereStoreLines.modeLine(context, answeredBy: outcome.answeredBy)
+            // Placed above everything held open below it, so each slot moves down past it.
+            if WhereStoreLines.placeStoresNote(context, answeredBy: outcome.answeredBy, in: &lines) {
+                bannerSlot += 1
+                narrowingSlot += 1
+            }
+            if let note = outcome.notCompiledNote {
+                lines.insert(note, at: 0)
+                bannerSlot += 1
+                narrowingSlot += 1
             }
             WhereStoreLines.appendProjectHintsIfAllowed(to: &lines, for: outcome.uncovered, owner: projectOwner, inTreeWarming: context.inTreeWarming, primaryProvenance: context.store.provenance)
-            // Said once for both views. The default type section reads the same store rows the sweep does and is read
-            // for the same decision, so the same two boundaries bound it; printing them twice when --refs is also on
-            // would say one thing under two headings.
-            if outcome.boundsReferences, let boundaryPoint {
-                // Both boundaries on one line: the store holds code occurrences of what *this* build compiled, so a comment, a string literal or a consumer outside the build is not a missing occurrence — it was never a candidate.
-                lines.insert(Self.referenceBoundaryLine, at: boundaryPoint)
-                // bannerSlot was captured at the same index before this line went in; advance it past it so a
-                // banner inserted later at bannerSlot lands below the boundary it was meant to sit beneath, not above it.
-                if boundaryPoint <= bannerSlot {
-                    bannerSlot += 1
-                }
-            }
         } else {
-            unanswered = declarations.prefix(Self.semanticDeclCap).filter { isAskedOfTheStore($0.kind) || $0.kind == .operatorKind }
-            // Suppressed once the mode line already says the in-tree walk was cut short: the hint's advice —
+            unanswered = semanticTargets.filter { isAskedOfTheStore($0.kind) || $0.kind == .operatorKind }
+            // Suppressed once the note already says the in-tree walk was cut short: the hint's advice —
             // build inside the tree — may already be exactly what happened, just past where the walk reached.
             if case let .unavailable(note) = semantic, !note.hasSuffix(SiftEngine.inTreeWalkTruncatedClause) {
                 WhereStoreLines.appendNoStoreProjectHints(to: &lines, for: unanswered, owner: projectOwner)
@@ -280,10 +251,11 @@ struct WhereRenderer {
         // With a store, the extension of a type the tree does not declare is no row the store refused, and its declaration
         // line is all the store says of it: its uses are the lines writing the extended name, found as they are with no store.
         let typeUse = try semantic.isActive
-            ? typeUseRows(of: unanswered.filter { SyntacticTypeUsage.standsIn(for: $0.kind) } + declarations.prefix(Self.semanticDeclCap).filter { $0.kind == .extensionKind }, among: declarations)
+            ? typeUseRows(of: unanswered.filter { SyntacticTypeUsage.standsIn(for: $0.kind) } + semanticTargets.filter { $0.kind == .extensionKind }, among: declarations)
             : typeUseRows(of: unanswered, among: declarations)
         let typeUseIDs = Set(typeUse.map(\.id))
-        try await lines += SyntacticTypeUsage(store: store, callSites: callSites, expandsAtFileScope: expandsAtFileScope)
+        let pointer = options.includeReferences || options.standsInForSearch ? nil : try typeUsePointer(for: typeUse.first, among: declarations, query: query, qualifiedName: qualifiedName(of:))
+        try await lines += SyntacticTypeUsage(store: store, callSites: callSites, expandsAtFileScope: expandsAtFileScope, pointer: pointer, isUnreadablyRenamed: isUnreadablyRenamed)
             .lines(for: typeUse, qualifiedName: qualifiedName(of:), listedAbove: typeUseListedAbove, paging: sweepsByName ? paging : nil)
         let fallbackRows = unanswered.filter { !typeUseIDs.contains($0.id) && $0.kind != .extensionKind }
         let sameNamed = SameNamedTypes(store: store)
@@ -303,6 +275,9 @@ struct WhereRenderer {
         ))
         // A type of the name that declares no init of its own is built all the same, and its sites are not the initializers' above.
         try await lines += undeclared.lines(beside: declarations, for: query)
+        try appendTypeRelations(of: declarations, conformerBlocks: conformerBlocks, writtenNameChecks: writtenNameChecks, citing: &citedPaths, into: &lines, qualifiedName: qualifiedName(of:))
+        // Last, after every declaration's sections, and before the pager settles, since its rows join the answer's one window.
+        try await lines += nonCodeLines(for: declarations, query: query, options: options, paging: paging, joinsPager: !semantic.isActive)
         // Every paged list is in now, so the one window they all show is known and each list's slot is filled.
         lines = paging.settle(lines)
         if sweepsByName, paging.spansPages, let line = try narrowingLine(declarations, query: query) {
@@ -310,7 +285,6 @@ struct WhereRenderer {
             bannerSlot += 1
         }
 
-        try appendTypeRelations(of: declarations, conformerBlocks: conformerBlocks, writtenNameChecks: writtenNameChecks, citing: &citedPaths, into: &lines, qualifiedName: qualifiedName(of:))
         // Every count in this answer is read out of a repository-wide lookup: `declarations (N)` through
         // `resolveDeclarations` → `symbols(named:)`, `extensions of X (N)` through `ExtensionPaths.extensions(ofTypeNamed:in:)`,
         // and `conformers of X (N, …)` through `conformers(of:)`. A row lost with the tail of a truncated file
@@ -320,8 +294,7 @@ struct WhereRenderer {
         // printed beside it nests one inside the other; see `ParseErrorNotice.floorNote(about:)` for the rule.
         //
         // Inserted before the banner so that the banner ends up above it: both go in at `bannerSlot`, and the
-        // later insert takes the line. `bannerSlot` itself was advanced past the reference boundaries above, so
-        // both land below them rather than above.
+        // later insert takes the line.
         return try Output(body: withParseNotices(lines, at: bannerSlot, citing: citedPaths).joined(separator: "\n"), axis: axis)
     }
 
@@ -396,6 +369,26 @@ struct WhereRenderer {
         QualifiedPath.components(of: query)
     }
 
+    /// What an empty or self-only finding says of the places outside code: listed below where this answer ends with the `not code` section, pointed at where it could, and left to grep for a name a rename does not respell.
+    private func nonCodePointer(query: String, options: WhereOptions) -> String {
+        guard WhereNonCodeSection.bareName(of: baseComponent(of: query)) != nil else { return "check comments and strings with grep" }
+        return listsNonCode(query: query, options: options) ? WhereNonCodeSection.listedBelow : WhereNonCodeSection.pointer
+    }
+
+    /// Whether this answer ends with a `not code` section listing what the tree holds of the name outside code.
+    private func listsNonCode(query: String, options: WhereOptions) -> Bool {
+        options.includeReferences && !options.standsInForSearch && nonCodeMentions != nil && revision == nil && WhereNonCodeSection.bareName(of: baseComponent(of: query)) != nil
+    }
+
+    /// The `not code` section of a `--refs` answer, keyed on the query's bare name; none for the hook's in-place answers or a name a rename does not respell.
+    private func nonCodeLines(for declarations: [SymbolRow], query: String, options: WhereOptions, paging: SyntacticSweepPaging, joinsPager: Bool) async throws -> [String] {
+        guard options.includeReferences, !options.standsInForSearch, let name = WhereNonCodeSection.bareName(of: baseComponent(of: query)) else { return [] }
+        guard revision == nil else { return ["", WhereNonCodeSection.atRevisionLine] }
+        guard let nonCodeMentions else { return [] }
+        let isAmbiguous = try splitQualified(query).count > 1 || unrelatedOwners(of: declarations, query: query) != nil
+        return await WhereNonCodeSection(mentions: nonCodeMentions(name), isAmbiguous: isAmbiguous).lines(offset: options.offset, paging: paging, joinsPager: joinsPager)
+    }
+
     private func baseComponent(of query: String) -> String {
         QualifiedPath.baseName(of: splitQualified(query).last ?? query)
     }
@@ -449,7 +442,7 @@ extension WhereRenderer {
     private func isSweptByName(_ declarations: [SymbolRow], query: String, semantic: SemanticInput, options: WhereOptions, undeclared: UndeclaredInitializer) throws -> Bool {
         guard case .unavailable = semantic, options.includeReferences else { return false }
         guard !declarations.isEmpty else { return try undeclared.buildsAnUndeclaredType(query) }
-        let sample = declarations.prefix(Self.semanticDeclCap)
+        let sample = try SemanticTargets.of(declarations, in: store)
         return sample.contains { isAskedOfTheStore($0.kind) } && standIn(for: sample) != .nothing
     }
 
@@ -461,39 +454,7 @@ extension WhereRenderer {
             + (narrowing.hasPrefix("where ") ? "narrow it to one owner's, as `\(narrowing) --refs`" : "narrow it to one owner by qualifying the name with its type")
     }
 
-    /// The line a `--refs` answer carries about where its references come from, or `nil` where the store answers them.
-    ///
-    /// References come only from the index store, so asking for them without it must say so — a sweep that silently returns nothing reads as "nothing to change", which is the one way this flag can do harm. What to do about it depends on why the store is not in use, and the line must agree with the header above it: a store still loading is a wait, never a grep or a build, and one that failed to open is not fixed by building.
-    ///
-    /// A name the tree declares nowhere, with no store at all, gets no line: a store would not turn that miss into an answer, and blaming its absence sends the reader to build for nothing.
-    private func referencesLine(semantic: SemanticInput, sweepsByName: Bool, declares: Bool) -> String? {
-        if sweepsByName {
-            return WhereStoreLines.syntacticSweepLine
-        }
-        if case .unavailable = semantic, !declares {
-            return nil
-        }
-        return switch semantic {
-        case .active:
-            nil
-        case .inactive:
-            // Whether a store exists is not known here — `--syntactic` never probes for one — so the advice
-            // cannot say "build": where a store is already on disk, dropping the flag is the whole remedy.
-            "references: UNAVAILABLE — they come from the index store, which this query is not using; grep instead, or drop --syntactic (a query without it says how to build a store if there is none yet)"
-        case .unavailable:
-            // `.inactive` is `--syntactic`, given by the caller; `.unavailable` is a store that was
-            // never found at all, and telling that caller to "drop --syntactic" names a flag they
-            // never passed. The mode line above already carries the real remedy — this points at it
-            // rather than repeating (and risking drifting from) its own copy of the advice.
-            "references: UNAVAILABLE — there is no index store for this tree yet; grep instead, or see the mode line above for how to build one"
-        case .warming:
-            "references: UNAVAILABLE until the index store finishes loading — ask again shortly; no build or grep will get them sooner"
-        case .openFailed:
-            "references: UNAVAILABLE — the index store was found but failed to open (the mode line says why); grep for them instead"
-        }
-    }
-
-    /// What stands in for the store's callers under the absence notice, which is what an empty list of it means.
+    /// What stands in for the store's callers under the degraded note, which is what an empty list of it means.
     enum StandIn {
         /// Calls spelling the name.
         case calls
@@ -508,23 +469,27 @@ extension WhereRenderer {
 extension WhereRenderer {
     // MARK: Semantic sections
 
-    /// Resolves relations for the first `semanticDeclCap` declarations, rendering only what it actually found.
+    /// Resolves relations for the declarations `SemanticTargets.of(_:in:)` picks, rendering only what it actually found.
     ///
     /// Emptiness is summarised, never itemised: a declaration with no recorded callers contributes one name to a single trailing line instead of its own three-line block, and refusals group by file rather than repeating for every declaration in it. Density is the product — five "none recorded in the store" blocks cost the reader more than the answer is worth.
     private func appendSemanticSections(
         for declarations: [SymbolRow],
+        query: String,
         context primary: SemanticContext,
         wrapperSites: WrapperAttributeSites,
         options: WhereOptions,
+        paging: SyntacticSweepPaging? = nil,
         into lines: inout [String]
     ) throws -> SemanticOutcome {
-        // The same anchor the declaring-file refusal uses, applied to the *cited* files: a store keeps every
-        // occurrence the last build recorded, including ones in files the tree no longer has (Docs/Design.md §2).
-        // One judge per store, since each store's own build is what its occurrences are judged against.
-        var judges = [primary.store.cache.directory.path: OccurrenceFreshness(store: store, buildAnchor: primary.buildAnchor, relativePath: primary.relativePath)]
+        // The rule the declaring-file refusal uses, applied to the *cited* files: a store keeps every occurrence
+        // the last build recorded, including ones in files the tree no longer has (Docs/Design.md §2). One judge
+        // per store, each file judged against its own build in the store whose rows cite it first.
+        var judges = [primary.store.cache.directory.path: OccurrenceFreshness(store: store, context: primary, projectDirectories: projectDirectories, citedBy: primary.store)]
+        // Each declaring file is judged against its own build, across every store the query reads.
+        let declaringFiles = OccurrenceFreshness(store: store, context: primary, projectDirectories: projectDirectories)
         var answeredBy: [String] = []
         var uncovered: [SymbolRow] = []
-        let targets = declarations.prefix(Self.semanticDeclCap)
+        let targets = try SemanticTargets.of(declarations, in: store)
         let names = try DeclarationShortNames(declarations, qualifiedName: qualifiedName(of:))
         var refusals: [SemanticRefusal] = []
         var refusedRows: [SymbolRow] = []
@@ -537,14 +502,12 @@ extension WhereRenderer {
         var sections: [String] = []
         var withoutCallers: [String] = []
         var implementersWithoutCallers: [String] = []
-        let verdicts = try ZeroUseVerdict(store: store, context: primary, projectDirectories: projectDirectories)
+        var verdicts = try ZeroUseVerdict(store: store, context: primary, projectDirectories: projectDirectories)
         var callerEligible = 0
         // A property or subscript is never called — the store records its reads and writes on its own USR and the call on an accessor's — so it is asked for those instead, and its empty case says that is what was looked for: "no callers" said of one reads as dead code, which is how a live constant gets deleted.
         var withoutUses: [String] = []
         var implementersWithoutUses: [String] = []
         var useEligible = 0
-        // Whether a property — not only a subscript — was asked for its reads and writes: what a synthesized conformance reads is never recorded, and that is said beside the answer.
-        var askedProperty = false
         // Whether a use inside an observer a macro moved was listed: its row sits on the macro's line, and what that leaves out is said beside it.
         var listedMovedObserver = false
         // An enum case is neither called nor read: the store records every use of one as a reference on its own USR — a call too only where a payload is built — so that is what it is asked for, and its empty case says uses were looked for.
@@ -590,11 +553,10 @@ extension WhereRenderer {
             consideredCount += 1
             let qualified = try qualifiedName(of: row)
             let file = try store.fileRow(path: row.path)
-            let mtime = file?.mtime ?? 0
             // The first store that resolves the declaration owns it — the primary, then each in-tree store in path
             // order — and everything below is read from that store alone, against its own build.
             guard let owned = primary.owner(of: row) else {
-                refusals.append(SemanticRefusal.unowned(row, symbol: qualified, imports: file?.imports ?? [], modified: mtime > primary.buildAnchor, context: primary, source: fileSource))
+                refusals.append(SemanticRefusal.unowned(row, symbol: qualified, file: file, kind: declaringFiles.kind(ofFile: row.path), context: primary, source: fileSource))
                 refusedRows.append(row)
                 // Coverage before staleness: a file no store has a unit for is one no build of these stores covers,
                 // however recently it was edited, so it gets the project hint whatever its date.
@@ -609,21 +571,23 @@ extension WhereRenderer {
             if context.store !== primary.store, !answeredBy.contains(context.store.provenance.name) {
                 answeredBy.append(context.store.provenance.name)
             }
-            if mtime > context.buildAnchor {
-                let rebuild = SemanticRefusal.Rebuild(provenance: context.store.provenance, imports: file?.imports ?? [])
-                refusals.append(SemanticRefusal(path: row.path, reason: .modifiedSinceBuild, symbol: qualified, kind: row.kind, rebuild: rebuild))
+            if let refusal = SemanticRefusal.changed(row, symbol: qualified, file: file, kind: declaringFiles.kind(ofFile: row.path, citedBy: context.store), holder: context.store) {
+                refusals.append(refusal)
                 refusedRows.append(row)
                 continue
             }
             let judgeKey = context.store.cache.directory.path
-            let occurrences = judges[judgeKey] ?? OccurrenceFreshness(store: store, buildAnchor: context.buildAnchor, relativePath: context.relativePath)
+            let occurrences = judges[judgeKey] ?? OccurrenceFreshness(store: store, context: primary, projectDirectories: projectDirectories, citedBy: context.store)
             judges[judgeKey] = occurrences
+            verdicts.noteSetAside(ofUSR: usr, inStore: judgeKey, context.store.setAsideReferences(ofUSR: usr), relativePath: context.relativePath)
             // A type use listed on a line of its own, at the column its name is written, which a refused declaration of the name's stand-in lists no second time — only while its file is unchanged since the build.
             let listTypeUse: (SemanticStore.Hit) -> Void = { hit in
                 if row.kind.isTypeDeclaration || row.kind == .typealiasKind, occurrences.state(of: hit.path).isLive {
                     listedTypeUses.insert("\(context.relativePath(hit.path)):\(hit.line):\(hit.column)")
                 }
             }
+            // Each line `callers of` lists on a row of its own, repo-relative, which `references to` then does not list again.
+            var callSitesAbove: Set<String> = []
             if callersApply(to: row.kind) {
                 callerEligible += 1
                 let callers = context.store.callers(ofUSR: usr)
@@ -637,6 +601,7 @@ extension WhereRenderer {
                     let heading = ImplementedRequirement.listHeading(of: qualified, implementing: context.store.implementedRequirements(ofUSR: usr))
                     sections.append(contentsOf: hitSection(heading.title, hits: callers, noun: "call site", qualifier: heading.qualifier, foldByCaller: true, context: context, occurrences: occurrences) { hit in
                         ownLines.insert("\(hit.path):\(hit.line)")
+                        callSitesAbove.insert("\(context.relativePath(hit.path)):\(hit.line)")
                     })
                     recordedCalls.formUnion(callers.filter { ownLines.contains("\($0.path):\($0.line)") }.map { "\(context.relativePath($0.path)):\($0.line):\($0.column)" })
                 }
@@ -645,7 +610,6 @@ extension WhereRenderer {
             }
             if row.kind.isReadAndWritten {
                 useEligible += 1
-                askedProperty = askedProperty || row.kind == .variable
                 let found = context.store.uses(ofUSR: usr, sources: &sourceLines)
                 listedMovedObserver = listedMovedObserver || found.contains(where: \.inMovedObserver)
                 let uses = Self.collapsedUses(found, markingReferences: true)
@@ -676,16 +640,17 @@ extension WhereRenderer {
             }
             // Resolved once and handed to the sweep view below, which lists the same rows in full.
             var typeReferences: [SemanticStore.Hit]?
+            var typeGeneratedLines: Set<String> = []
             if row.kind.isTypeDeclaration {
                 usageEligible += 1
-                let references = context.store.references(ofUSR: usr, sources: &sourceLines)
-                typeReferences = references
                 // A use written through a typealias is recorded against the alias, so references to the type's own USR
                 // cannot see it — and `1 production · 0 tests` said of a type three tests use through an alias, the
                 // one line being the alias declaration itself, is this section's own defect wearing a number. The
                 // aliases are discovered from the references themselves, where the store records the aliasing, and
                 // folded in before anything is counted or denied.
-                let fold = try aliasFold(referencedAt: references, named: row.name, context: context, sources: &sourceLines)
+                let (references, fold) = try foldedReferences(ofUSR: usr, named: row.name, context: context, sources: &sourceLines)
+                typeReferences = references
+                typeGeneratedLines = fold.generatedLines
                 let spans = try ownSpans(of: row, extendedAt: context.store.extensionSites(ofUSR: usr), relativePath: context.relativePath)
                 let own = Self.excludingSites(references + fold.hits, inside: spans.spans, relativePath: context.relativePath)
                 // A `typealias Crate = Gizmo` names the type without using it, the same as an `extension Gizmo`
@@ -707,10 +672,10 @@ extension WhereRenderer {
                         otherModuleExtensions: spans.otherModuleExtensions,
                         otherModuleExtensionsGuessed: spans.otherModuleExtensionsGuessed,
                         aliasDeclarationLines: usage.excluded,
-                        sweepFollows: options.includeReferences,
+                        options: options,
                         aliasFoldCapped: fold.reachedCap,
                         conformanceLines: conformance?.clauseLines ?? [],
-                        offset: options.offset,
+                        pointing: query.contains(".") ? query : names.name(of: row),
                         context: context,
                         occurrences: occurrences,
                         shown: listTypeUse
@@ -724,9 +689,9 @@ extension WhereRenderer {
             // of this alias is itself the alias's aliasing, so it folds in the same way.
             if row.kind == .typealiasKind {
                 aliasUsageEligible += 1
-                let references = context.store.references(ofUSR: usr, sources: &sourceLines)
+                let (references, fold) = try foldedReferences(ofUSR: usr, named: row.name, excluding: usr, context: context, sources: &sourceLines)
                 typeReferences = references
-                let fold = try aliasFold(referencedAt: references, named: row.name, excluding: usr, context: context, sources: &sourceLines)
+                typeGeneratedLines = fold.generatedLines
                 // Only one of the type's two exclusions carries across. A type's own declaration and extension
                 // headers spell its name without using it; an alias has neither to take out. Its declaration
                 // records no reference to itself at all — a definition is not a reference — so the only lines that
@@ -745,12 +710,11 @@ extension WhereRenderer {
                     try sections.append(contentsOf: usageSection(
                         for: qualified,
                         hits: usage.sites,
-                        excludedLines: 0,
                         aliasDeclarationLines: usage.excluded,
-                        sweepFollows: options.includeReferences,
+                        options: options,
                         aliasFoldCapped: fold.reachedCap,
                         isAlias: true,
-                        offset: options.offset,
+                        pointing: query.contains(".") ? query : names.name(of: row),
                         context: context,
                         occurrences: occurrences,
                         shown: listTypeUse
@@ -758,7 +722,11 @@ extension WhereRenderer {
                 }
             }
             if options.includeReferences {
-                let references = typeReferences ?? context.store.references(ofUSR: usr, sources: &sourceLines)
+                var references = typeReferences ?? []
+                var generatedLines = typeGeneratedLines
+                if typeReferences == nil {
+                    (references, generatedLines) = context.store.referencesAndGeneratedMentions(ofUSR: usr, sources: &sourceLines)
+                }
                 // A type's (or a typealias's) emptiness has already been said by its usage line, in the noun that
                 // decision is made in; repeating it here would read as a second finding rather than the same one.
                 if !row.kind.isTypeDeclaration, row.kind != .typealiasKind {
@@ -768,7 +736,7 @@ extension WhereRenderer {
                     }
                 }
                 if !references.isEmpty {
-                    sections.append(contentsOf: referenceSection(for: qualified, hits: references, offset: options.offset, context: context, occurrences: occurrences, shown: listTypeUse))
+                    sections.append(contentsOf: referenceSection(for: qualified, hits: references, offset: options.offset, context: context, occurrences: occurrences, paging: paging, callSitesAbove: callSitesAbove, generatedMentions: generatedLines.subtracting(references.map { "\($0.path):\($0.line)" }).count, shown: listTypeUse))
                 }
             }
             // In the tree means indexed: the SDK sits outside the root, and a dependency's checkout under `.build` is never indexed.
@@ -815,31 +783,31 @@ extension WhereRenderer {
             allListedRefused: consideredCount > 0 && refusedRows.count == consideredCount,
             shortName: { refusedShortNames[$0.symbol] ?? $0.symbol }
         ))
-        lines.append(contentsOf: sections)
+        verdicts.noteSetAside(wrapperSites.setAside)
+        lines.append(contentsOf: sections + (verdicts.setAsideLine.map { ["", $0] } ?? []))
         let callerSummary = [verdicts.summary(withoutCallers, eligible: callerEligible, noun: "callers", preposition: "of")].compactMap(\.self) + implementersWithoutCallers
         lines += callerSummary.isEmpty ? [] : [""] + callerSummary
-        // What the store cannot record is said beside what it did, and under the empty case above all: "no reads or
-        // writes" of a field only a Codable conformance reads is how a saved format silently changes.
+        // What the store cannot record of every property or case (a synthesized conformance's, by name at runtime) is
+        // said once per session (Docs/Design.md §2, *standing caveats*); a moved observer's boundary is this answer's own.
         let useSummary = [verdicts.summary(withoutUses, eligible: useEligible, noun: "reads or writes", preposition: "of")].compactMap(\.self) + implementersWithoutUses
-        if !useSummary.isEmpty || askedProperty {
+        let useLines = useSummary + (listedMovedObserver ? [Self.movedObserverBoundary] : [])
+        if !useLines.isEmpty {
             lines.append("")
-            lines.append(contentsOf: useSummary + [
-                askedProperty ? Self.propertyUseBoundary : nil,
-                listedMovedObserver ? Self.movedObserverBoundary : nil,
-            ].compactMap(\.self))
+            lines.append(contentsOf: useLines)
         }
-        let caseSummary = verdicts.summary(withoutCaseUses, eligible: caseEligible, noun: "uses", preposition: "of")
-        if caseSummary != nil || caseEligible > 0 {
+        let caseLines = [verdicts.summary(withoutCaseUses, eligible: caseEligible, noun: "uses", preposition: "of")].compactMap(\.self) + implementersWithoutCaseUses
+        if !caseLines.isEmpty {
             lines.append("")
-            lines.append(contentsOf: [caseSummary].compactMap(\.self) + implementersWithoutCaseUses + [caseEligible > 0 ? Self.caseUseBoundary : nil].compactMap(\.self))
+            lines.append(contentsOf: caseLines)
         }
+        let nonCode = nonCodePointer(query: query, options: options)
         // A type that nothing uses is the one answer this section exists to make sayable out loud, so it is said in
         // the same words the sweep view uses for an empty result — and a type whose every recorded reference sits
         // inside its own declaration or its extensions in this module is a different finding, not the same one:
         // references exist, and none of them is a use.
         if let summary = verdicts.summary(withoutUsage, eligible: usageEligible, noun: "references", preposition: "to") {
             lines.append("")
-            lines.append(summary + " — check comments and strings with grep")
+            lines.append(summary + " — \(nonCode)")
         }
         if let summary = verdicts.summary(usedOnlyByItself, eligible: usageEligible, noun: "uses", preposition: "of") {
             lines.append("")
@@ -848,7 +816,7 @@ extension WhereRenderer {
             // this sentence: the sections are appended before every summary line, so a sentence pointing downward
             // points at the extensions block and leaves the listing it owns unclaimed.
             let evidence = options.includeReferences ? " — the references listed above are those lines" : ""
-            lines.append(summary + " — every reference recorded falls inside its own declaration or its extensions in this module, which is the type spelling its own name\(evidence); check comments and strings with grep")
+            lines.append(summary + " — every reference recorded falls inside its own declaration or its extensions in this module, which is the type spelling its own name\(evidence); \(nonCode)")
         }
         // A third finding, not either of the two above: references exist, and every one of them is the type being
         // given another name rather than being used. It is worth its own sentence because the deletion it clears is
@@ -857,11 +825,10 @@ extension WhereRenderer {
             lines.append("")
             let evidence = options.includeReferences ? " — the references listed above are those lines" : ""
             let aliasesGo = namedOnlyByItsAliasesCapped ? Self.foldStoppedShort : "and nothing uses those aliases either, so they go with it"
-            lines.append(summary + " — every reference recorded is the type declaring itself or a typealias declaration naming it, which is another name for the type rather than use of it, \(aliasesGo)\(evidence); check comments and strings with grep")
+            lines.append(summary + " — every reference recorded is the type declaring itself or a typealias declaration naming it, which is another name for the type rather than use of it, \(aliasesGo)\(evidence); \(nonCode)")
         }
         if let summary = verdicts.summary(withoutReferences, eligible: referenceEligible, noun: "references", preposition: "to") {
-            lines.append("")
-            lines.append(summary + " — check comments and strings with grep")
+            lines += ["", summary + " — \(nonCode)"]
         }
         // The alias's own three findings, worded exactly like the type's above, with one clause added throughout:
         // which name this counted. Without it, "no references to Nickname" reads as "nothing uses Gizmo either",
@@ -869,24 +836,28 @@ extension WhereRenderer {
         let aliasCounts = " — counts the alias's own name, and any typealias of it, not the type it names, which may still be used directly, under its own name, without it"
         if let summary = verdicts.summary(withoutAliasUsage, eligible: aliasUsageEligible, noun: "references", preposition: "to") {
             lines.append("")
-            lines.append(summary + aliasCounts + "; check comments and strings with grep")
+            lines.append(summary + aliasCounts + "; \(nonCode)")
         }
         if let summary = verdicts.summary(aliasNamedOnlyByItsAliases, eligible: aliasUsageEligible, noun: "uses", preposition: "of") {
             lines.append("")
             let evidence = options.includeReferences ? " — the references listed above are those lines" : ""
             let aliasesGo = aliasNamedOnlyByItsAliasesCapped ? Self.foldStoppedShort : "and nothing uses those either, so they go with it"
-            lines.append(summary + " — every reference recorded is another typealias naming it, which is another name for it rather than use of it, \(aliasesGo)\(evidence)" + aliasCounts + "; check comments and strings with grep")
+            lines.append(summary + " — every reference recorded is another typealias naming it, which is another name for it rather than use of it, \(aliasesGo)\(evidence)" + aliasCounts + "; \(nonCode)")
         }
-        if declarations.count > Self.semanticDeclCap {
+        // The store records nothing in a file it holds no unit for, a new one above all, nor what a file it holds has written since the build, so a lower bound names the lines there that write the name, which a rename trusting the answer would otherwise miss, and the header counts each file no store holds that it names.
+        let mentions = try WhereChangedFileMentions(names: ScannedNames(rows: targets.filter { row in row.kind != .extensionKind && row.kind != .operatorKind && !refusedRows.contains { $0.id == row.id } }, in: store), unbuilt: verdicts.filesOutsideTheBuild, refused: Set(refusals.map(\.path)), in: store, context: primary, judge: declaringFiles, listsEveryLine: options.includeReferences, offset: options.offset)
+        lines = mentions.placed(in: lines)
+        if let note = try SemanticTargets.capNote(for: declarations, includeReferences: options.includeReferences, in: store) {
             lines.append("")
-            lines.append("(semantic relations resolved for the first \(Self.semanticDeclCap) declarations only)")
+            lines.append(note)
         }
         // A declaration no open store resolves, while an in-tree store is still loading, may be that store's to answer: said as warming, a wait, rather than as unresolved, a build — but never where a refusal here is already the stronger, unconditional fact a loading store could never change.
-        let waitsOnInTree = primary.inTreeWarming && !uncovered.isEmpty && !refusals.contains { $0.reason == .modifiedSinceBuild }
+        let waitsOnInTree = primary.inTreeWarming && !uncovered.isEmpty && !refusals.contains(where: \.reason.isStale)
+        let counted = SemanticAxis.countedFiles(refusals: refusals, occurrences: Array(judges.values), listedByName: mentions.listedFiles)
         return try SemanticOutcome(
-            axis: waitsOnInTree ? .warming : .of(refusals: refusals, occurrences: Array(judges.values), testFilesWithoutUnit: primary.testFileCoverage(in: store).partialCount),
+            axis: waitsOnInTree ? .warming : .of(refusals: refusals, occurrences: Array(judges.values), testFilesWithoutUnit: primary.testFileCoverage(in: store).partialCount, listedByName: mentions.listedFiles),
             refused: refusedRows,
-            boundsReferences: usageEligible > 0 || aliasUsageEligible > 0 || referenceEligible > 0,
+            notCompiledNote: NotCompiledNote.line(for: counted, refused: Set(refusals.map(\.path)), in: store, context: primary),
             answeredBy: answeredBy,
             uncovered: uncovered,
             listedSites: listedSites,
@@ -996,35 +967,25 @@ extension WhereRenderer {
         }
     }
 
-    /// The heading clauses that disown part of what the section is nevertheless listing — never omitted when they apply, since a count that silently includes dead rows is the defect this whole path exists to end.
+    /// The heading clauses that disown part of what the section is nevertheless listing, changed before deleted as the header orders them — never omitted when they apply, since a count that silently includes dead rows is the defect this whole path exists to end.
     ///
     /// Counted in **files**, whatever the section lists, and worded identically in both: the header's own count is in files, and two sections disowning in different units invite the reader to compare numbers that were never the same measurement. One `states` entry per distinct file is the caller's job.
     static func driftDetails(states: [OccurrenceState]) -> [String] {
         var details: [String] = []
         let deleted = states.count { $0 == .deleted }
         let modified = states.count { $0 == .modifiedSinceBuild }
-        if deleted > 0 {
-            details.append("\(deleted) file\(deleted == 1 ? "" : "s") deleted since last build")
-        }
         if modified > 0 {
             details.append("\(modified) file\(modified == 1 ? "" : "s") changed since last build")
         }
+        if deleted > 0 {
+            details.append("\(deleted) file\(deleted == 1 ? "" : "s") deleted since last build")
+        }
         return details
-    }
-
-    /// What a property's reads and writes cannot show, stated beside them — not only on the empty case, since a short list read as complete does the same harm: a field only a `Codable` conformance reads, listed with its one write, reads as write-only.
-    static var propertyUseBoundary: String {
-        "reads and writes: written code only — the store records none made by a synthesized conformance (Equatable, Hashable, Codable) or by name at runtime, so a short or empty list is not proof a property is unused"
     }
 
     /// What a use inside an observer a macro moved cannot show — where it is written — stated wherever one is listed: its row sits on the macro's line, and a reference sweep drops it, since there is nothing to rename there.
     static var movedObserverBoundary: String {
         "observers: a macro that moves a property into generated storage, as @Observable does, moves its didSet and willSet with it — the store records their uses at the macro's line, never where they are written, so a reference sweep lists none of their lines"
-    }
-
-    /// What an enum case's uses cannot show, stated beside them for the same reason.
-    static var caseUseBoundary: String {
-        "uses: written code only — the store records none made by a synthesized conformance (CaseIterable, a raw value's init(rawValue:), Codable) or by name at runtime, so a short or empty list is not proof a case is unused"
     }
 }
 

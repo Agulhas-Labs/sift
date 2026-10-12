@@ -14,20 +14,20 @@ struct NotWorthTheTurnTests {
     // MARK: - The inequality
 
     /// The file sizes, in bytes, at which a digest a fifth of the file turns worth answering with, for a context of 20k, 45k and 120k tokens: the margin crosses zero between each pair.
-    @Test(arguments: [(20000, 5000, 5500), (45000, 8000, 8400), (120_000, 16000, 18000)])
+    @Test(arguments: [(20000, 7500, 8100), (45000, 10400, 11100), (120_000, 19000, 20200)])
     func theBoundaryMovesWithTheContext(context: Int, below: Int, above: Int) {
         #expect(!WholeReadWorth.isWorthTheTurn(fileBytes: below, digestBytes: below / 5, contextTokens: context))
         #expect(WholeReadWorth.isWorthTheTurn(fileBytes: above, digestBytes: above / 5, contextTokens: context))
     }
 
-    /// At 45k and a digest a fifth of the file the margin is about 940 tokens before the file's own saving, so a file of 2k tokens is the break-even.
+    /// At 45k and a digest a fifth of the file the margin is about 1,240 tokens before the file's own saving, so a file of 2.7k tokens is the break-even.
     @Test
-    func theMarginAtTheMedianContextIsAboutNineHundredAndFortyTokens() {
+    func theMarginAtTheMedianContextIsAboutTwelveHundredAndFortyTokens() {
         let file = 8000
         let spared = (1 - WholeReadWorth.wholeReReadShare) * Double(file) / 4 - Double(file / 5) / 4
         let margin = WholeReadWorth.margin(fileBytes: file, digestBytes: file / 5, contextTokens: 45000)
 
-        #expect(abs((spared - margin) - 941) < 1, "\(spared - margin)")
+        #expect(abs((spared - margin) - 1237) < 1, "\(spared - margin)")
     }
 
     /// An unknown context is the default one, and a bigger digest never helps.

@@ -159,9 +159,9 @@ struct CleanHeaderTests {
         let freshness = try await engine.ensureFresh()
 
         let output = try await engine.lookup(symbol: "Alpha", freshness: freshness)
-        let mode = try #require(output.split(separator: "\n").first { $0.hasPrefix("mode:") })
+        let mode = try #require(output.split(separator: "\n").first { $0.hasPrefix(DegradedNote.noStoreOpening) })
 
-        #expect(mode.hasPrefix("mode: syntactic (sift help answers); no index store for this tree yet"), "\(mode)")
+        #expect(mode.hasSuffix("; \(DegradedNote.checkoutRemedy)"), "\(mode)")
         #expect(!mode.contains("conformers matched by written name"), "\(mode)")
     }
 
@@ -171,16 +171,20 @@ struct CleanHeaderTests {
         let body = try #require(HelpTopics.topic(named: "answers")).body
 
         #expect(body.contains("matched by written name"))
-        #expect(body.contains("callers, overrides and references are not answered"))
+        #expect(body.contains("callers, overrides and references do not answer"))
         #expect(body.contains("sift help worktree-index"))
         #expect(body.contains("`clean`"))
     }
 
-    // MARK: The references line
+    // MARK: The references boundary
 
+    /// The boundary no answer repeats any longer (Docs/Design.md §2, *standing caveats*) keeps its long form in the topic.
     @Test
-    func theTwoReferenceCaveatsAreOneLine() {
-        #expect(WhereRenderer.referenceBoundaryLine == "references: code only (not comments or strings) and this repo's own build only (a sibling repo or an uncompiled target has no occurrence here) — check those before deleting")
-        #expect(!WhereRenderer.referenceBoundaryLine.contains("\n"))
+    func theReferenceBoundaryIsSaidInTheAnswersTopic() throws {
+        let body = try #require(HelpTopics.topic(named: "answers")).body
+
+        #expect(body.contains("a sibling repo or an uncompiled target"))
+        #expect(body.contains("check those before deleting"))
+        #expect(body.contains("under `not code`"))
     }
 }

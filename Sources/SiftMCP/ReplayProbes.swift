@@ -16,6 +16,8 @@ struct ReplayProbes {
     var origins = WorktreeOrigins()
     /// The calls the hook's suppression log records letting run on worth, by the rule it logged, scored not worth as the audit the replay is appended to scores them.
     var loggedLetThrough: [String: InPlaceAnswerer.Withholding] = [:]
+    /// The cause the log records for each call the hook stood aside from.
+    var stoodAside: [String: StoodAside] = [:]
     /// The calls the hook's answered log records answering in place, read as the audit beside the replay reads them.
     var answeredCalls: Set<String> = []
     /// The transcripts as the audit beside the replay read them, cut at the sizes they had then, or nil to read each as it is now.

@@ -31,6 +31,25 @@ struct AgentDetectionTests {
         #expect(scratch.detect().finding(.claude).reason == "`claude` on PATH")
     }
 
+    /// A lookup whose result is run or registered ignores a relative PATH entry and an empty one, so a `claude` planted beside the process's working directory is never found.
+    @Test
+    func aRelativeOrEmptyPathEntryIsNotSearchedByDefault() throws {
+        var scratch = try Scratch()
+        try scratch.executable("claude")
+        let up = String(repeating: "../", count: URL(fileURLWithPath: FileManager.default.currentDirectoryPath).pathComponents.count)
+        let relativeToBin = up + String(scratch.bin.path.dropFirst())
+
+        for entry in [relativeToBin, "", "."] {
+            scratch.environment["PATH"] = "\(entry):\(entry)"
+
+            #expect(scratch.detect().detected.isEmpty, "PATH=\(entry)")
+        }
+        scratch.environment["PATH"] = relativeToBin
+
+        #expect(InvokedBinary.onPath("claude", environment: scratch.environment) == nil)
+        #expect(InvokedBinary.onPath("claude", environment: scratch.environment, currentDirectory: FileManager.default.currentDirectoryPath) != nil)
+    }
+
     @Test
     func claudeIsFoundByItsDirectory() throws {
         let scratch = try Scratch()

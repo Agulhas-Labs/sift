@@ -722,7 +722,7 @@ extension DigestRenderTests {
         let output = try Self.render("Alpha.Widget.Inner")
 
         #expect(output.contains("Inner — Alpha — Sources/Alpha/Widget.swift:40"))
-        #expect(output.contains("so the source itself follows"))
+        #expect(output.contains("follows)"))
         #expect(output.contains("struct Inner { let flag: Bool }"))
         #expect(!output.contains("is ambiguous"))
     }
@@ -779,7 +779,7 @@ extension DigestRenderTests {
         try store.replaceFiles([main]) { _ in ("Warden", false) }
         let renderer = try DigestRenderer(store: store, moduleNames: store.moduleNames(), repoRoot: root)
 
-        let output = try renderer.render(target: "Warden", options: DigestOptions())
+        let output = try renderer.render(target: "Warden/", options: DigestOptions())
 
         #expect(output.contains("module Warden"))
         #expect(output.contains("a type named Warden also exists — `digest Warden.Warden` serves it"))
@@ -1254,7 +1254,7 @@ extension DigestRenderTests {
 
         // Confirms the fixture actually cleared the floor: otherwise the assertion below would hold for
         // the wrong reason — the raw source contains this line too.
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("command.uppercased()"))
     }
 
@@ -1281,7 +1281,7 @@ extension DigestRenderTests {
 
         let output = try renderer.render(target: "Tests/GizmoTests.swift", options: DigestOptions())
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("let base = 1"))
         #expect(output.contains("if base > 0 {"))
         #expect(output.contains("return base"))
@@ -1308,7 +1308,7 @@ extension DigestRenderTests {
 
         let output = try renderer.render(target: "Tests/GizmoTests.swift", options: DigestOptions())
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         let lines = output.components(separatedBy: "\n")
         let opener = try #require(lines.firstIndex { $0.contains("func opener()") })
         let closer = try #require(lines.firstIndex { $0.contains("func closer()") })
@@ -1362,7 +1362,7 @@ extension DigestRenderTests {
 
         let output = try renderer.render(target: "Tests/GizmoTests.swift", options: DigestOptions())
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("func call(_ command: String) -> String"))
         #expect(!output.contains("_ = 0"))
     }
@@ -1386,7 +1386,7 @@ extension DigestRenderTests {
 
         let output = try renderer.render(target: "Tests/GizmoTests.swift", options: DigestOptions())
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         // Eight nine-line tests from line 8, a blank line apart: the last spans 78-86.
         #expect(output.contains("last test in GizmoTests: bulk7() — Tests/GizmoTests.swift:78-86 — a new test goes after line 86"))
         #expect(!output.contains("bulk0() — Tests/GizmoTests.swift"))
@@ -1417,7 +1417,7 @@ extension DigestRenderTests {
 
         let output = try renderer.render(target: "Tests/GizmoTests.swift", options: DigestOptions())
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("last test in GizmoTests: gizmo3()"))
         #expect(output.contains("last test in WidgetTests: widget3()"))
     }
@@ -1465,7 +1465,7 @@ extension DigestRenderTests {
 
         let output = try renderer.render(target: "Tests/GizmoTests.swift", options: DigestOptions())
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         // Eight lines each against a twenty-line budget: the first two fit, the next two do not.
         #expect(output.contains("\"alpha-7\""))
         #expect(output.contains("\"beta-7\""))
@@ -1498,7 +1498,7 @@ extension DigestRenderTests {
         let output = try renderer.render(target: "Tests/GizmoTests.swift", options: DigestOptions())
         let lines = output.split(separator: "\n", omittingEmptySubsequences: false)
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(lines.contains("        let shouted = command.uppercased()"))
         #expect(lines.contains("        return shouted"))
         #expect(!lines.contains { !$0.isEmpty && $0.allSatisfy(\.isWhitespace) })
@@ -1539,7 +1539,7 @@ extension DigestRenderTests {
 
         let output = try renderer.render(target: "GizmoTests", options: DigestOptions())
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("command.uppercased()"))
         #expect(output.contains("[\"go\", \"stop\"]"))
         #expect(output.contains("last test in GizmoTests: finale() — Tests/GizmoTests+Fixtures.swift:8-11 — a new test goes after line 11"))
@@ -1584,7 +1584,7 @@ extension DigestRenderTests {
         let type = try renderer.render(target: "GizmoTests", options: DigestOptions())
 
         for output in [file, type] {
-            #expect(!output.contains("source itself follows"))
+            #expect(!output.contains("follows)"))
             #expect(output.contains("command.uppercased()"))
             #expect(output.contains("last test in GizmoTests: testThree()"))
         }
@@ -1672,7 +1672,7 @@ extension DigestRenderTests {
 
         let output = try renderer.render(target: "Tests/GizmoTests.swift", options: DigestOptions())
 
-        #expect(!output.contains("source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("func call(_ command: String) -> String"))
         #expect(!output.contains("command.uppercased()"))
         #expect(!output.contains("last test"))

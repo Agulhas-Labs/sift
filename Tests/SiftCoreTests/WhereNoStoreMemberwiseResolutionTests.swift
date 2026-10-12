@@ -81,7 +81,7 @@ struct WhereNoStoreMemberwiseResolutionTests {
 
         #expect(required.contains("no use by name, 1 call writing isReady: to Gizmo(…) with labels its memberwise init does not take, not listed"), "\(required)")
         #expect(!required.contains("| Gizmo(isReady: true)"), "\(required)")
-        #expect(long.contains("no use by name, 1 call passing it as isReady: to the memberwise init"), "\(long)")
+        #expect(long.contains("0 uses by written name, 1 call passing it as isReady: to the memberwise init"), "\(long)")
         #expect(long.contains(":2  in stock()  | Gizmo(isReady: true)"), "\(long)")
     }
 }

@@ -19,7 +19,7 @@ struct WhereMemberOperatorOwnerTests {
     func aQualifiedMemberOperatorsSitesAreSaidToBeAnyTypes() async throws {
         let plus = try await WhereOperatorUseTests.answer("Vault.+")
 
-        #expect(plus.contains("\"+\" (4 call sites by name, \(Self.anyTypes), in 1 file):"), "\(plus)")
+        #expect(plus.contains("\"+\" (4 call sites by written name, \(Self.anyTypes), in 1 file):"), "\(plus)")
         #expect(plus.contains("    :2  in stock(_:).sum  | let sum = vault + vault"), "\(plus)")
         #expect(plus.contains("    :6 (×2)  in stock(_:)  | return (sum <~> flipped) + squared.weight + all.weight"), "\(plus)")
     }
@@ -37,7 +37,7 @@ struct WhereMemberOperatorOwnerTests {
     func aFreeOperatorsSitesCarryNoOwnerClause() async throws {
         let custom = try await WhereOperatorUseTests.answer("<~>")
 
-        #expect(custom.contains("\"<~>\" (1 call site in 1 file — for both):"), "\(custom)")
+        #expect(custom.contains("\"<~>\" (1 call site by written name in 1 file — for both):"), "\(custom)")
         #expect(!custom.contains("any type's"), "\(custom)")
     }
 }

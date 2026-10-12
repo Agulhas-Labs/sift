@@ -95,7 +95,7 @@ struct WhereExtensionSpellingTests {
         }
         try TestSources.commitAll(in: root, message: "extension spellings, unbuilt")
         let engine = try SiftEngine(directory: root)
-        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh())
+        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
     }
 
     /// The declarations block of an answer: its heading and its rows.
@@ -129,7 +129,7 @@ struct WhereExtensionSpellingTests {
         #expect(!output.contains(":9  | extension Box<Int> {"), "\(output)")
         #expect(!output.contains(":13  | extension App.Box<String> {"), "\(output)")
         #expect(output.contains("no use spelled \"Box\" anywhere"), "\(output)")
-        #expect(output.contains("; 4 more lines inside its own declaration or its extensions in this module, which is not use (for App.Box)"), "\(output)")
+        #expect(output.contains("; 4 more lines inside its own declaration or its extensions in this module (for App.Box)"), "\(output)")
     }
 
     /// With a store, the same four are listed, and the headers the store records against `Box` count as its own lines, never as uses.
@@ -138,7 +138,7 @@ struct WhereExtensionSpellingTests {
         try await Self.builtFixture().withEngine { engine in
             let output = try await engine.lookup(symbol: query, freshness: engine.ensureFresh())
 
-            #expect(output.contains("mode: syntactic + semantic"), "\(output)")
+            #expect(output.contains("semantic: fresh"), "\(output)")
             #expect(Self.extensionsBlock(of: output) == [
                 "extensions of Box (4):",
                 "  extension Box — 1 members — Sources/App/Box.swift:5-7",
@@ -190,7 +190,7 @@ struct WhereExtensionSpellingTests {
             let bare = try await engine.lookup(symbol: name, freshness: engine.ensureFresh())
             let qualified = try await engine.lookup(symbol: "Swift.\(name)", freshness: engine.ensureFresh())
 
-            #expect(qualified.contains("mode: syntactic + semantic"), "\(qualified)")
+            #expect(qualified.contains("semantic: fresh"), "\(qualified)")
             for answer in [bare, qualified] {
                 let block = Self.declarationsBlock(of: answer)
                 #expect(block.first == "declarations (\(headers.count)):", "\(answer)")
@@ -321,7 +321,7 @@ struct WhereExtensionSpellingTests {
             let other = try await engine.lookup(symbol: "Other.Box", freshness: engine.ensureFresh())
             let app = try await engine.lookup(symbol: "App.Box", freshness: engine.ensureFresh())
 
-            #expect(other.contains("mode: syntactic + semantic"), "\(other)")
+            #expect(other.contains("semantic: fresh"), "\(other)")
             #expect(Self.extensionsBlock(of: other) == Self.otherBoxBlock, "\(other)")
             Self.expectAppBoxBlock(of: app)
         }
@@ -350,18 +350,18 @@ struct WhereExtensionSpellingTests {
         #expect(!block.contains { $0.contains("Other.Box") || $0.contains("Outer.Box") || $0.contains("Sources/Kit/") || $0.contains("Sources/Other/") }, "\(output)", sourceLocation: sourceLocation)
     }
 
-    /// An extension written through a name the tree has as neither a module nor a type may extend another module's type of the name, so it is listed and marked.
+    /// An extension written through a name the tree has as neither a module nor a type, and its file does not import, may extend another module's type of the name, so it is listed and marked.
     @Test
     func anExtensionTheCodeCannotPlaceIsListedAndMarked() async throws {
         let output = try await Self.noStoreAnswer("Box", files: [
             "Package.swift": Self.manifest,
-            "Sources/App/Box.swift": "import Shelf\n\nstruct Box {}\n\nextension Shelf.Box<Int> {}\n\nextension Box {}\n",
+            "Sources/App/Box.swift": "struct Box {}\n\nextension Shelf.Box<Int> {}\n\nextension Box {}\n",
         ])
 
         #expect(Self.extensionsBlock(of: output) == [
             "extensions of Box (2):",
-            "  extension Shelf.Box<Int> — 0 members — Sources/App/Box.swift:5 — may extend another module's Box",
-            "  extension Box — 0 members — Sources/App/Box.swift:7",
+            "  extension Shelf.Box<Int> — 0 members — Sources/App/Box.swift:3 — may extend another module's Box",
+            "  extension Box — 0 members — Sources/App/Box.swift:5",
         ], "\(output)")
     }
 
@@ -371,7 +371,7 @@ struct WhereExtensionSpellingTests {
         try await Self.builtModules().withEngine { engine in
             let output = try await engine.lookup(symbol: "Stored", freshness: engine.ensureFresh())
 
-            #expect(output.contains("mode: syntactic + semantic"), "\(output)")
+            #expect(output.contains("semantic: fresh"), "\(output)")
             #expect(output.contains("\nconformers of Stored (1: 0 direct, 0 indirect, 1 through a typealias"), "\(output)")
             #expect(output.contains("\n  App.Box<Int> — extension — Sources/App/Stored.swift:5 — through typealias App.Kept"), "\(output)")
             #expect(!output.contains("\n  Box — Sources/App/Stored.swift:5"), "\(output)")
@@ -398,7 +398,7 @@ struct WhereExtensionSpellingTests {
         try await Self.builtModules().withEngine { engine in
             let stored = try await engine.lookup(symbol: "App.Box", freshness: engine.ensureFresh())
 
-            #expect(stored.contains("mode: syntactic + semantic"), "\(stored)")
+            #expect(stored.contains("semantic: fresh"), "\(stored)")
             for output in [stored, noStore] {
                 #expect(!Self.extensionsBlock(of: output).contains { $0.contains("Sources/Alias/") }, "\(output)")
                 #expect(!output.contains("counted as use"), "\(output)")

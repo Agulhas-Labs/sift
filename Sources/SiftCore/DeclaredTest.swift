@@ -8,8 +8,8 @@
 ///
 /// The counts built from these are per test *function*: a `@Test(arguments:)` function is one declared test however many cases it runs, which is the unit every tally already uses.
 public struct DeclaredTest: Sendable, Hashable {
-    /// The test target — the index's module attribution for the declaring file, which is the spelling a test plan and an enumeration both use, spaces included.
-    public let target: String
+    /// The test target as its build file names it, which is the spelling a test plan uses, spaces included: the module the index attributes the declaring file to is that name spelt as a Swift module (`Demo Spaced Tests` is `Demo_Spaced_Tests`).
+    public private(set) var target: String
     /// True when no build file claimed the declaring file, so the target above was guessed from its first path component.
     public let targetWasGuessed: Bool
     /// The enclosing type path, `Outer.Inner` for a nested suite, and empty for a test declared at file scope.
@@ -76,5 +76,14 @@ public extension DeclaredTest {
         let words = function[function.index(after: function.startIndex) ..< close]
         let isPlainIdentifier = words.first.map { $0 == "_" || $0.isLetter } == true && words.allSatisfy { $0 == "_" || $0.isLetter || $0.isNumber }
         return words.isEmpty || isPlainIdentifier ? nil : String(words)
+    }
+}
+
+extension DeclaredTest {
+    /// This declaration under `target`, the name the build file gives the target its module was attributed from.
+    func named(_ target: String) -> DeclaredTest {
+        var renamed = self
+        renamed.target = target
+        return renamed
     }
 }

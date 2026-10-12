@@ -32,11 +32,6 @@ public struct AdviceLedger: Sendable {
     /// Uncapped doubling reaches "the rest of the day" in five spells, which is a permanent silence arrived at by a slower road. A ceiling means an all-day session is still re-offered the advice periodically, and the cost of being wrong about a context is bounded by it.
     public static let maximumQuietPeriod: TimeInterval = 2 * 60 * 60
 
-    /// How long an index call is taken to be possibly still unanswered: the span in which a call noted by the hook can be one sent beside the lookup now being judged.
-    ///
-    /// A message's calls start within seconds of one another, and a call noted longer ago than this has had its result written or never will, so past it the transcript is not asked.
-    public static let inFlightWindow: TimeInterval = 60
-
     /// How long a session's ledger is kept after its last denial.
     public static let retention: TimeInterval = 7 * 24 * 60 * 60
 
@@ -79,21 +74,8 @@ public struct AdviceLedger: Sendable {
     ///
     /// `offering` is the call the refusal would name, written as it would be typed and one element per line of it. Where this context has already made every one of them, the refusal has nothing to offer and the command is allowed — see ``noteIndexCall(session:calls:)``. Empty asks the ordinary question, which is what every caller holding no suggestion wants.
     ///
-    /// **Where every offered call is made, the lookup may still be held back.** A call noted within ``inFlightWindow`` whose `tool_result` is not in the tail of the context's own transcript was sent beside this lookup and is not yet answered, so the lookup is `.pointAt` it rather than allowed (``ToolResultProbe/standing(ofToolUse:inTranscript:tailBytes:)``). Whether its `tool_use` line is written yet does not matter: the harness writes that late as well, and the tail is long enough that a result written within the window is inside it. `transcript` is the hook payload's `transcript_path` and `agent` its `agent_id`; the transcript read is the context's own (``ServerPresence/subagentTranscript(ofSession:agent:)``), so a subagent whose file is missing, a transcript that does not exist or cannot be read, and a call with no transcript at all, can never be held. `tailBytes` is how much of the transcript's end is read. The ledger's lock covers the state only: the transcript is read after it is released, since the file read is the slow part and nothing it decides is written back.
-    public func decide(session: String, command: String, offering calls: [String] = [], transcript: String? = nil, agent: String? = nil, tailBytes: Int = ToolResultProbe.tailBytes) -> Decision {
-        switch withExclusiveAccess({ decided(session: session, command: command, offering: calls, reads: transcript != nil) }) {
-        case let .settled(decision):
-            return decision
-        case let .unanswered(candidates):
-            guard let own = ServerPresence.subagentTranscript(ofSession: transcript, agent: agent) else { return .allow }
-            let waiting = candidates.filter { candidate in
-                switch ToolResultProbe.standing(ofToolUse: candidate.id, inTranscript: own, tailBytes: tailBytes) {
-                case .answered, .unreadable: false
-                case .unanswered, .unwritten: true
-                }
-            }
-            return waiting.isEmpty ? .allow : .pointAt(waiting.map(\.call), hookMade: Set(waiting.filter(\.hookMade).map(\.call)))
-        }
+    public func decide(session: String, command: String, offering calls: [String] = []) -> Decision {
+        withExclusiveAccess { decided(session: session, command: command, offering: calls) }
     }
 
     /// Which of `keys` this session's re-run allowance already covers: the lookups a refusal or an answer in place has been recorded for (``noteDenial(session:command:)``), whose identical re-run ``decide(session:command:offering:)`` allows.
@@ -106,15 +88,15 @@ public struct AdviceLedger: Sendable {
         }
     }
 
-    private func decided(session: String, command: String, offering calls: [String], reads: Bool = false) -> Outcome {
-        guard var state = load(session) else { return .settled(.allow) }
+    private func decided(session: String, command: String, offering calls: [String]) -> Decision {
+        guard var state = load(session) else { return .allow }
         let original = state
         let moment = now().timeIntervalSince1970
 
         // A quiet spell held to its end, deliberately not lifted early by observed compliance: the cap that
         // opened it bounds a classification bug, and one index call is not evidence the bug has gone.
         if let until = state.quietUntil {
-            guard moment >= until else { return .settled(.allow) }
+            guard moment >= until else { return .allow }
             state.quietUntil = nil
             // Out of the spell with a full cap to spend again. A count that only ever rose would mean that
             // past the hundredth denial *every* decision re-entered the cap branch below and opened another
@@ -133,7 +115,7 @@ public struct AdviceLedger: Sendable {
             if state != original {
                 save(state, session: session)
             }
-            return .settled(.allow)
+            return .allow
         }
 
         // **An offer this context has already taken up buys nothing, and a refusal that buys nothing is the
@@ -157,13 +139,7 @@ public struct AdviceLedger: Sendable {
             if state != original {
                 save(state, session: session)
             }
-            // Made is not answered: a call sent beside this lookup is in the transcript as a use and not yet as a
-            // result. The state says which calls are recent enough to be that; the transcript says which are.
-            let recent = reads ? calls.compactMap { call -> InFlightCandidate? in
-                guard let note = state.callNotes[Self.key(for: call)], moment - note.noted < Self.inFlightWindow else { return nil }
-                return InFlightCandidate(call: call, id: note.id, hookMade: note.hookMade)
-            } : []
-            return recent.isEmpty ? .settled(.allow) : .unanswered(recent)
+            return .allow
         }
 
         // Nothing of the denial is recorded here — that is ``noteDenial(session:command:)``'s, and it runs
@@ -171,8 +147,8 @@ public struct AdviceLedger: Sendable {
         // of at the top, and it goes under the same rule as everything else on this path: a fact that cannot
         // be written down is not acted on, so a spell whose ending will not persist leaves the command alone
         // rather than reopening a budget the next decision would find shut again.
-        guard state == original || save(state, session: session) else { return .settled(.allow) }
-        return .settled(.advise)
+        guard state == original || save(state, session: session) else { return .allow }
+        return .advise
     }
 
     /// Records a denial the hook is about to print, answering whether the record landed.
@@ -209,15 +185,11 @@ public struct AdviceLedger: Sendable {
     /// `calls` is what was asked, spelled the way a suggestion spells a call (``IndexSuggestion/callsMade(toolName:input:)``) — one element per target, so a `digest` of three files is three calls made and not one long name nothing will ever match. That record is what lets ``decide(session:command:offering:)`` tell a refusal with something to say from one offering a call this context has already made.
     ///
     /// `digests` is the digest targets among them, filed by the repository each is answered from — what lets a later whole read of a file this context has been served the digest of go through (``digests(session:)``).
-    ///
-    /// The last argument but one is the call's id from the payload, filed with the moment under each call's key (``State/callNotes``): what lets a later lookup ask whether the call has been answered yet (``decide(session:command:offering:transcript:agent:)``). A call made with no id leaves its key with none, so the question is never asked of it.
-    ///
-    /// The last argument says the hook made the calls itself, answering a lookup in place, rather than the context: they are filed under the lookup's own id, and a pointer at one is worded as an answer given beside the lookup, never as a call the context made.
-    public func noteIndexCall(session: String, calls: [String] = [], digests: [String: [String]] = [:], toolUseID: String? = nil, madeByHook: Bool = false) {
-        withExclusiveAccess { noted(session: session, calls: calls, digests: digests, toolUseID: toolUseID, madeByHook: madeByHook) }
+    public func noteIndexCall(session: String, calls: [String] = [], digests: [String: [String]] = [:]) {
+        withExclusiveAccess { noted(session: session, calls: calls, digests: digests) }
     }
 
-    private func noted(session: String, calls: [String], digests: [String: [String]], toolUseID: String?, madeByHook: Bool) {
+    private func noted(session: String, calls: [String], digests: [String: [String]]) {
         guard var state = load(session) else { return }
         let original = state
         // This is the one write here that can create a file, and a compliant context may never take the
@@ -227,7 +199,6 @@ public struct AdviceLedger: Sendable {
             let spelling = Self.key(for: call)
             guard !spelling.isEmpty else { continue }
             state.calls.insert(spelling)
-            state.callNotes[spelling] = toolUseID.flatMap { $0.isEmpty ? nil : CallNote(id: $0, noted: now().timeIntervalSince1970, hookMade: madeByHook) }
         }
         for (root, targets) in digests where !root.isEmpty {
             state.digests[root, default: []].formUnion(targets.filter { !$0.isEmpty })
@@ -275,6 +246,44 @@ public struct AdviceLedger: Sendable {
               let state = try? JSONDecoder().decode(State.self, from: data)
         else { return false }
         return state.written.contains(Self.heldPath(path))
+    }
+
+    /// The most answered reads ``State/answeredReads`` keeps, oldest dropped first: a read of one dropped is no longer taken for a read anyway.
+    static let answeredReadsKept = 64
+
+    /// Records the reads an in-place answer stood in for, so a later call that reads one anyway is matched back to it (``readAnyway(session:toolName:input:cwd:)``).
+    ///
+    /// Filed under the command's id, each of `targets` — the names the usage log recorded the answer's calls under — paired with the file of the command it names, or with the command's one file where it names none, and that reading's re-run key as ``AnswerThenRead/files(readBy:cwd:)`` gives it. A target paired with no file is not kept.
+    public func noteAnswered(session: String, call: String, targets: [String], toolName: String?, input: [String: Any], cwd: String?) {
+        let reads = AnswerThenRead.files(readBy: ["name": toolName ?? "", "input": input], cwd: cwd)
+        let answered = targets.flatMap { target -> [AnsweredRead] in
+            let file = String(target.prefix { $0 != ":" })
+            let named = reads.filter { $0.path == file || $0.path.hasSuffix("/" + file) }
+            return (named.isEmpty && reads.count == 1 ? reads : named).map { AnsweredRead(call: call, target: target, path: $0.path, reread: $0.reread) }
+        }
+        guard !call.isEmpty, !answered.isEmpty else { return }
+        withExclusiveAccess {
+            guard var state = load(session) else { return }
+            state.answeredReads = Array((state.answeredReads + answered).suffix(Self.answeredReadsKept))
+            save(state, session: session)
+        }
+    }
+
+    /// The answers a call reads anyway — it re-runs the reading one stood in for, or reads its file whole — each once, by the command id and target the usage log recorded it under, taken off the record so no later call names it again.
+    public func readAnyway(session: String, toolName: String?, input: [String: Any], cwd: String?) -> [AnsweredRead] {
+        let reads = AnswerThenRead.files(readBy: ["name": toolName ?? "", "input": input], cwd: cwd)
+        let readAgain = Set(reads.filter(\.whole).map(\.path) + reads.map(\.reread))
+        guard !readAgain.isEmpty else { return [] }
+        return withExclusiveAccess {
+            guard var state = load(session) else { return [] }
+            let isReadAgain = { (answered: AnsweredRead) in readAgain.contains(answered.path) || readAgain.contains(answered.reread) }
+            let taken = state.answeredReads.filter(isReadAgain)
+            guard !taken.isEmpty else { return [] }
+            state.answeredReads.removeAll(where: isReadAgain)
+            save(state, session: session)
+            var named = Set<[String]>()
+            return taken.filter { named.insert([$0.call, $0.target]).inserted }
+        }
     }
 
     /// A path as the written set keeps it: standardised, so a dot segment on either side does not make the same file two.
@@ -397,27 +406,18 @@ public extension AdviceLedger {
         case advise
         /// A retry, a quiet spell, or nowhere to keep state — let it through without a word.
         case allow
-        /// Every call the refusal would have offered is made, but these were sent beside the lookup and are not yet answered: hold it back with a pointer at them, each as it was offered.
-        ///
-        /// `hookMade` is the subset the hook made itself, answering a lookup in place, which the context never called.
-        case pointAt([String], hookMade: Set<String> = [])
+    }
+
+    /// One read the hook answered in place: the command's id and the target its usage line names, the file read, and the key a re-run of that reading is recognised by.
+    struct AnsweredRead: Codable, Equatable, Sendable {
+        public let call: String
+        public let target: String
+        let path: String
+        let reread: String
     }
 }
 
 extension AdviceLedger {
-    /// What the locked half of a decision settled: a ``Decision``, or the offered calls that may still be in flight and need the transcript to say.
-    enum Outcome {
-        case settled(Decision)
-        case unanswered([InFlightCandidate])
-    }
-
-    /// An offered call noted recently enough to be unanswered still: its spelling, the id its result is looked for under, and whether the hook made it.
-    struct InFlightCandidate {
-        var call: String
-        var id: String
-        var hookMade: Bool
-    }
-
     /// One file per conversation, for the same reason as the usage log: concurrent sessions each run their own hooks, and a shared file would have them overwriting each other's counts.
     ///
     /// A subagent gets its own, keyed by `AdviceContext`, rather than sharing its parent's on the argument that the parent and its subagents are one piece of work, so one of them proving the advice unwanted proves it for all. That argument is sound about *intent* and wrong about *knowledge*: the ledger exists to avoid telling a context something it has already been told, and a subagent has not been told anything. It starts empty and cannot see what the parent was offered, so inheriting only the verdict would have a parent that waved off three suggestions spawning subagents that were mute before their first tool call.
@@ -426,7 +426,9 @@ extension AdviceLedger {
     ///
     /// **Retired fields are not read back**: `ignoredKeys`, the set of sanctioned re-runs, and `silenced`, the permanent latch it fed; and the unheeded-run count, the refusal count and the reached and diagnosed flags, which fed a run-based quiet spell and a diagnosis of a context that could not reach the index, both retired once the hook began answering lookups in place. Decoding ignores them, so a ledger that still carries them keeps its `denied` set and its counts and simply stops being silent, rather than losing state — and the files age out inside a week regardless.
     ///
-    /// **The same goes for `usageStamp`**, a machine-wide log modification time. Whether the advice is landing is decided by an index call seen in *this* context (``AdviceLedger/noteIndexCall(session:)``), so there is no stamp to keep. A ledger holding one decodes without it and keeps everything else.
+    /// **The same goes for `callNotes`**, the id and moment each call was noted under, which told a call still unanswered from one answered: a lookup sent beside an index call is judged after that call has returned, so nothing was ever unanswered when asked.
+    ///
+    /// **And for `usageStamp`**, a machine-wide log modification time. Whether the advice is landing is decided by an index call seen in *this* context (``AdviceLedger/noteIndexCall(session:)``), so there is no stamp to keep. A ledger holding one decodes without it and keeps everything else.
     ///
     /// **Every field is decoded as optional-with-a-default, and that is the whole reason `init(from:)` is written out.** Synthesised decoding fails outright on a key that is merely absent, so adding a field would make every ledger written before it undecodable. A ledger that fails to decode is read as a fresh one, which means a context's whole `denied` set vanishes and the next fifteen commands it has already been refused are refused again. That is the exact failure this hook cannot afford, and it would ship silently: nothing about it is visible except a run of repeat denials in someone else's session. A field added to this struct must never be able to do that.
     struct State: Codable, Equatable {
@@ -446,13 +448,11 @@ extension AdviceLedger {
         /// Kept apart from ``calls`` because it answers a different question — whether a whole read of a file would be handed a digest this context already holds — and takes in a Bash `sift digest`, which ``calls`` deliberately does not.
         var digests: [String: Set<String>] = [:]
 
-        /// When and under which `tool_use_id` each of ``calls`` was last noted, by the same key.
-        ///
-        /// What tells a call sent beside a lookup from one answered long ago: recent, and its id without a result in the transcript. A call noted again replaces its note, and one noted with no id drops it.
-        var callNotes: [String: CallNote] = [:]
-
         /// The files this context wrote or edited, by standardised path: text it holds already, so a read of one is a revisit.
         var written: Set<String> = []
+
+        /// The reads the hook answered in place, newest last and at most ``AdviceLedger/answeredReadsKept``, each until a call reads it anyway.
+        var answeredReads: [AnsweredRead] = []
 
         init() {}
 
@@ -465,28 +465,7 @@ extension AdviceLedger {
             calls = try container.decodeIfPresent(Set<String>.self, forKey: .calls) ?? []
             digests = try container.decodeIfPresent([String: Set<String>].self, forKey: .digests) ?? [:]
             written = try container.decodeIfPresent(Set<String>.self, forKey: .written) ?? []
-            callNotes = try container.decodeIfPresent([String: CallNote].self, forKey: .callNotes) ?? [:]
-        }
-    }
-
-    /// An index call as noted: the id the harness gave it, and the moment the hook saw it.
-    struct CallNote: Codable, Equatable {
-        var id: String
-        var noted: Double
-        /// Whether the hook made the call, answering a lookup in place, rather than the context; a note written before this was kept reads as the context's.
-        var hookMade = false
-
-        init(id: String, noted: Double, hookMade: Bool = false) {
-            self.id = id
-            self.noted = noted
-            self.hookMade = hookMade
-        }
-
-        init(from decoder: any Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            id = try container.decode(String.self, forKey: .id)
-            noted = try container.decode(Double.self, forKey: .noted)
-            hookMade = try container.decodeIfPresent(Bool.self, forKey: .hookMade) ?? false
+            answeredReads = try container.decodeIfPresent([AnsweredRead].self, forKey: .answeredReads) ?? []
         }
     }
 }

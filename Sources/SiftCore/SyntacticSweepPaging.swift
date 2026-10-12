@@ -27,6 +27,10 @@ final class SyntacticSweepPaging {
     private var lists: [List] = []
     /// Each slot's token, keyed to the list it stands for.
     private var slots: [String: Int] = [:]
+    /// The file counts of the lists paged outside this pager's window, on the same offset: a store's sweep pages its own lists, and a list past its end asks whether another continues.
+    private var outsideCounts: [Int] = []
+    /// Each past-end slot's token, keyed to the file count of the list it stands for.
+    private var pastEndSlots: [String: Int] = [:]
     /// Whether some list runs past one page, before this one or after it, so the sweep is more than this page; known once ``settle(_:)`` has run.
     private(set) var spansPages = false
 
@@ -46,13 +50,29 @@ final class SyntacticSweepPaging {
     }
 
     /// The slot for one page of `files`, already in path order, each rendered by `render`; a line whatever indentation is written before it keeps for every line it becomes, and only indentation may be.
-    func page(files: [String], indent: String, render: (String) -> [String]) -> [String] {
+    ///
+    /// `spansTheSweep` is false for a list that is no part of the owners' sweep, the `not code` section's: it may run past a page without the sweep's owner-narrowing advice applying.
+    func page(files: [String], indent: String, spansTheSweep: Bool = true, render: (String) -> [String]) -> [String] {
         let skipped = min(offset, files.count)
         let window = files.dropFirst(skipped).prefix(WhereRenderer.listCap).map(render)
         let token = "\(Self.slotMark)\(nonce)-\(lists.count)"
         slots[token] = lists.count
-        lists.append(List(fileCount: files.count, skipped: skipped, files: Array(window), indent: indent))
+        lists.append(List(fileCount: files.count, skipped: skipped, files: Array(window), indent: indent, spansTheSweep: spansTheSweep))
         return [token]
+    }
+
+    /// Records a list of `count` files paged outside this pager's window from the same offset, and returns the slot for the line it prints where the offset is past its end.
+    func pastEnd(ofOutsideList count: Int) -> String {
+        outsideCounts.append(count)
+        let token = "\(Self.slotMark)\(nonce)-end-\(pastEndSlots.count)"
+        pastEndSlots[token] = count
+        return token
+    }
+
+    /// The line a list of `count` files past its end prints: the files were all on earlier pages where another list of the answer still continues, else the advice to drop the offset.
+    private func pastEndLine(count: Int) -> String {
+        let continues = lists.contains { $0.fileCount > offset } || outsideCounts.contains { $0 > offset }
+        return continues ? "(all \(count) file\(count == 1 ? "" : "s") shown on earlier pages)" : PastEndLine.text(offset: offset, count: count, noun: "files")
     }
 
     /// The files every list shows from the offset: the most whose rows, across every list, stay within the budget, and one at least wherever a list has one.
@@ -74,15 +94,22 @@ final class SyntacticSweepPaging {
 
     /// `lines` with every list's slot filled by its page of the one window, under the markers saying what lies before and after it; the first list cut carries the answer's one continuation.
     func settle(_ lines: [String]) -> [String] {
-        guard !lists.isEmpty else { return lines }
+        guard !lists.isEmpty || !pastEndSlots.isEmpty else { return lines }
         let size = windowSize
         var continued = false
         return lines.flatMap { line -> [String] in
             let prefix = String(line.prefix { $0 == " " })
-            guard let index = slots[String(line.dropFirst(prefix.count))] else { return [line] }
+            let token = String(line.dropFirst(prefix.count))
+            if let count = pastEndSlots[token] {
+                return [prefix + pastEndLine(count: count)]
+            }
+            guard let index = slots[token] else { return [line] }
             let list = lists[index]
             let indent = list.indent
             var rows = list.skipped > 0 ? ["\(indent)(…\(list.skipped) file\(list.skipped == 1 ? "" : "s") skipped)"] : []
+            if PastEndLine.applies(offset: offset, count: list.fileCount) {
+                rows = [indent + pastEndLine(count: list.fileCount)]
+            }
             rows += Array(list.files.prefix(size).joined())
             let hidden = list.fileCount - list.skipped - min(size, list.files.count)
             if hidden > 0 {
@@ -90,7 +117,7 @@ final class SyntacticSweepPaging {
                 rows.append("\(indent)truncated: \(hidden) more file\(hidden == 1 ? "" : "s") — \(onward)")
                 continued = true
             }
-            if hidden > 0 || list.skipped > 0 {
+            if list.spansTheSweep, hidden > 0 || list.skipped > 0 {
                 spansPages = true
             }
             return rows.map { prefix + $0 }
@@ -106,5 +133,7 @@ private extension SyntacticSweepPaging {
         /// The rows of each file from the offset on, up to the file cap.
         let files: [[String]]
         let indent: String
+        /// Whether the list belongs to the owners' sweep, so that running past a page makes the sweep more than one.
+        let spansTheSweep: Bool
     }
 }

@@ -20,12 +20,12 @@ struct WorktreePackageNoteTests {
 
         let output = try await engine.lookup(symbol: "work()", freshness: engine.ensureFresh())
         let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let modeIndex = try #require(lines.firstIndex { $0.hasPrefix("mode:") })
+        let noteIndex = try #require(lines.firstIndex { $0.hasPrefix(DegradedNote.noStoreOpening) })
 
-        #expect(lines.first?.contains("semantic: none (no index store — see note)") == true, "\(output)")
-        let expected = "mode: syntactic (sift help answers); no index store in this worktree; "
+        #expect(lines.first?.contains("semantic: none (no index store in this worktree)") == true, "\(output)")
+        let expected = "no store for callers, overrides or references; sites by written name; "
             + "build: sift run -- swift build --build-tests (sift help worktree-index)"
-        #expect(lines[modeIndex] == expected, "\(output)")
-        #expect(lines[modeIndex + 1].hasPrefix("callers/overrides: NOT ANSWERED"))
+        #expect(lines[noteIndex] == expected, "\(output)")
+        #expect(noteIndex == 1, "the one note stands directly under the header")
     }
 }

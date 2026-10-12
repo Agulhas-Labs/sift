@@ -111,10 +111,11 @@ struct BuildFileScanTests {
     /// Standardizing the root alone strips the `/private` back off while every entry keeps it (it is built by appending onto the *un*-standardized root), so the relative-path computation falls back to the absolute path — and `.claude` in that path then reads as a hidden component, hiding every build file in the worktree from itself.
     @Test
     func aWorktreeUnderPrivateTmpReadsItsOwnBuildFiles() throws {
-        let root = URL(fileURLWithPath: "/private/tmp/sift-scan-\(UUID().uuidString)/.claude/worktrees/agent-1")
+        let scratch = URL(fileURLWithPath: "/private/tmp/sift-scan-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let root = scratch.appendingPathComponent(".claude/worktrees/agent-1")
         try TestSources.write("name: App\ntargets: {}\n", to: "Apps/App.yml", in: root)
         try TestSources.write("// swift-tools-version: 6.2\n", to: "Package.swift", in: root)
-        defer { try? FileManager.default.removeItem(at: root) }
 
         let scan = BuildFileScan.run(repoRoot: root, config: SiftConfig())
 

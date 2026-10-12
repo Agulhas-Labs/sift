@@ -114,7 +114,8 @@ struct SearchNamePatternTests {
     func echoSaysHowEachPatternWasRead() throws {
         #expect(try Self.echo("name:open|closed kind:func") == "search name:open|closed kind:func — name: any of open, closed")
         #expect(try Self.echo("!name:/^re/") == "search !name:/^re/ — !name: a case-insensitive regex")
-        #expect(try Self.echo("name:||") == "search name:||")
+        // A lone operator name is read as sent, so the answer does not echo it.
+        #expect(try StructuralQuery("name:||").echo == nil)
     }
 
     /// Neither pattern form names one declaration, so neither is a name to probe a root by.

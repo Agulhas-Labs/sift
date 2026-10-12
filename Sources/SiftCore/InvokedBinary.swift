@@ -15,7 +15,7 @@ public extension InvokedBinary {
     /// A match on PATH is the path as found there, a link included: Homebrew's link on PATH outlives an upgrade, where the Cellar copy it points into does not.
     static func path(invokedAs argument0: String, environment: [String: String], executable: String?) -> String? {
         if argument0.contains("/") {
-            return URL(fileURLWithPath: argument0).standardizedFileURL.path
+            return collapsingDots(URL(fileURLWithPath: argument0).pathComponents)
         }
         if let found = onPath(argument0, environment: environment) {
             return found
@@ -33,6 +33,21 @@ public extension InvokedBinary {
         return resolved(found) == resolved(executable) ? found : executable
     }
 
+    /// An absolute path's components joined with `.` and `..` collapsed.
+    ///
+    /// URL standardizing is not used: it drops a leading `/private`, which would register a spelling the caller never used.
+    private static func collapsingDots(_ components: [String]) -> String {
+        var kept: [String] = []
+        for component in components.dropFirst() {
+            switch component {
+            case ".", "/": continue
+            case "..": _ = kept.popLast()
+            default: kept.append(component)
+            }
+        }
+        return "/" + kept.joined(separator: "/")
+    }
+
     private static func resolved(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().path
     }
@@ -48,12 +63,23 @@ public extension InvokedBinary {
         }
     }
 
-    /// The first executable file named `name`, never a directory, in an absolute PATH entry, as spelled there: a link is followed to judge what it names, and never replaced by its target.
-    static func onPath(_ name: String, environment: [String: String]) -> String? {
-        for directory in (environment["PATH"] ?? "").split(separator: ":").map(String.init) {
-            // Only absolute entries: a relative one resolves against wherever the shell happened to be.
-            guard directory.hasPrefix("/") else { continue }
-            let candidate = URL(fileURLWithPath: directory).appendingPathComponent(name).path
+    /// The first executable file named `name`, never a directory, on the PATH, as spelled there: a link is followed to judge what it names, and never replaced by its target.
+    ///
+    /// Only absolute entries unless `currentDirectory` is given: a caller that runs what it finds must not run a file planted in the directory it was started from.
+    ///
+    /// With `currentDirectory`, a relative entry, and an empty one wherever it stands (which means the current directory), is taken against it, as the shell takes it, for a caller that only judges which file a bare name names.
+    static func onPath(_ name: String, environment: [String: String], currentDirectory: String? = nil) -> String? {
+        guard let path = environment["PATH"] else { return nil }
+        for entry in path.split(separator: ":", omittingEmptySubsequences: false).map(String.init) {
+            let directory: URL
+            if entry.hasPrefix("/") {
+                directory = URL(fileURLWithPath: entry)
+            } else if let currentDirectory {
+                directory = URL(fileURLWithPath: entry, relativeTo: URL(fileURLWithPath: currentDirectory, isDirectory: true))
+            } else {
+                continue
+            }
+            let candidate = directory.appendingPathComponent(name).standardizedFileURL.path
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: candidate, isDirectory: &isDirectory), !isDirectory.boolValue else { continue }
             if FileManager.default.isExecutableFile(atPath: candidate) {

@@ -62,6 +62,11 @@ public enum SwiftLookup: Sendable, Equatable, Codable {
     ///
     /// Letting the line run is right, since a hook cannot run half a line, but the agent chose to batch the Swift read with other reads when the index call could have gone on the line in its place, so the share counts it as the voluntary bypass it is. `file` and `missed` are the read's, as ``cold(file:missed:)`` carries them, so a batched search still names the call that would have answered it.
     case batched(file: String?, missed: MissedCall? = nil)
+
+    /// A cold lookup the hook let run while its answering was backing off, or after it ran out of time: still a miss, counted in `cold`, and named for the cause under it.
+    ///
+    /// `file` and `missed` are the lookup's, as ``cold(file:missed:)`` carries them.
+    case stoodAside(file: String?, missed: MissedCall? = nil, why: StoodAside)
 }
 
 public extension SwiftLookup {
@@ -72,6 +77,23 @@ public extension SwiftLookup {
             return .batched(file: file, missed: missed)
         }
         return TextSearch.Rule(loggedAs: why).map { .withheldOnWorth(rule: $0) } ?? self
+    }
+
+    /// This lookup as the log scores the call `id`: by the rule it was let through under where it names one, else by the cause the hook stood aside for, else as it is.
+    func scored(byLog id: String, letThrough: [String: InPlaceAnswerer.Withholding], stoodAside: [String: StoodAside]) -> SwiftLookup {
+        if let why = letThrough[id] {
+            let scored = scored(letThroughAs: why)
+            if scored != self {
+                return scored
+            }
+        }
+        return stoodAside[id].map { scored(stoodAsideAs: $0) } ?? self
+    }
+
+    /// This lookup as scored where the hook's suppression log records standing aside from its call: a cold one keeps its place in `cold` and gains the cause; any other is left as it is.
+    func scored(stoodAsideAs why: StoodAside) -> SwiftLookup {
+        guard case let .cold(file, missed) = self else { return self }
+        return .stoodAside(file: file, missed: missed, why: why)
     }
 
     /// The lookup a withheld search is: each half of ``TextSearch/Withholding`` and never the other, and for the first half the cause the rule already named.

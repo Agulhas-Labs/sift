@@ -19,8 +19,10 @@ struct ReportCommand: ParsableCommand {
             Defaults to the last 7 days, matching `audit`: a trend and a repeated-target list need more than one day. \
             Calls come from the per-user log and the index share from this machine's transcripts, so both cover every \
             repository unless you narrow them with --root, which scopes a transcript by the directory it was recorded \
-            in. The share is a floor, not a total. The saving is priced against the whole file as its baseline (a \
-            located range counts against the file it was cut from), so it leans high. \(TokenEstimate.notMeasured)
+            in. The share is a floor, not a total. A saving is priced only where its counterfactual was observed: a \
+            read the advice hook intercepted and answered in place, the file or window asked for less the answer \
+            served. Every call made by choice, and every grep the hook answered, is counted and never priced. \
+            \(TokenEstimate.notMeasured)
             """
         )
     }
@@ -62,7 +64,31 @@ struct ReportCommand: ParsableCommand {
     @Option(name: .customLong("tally-cache"), help: .hidden)
     var tallyCache: String?
 
+    @Flag(name: .customLong("deploys"), help: "Instead of the page, list each install of the bundle's binary, one line each, newest last: time, commit, version, tree, size. Read from ~/.sift/deploys.jsonl, which install.sh appends to.")
+    var deploys = false
+
+    /// `--deploys` lists the installs in place of the page, so an option that shapes the page has nothing to act on.
+    ///
+    /// Compared against each option's default: `--since 7d` spelled out cannot be told from leaving it off.
+    func validate() throws {
+        guard deploys else { return }
+        let given: [(String, Bool)] = [
+            ("--since", since != "7d"), ("--root", root != nil), ("--out", out != nil), ("--file", file != nil),
+            ("--run-file", runFile != nil), ("--projects", projects != nil), ("--roots", roots != nil),
+            ("--include-scratch", includeScratch), ("--no-open", noOpen), ("--progress", progress),
+            ("--tally-cache", tallyCache != nil),
+        ]
+        let clashing = given.filter(\.1).map(\.0)
+        guard clashing.isEmpty else {
+            throw ValidationError("--deploys lists the installs in place of the page and takes no other option: drop \(clashing.joined(separator: ", ")).")
+        }
+    }
+
     func run() throws {
+        if deploys {
+            StandardStreams.emit(DeployLog.render(fileURL: DeployLog.standardFileURL()))
+            return
+        }
         let home = SiftPaths.userHome()
         // Validated here so a mistyped window is refused before any transcript is read, and in the same
         // words `usage` and `audit` refuse it — one vocabulary, stated once (UsageWindow).

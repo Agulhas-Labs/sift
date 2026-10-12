@@ -21,7 +21,7 @@ public struct TranscriptAudit {
     ///
     /// `timeZone` is the zone the findings' days resolve in — the caller's, matching how the `--since`/`--until` window resolves. Injectable for the same reason `UsageWindow.start` takes one: a test of "the day is local" must be able to stand on either side of a midnight without waiting for one.
     ///
-    /// `suppressionLog` is the hook's own record of what it withheld, read for the calls it let run on worth — `notSmaller` and `linesNotShown` windows and `notWorthTheTurn` whole reads — which are not worth answering rather than misses, and for the `otherStatementsRun` lines it let run whole, which are batched misses. Passed in, and read not at all where it is `nil`, for the reason `roots` is.
+    /// `suppressionLog` is the hook's own record of what it withheld, read for the calls it let run on worth — `notSmaller` and `linesNotShown` windows and `notWorthTheTurn` whole reads, a window over most of a file and a narrower `Read` window among them — which are not worth answering rather than misses, and for the `otherStatementsRun` lines it let run whole, which are batched misses. Passed in, and read not at all where it is `nil`, for the reason `roots` is.
     ///
     /// `root` narrows the audit to one repository: a session or subagent transcript counts only where its own recorded `cwd` is that directory or lies beneath it, the same test `usage --root` and `report --root` apply to a logged call's root.
     ///
@@ -44,6 +44,7 @@ public struct TranscriptAudit {
         summary: Bool = false,
         shareOnly: Bool = false,
         usageLog: URL? = nil,
+        excludingScratch: Bool = false,
         progress: @escaping (String) -> Void = { _ in }
     ) -> String {
         let sweep = sweep(
@@ -52,11 +53,12 @@ public struct TranscriptAudit {
             until: until,
             timeZone: timeZone,
             root: root,
+            excludingScratch: excludingScratch,
             suppressionLog: suppressionLog,
             progress: progress
         )
-        let saving = usageLog.flatMap { AuditLoggedSaving.line($0, since: since, until: until, root: root, transcript: transcript) }
-        return rendered(sweep, directory: projectsDirectory, since: since, until: until, timeZone: timeZone, roots: roots, redactor: redactor, root: root, summary: summary, shareOnly: shareOnly, saving: saving)
+        let saving = usageLog.flatMap { AuditLoggedSaving.line($0, since: since, until: until, root: root, transcript: transcript, includeScratch: !excludingScratch) }
+        return sweep.noted(rendered(sweep, directory: projectsDirectory, since: since, until: until, timeZone: timeZone, roots: roots, redactor: redactor, root: root, summary: summary, shareOnly: shareOnly, saving: saving))
     }
 
     /// The audit's text for a sweep already made: what `render` prints, and what `renderWithTallies` prints beside the counts it hands on.
@@ -97,7 +99,8 @@ public struct TranscriptAudit {
             redactor: redactor,
             summary: summary,
             shareOnly: shareOnly,
-            saving: saving
+            saving: saving,
+            overruns: sweep.overruns
         )
     }
 
@@ -109,7 +112,8 @@ public struct TranscriptAudit {
         redactor: Redactor?,
         summary: Bool = false,
         shareOnly: Bool = false,
-        saving: String? = nil
+        saving: String? = nil,
+        overruns: Int = 0
     ) -> String {
         let totals = findings.totals
         let everything = totals.indexed + totals.guided + totals.readWholeAfterDigest
@@ -119,7 +123,10 @@ public struct TranscriptAudit {
             return shareLines(totals).joined(separator: "\n")
         }
         var lines = [
-            "audit — \(findings.sessions) session\(findings.sessions == 1 ? "" : "s")\(window), \(everything) Swift lookup\(everything == 1 ? "" : "s")",
+            // Lookups by every route, and how many of them sift served, so the figure `usage` counts (sift's own
+            // answers, from its log) is named here in the same words rather than left to look like this one.
+            "audit — \(SessionCount(sessions: findings.sessions, subagents: findings.subagents).spelled)\(window), "
+                + "\(everything) Swift lookup\(everything == 1 ? "" : "s") by any route, \(totals.indexed) served by sift",
             "scanned: \(redactor == nil ? directory.path : Redactor.tilded(directory.path))",
             "live: name and names judge each name against each index as this run first opened it, held for the run; "
                 + "below floor, path and unreplayable read the disk as each is asked, and replayed hook answers read the indexes live — "
@@ -146,6 +153,7 @@ public struct TranscriptAudit {
         }
         lines.append("  cold        \(pad(totals.cold))  went around the index  ← the misses")
         lines.append("    batched   \(pad(totals.batched))  of those, a Swift read on a line the hook let run whole for its other statements — put the sift call on the line instead")
+        lines.append(contentsOf: totals.stoodAside.auditLines(overruns: overruns, pad: pad))
         lines.append("")
         lines.append("  guided      \(pad(totals.guided))  ranged reads an index call had located — the loop working")
         lines.append("  read whole  \(pad(totals.readWholeAfterDigest))  read whole after its digest — the read a digest exists to save, paid anyway")
@@ -154,8 +162,8 @@ public struct TranscriptAudit {
         if let saving {
             lines.append(saving)
         }
-        lines.append("    baseline  a saving is the source a digest replaced less the bytes it served, at \(TokenEstimate.bytesPerToken) bytes a token, "
-            + TokenEstimate.baseline)
+        lines.append("    baseline  a saving is priced only on a read the advice hook intercepted and answered in place, at \(TokenEstimate.bytesPerToken) "
+            + "bytes a token: \(TokenEstimate.baseline); a call made by choice or an intercepted grep is counted, never priced")
         if let readAnyway = TokenEstimate.readAnyway(totals.readWholeAfterDigest) {
             lines.append("    gross     \(readAnyway)")
         }
@@ -322,6 +330,7 @@ public struct TranscriptAudit {
         advance.began(windowed.count)
 
         let home = SiftPaths.accountHome.path
+        let withheld = suppressionLog.map { SuppressionLog.withheldEntries(in: $0, prefix: suppressionLogSize) } ?? []
         // One memo for the whole run: the same file is first-touched in every transcript that opened it.
         let options = ScanOptions(
             since: since,
@@ -332,63 +341,58 @@ public struct TranscriptAudit {
             timeZone: timeZone,
             datesEveryLookup: datesEveryLookup,
             loggedLetThrough: suppressionLog.map { SuppressionLog.callsLetThrough(in: $0, prefix: suppressionLogSize) } ?? [:],
+            stoodAside: SuppressionLog.callsStoodAside(from: withheld),
             answeredCalls: suppressionLog.map { AnsweredLog.calls(in: AnsweredLog.fileURL(besideSuppressionLog: $0)) } ?? [],
             keepsWindows: keepsWindows
         )
-        /// A scan the cache holds for this file, window and build stands in for reading it; one read is stored back.
-        func recalledOrScanned(_ url: URL, label: String, session: String, isSubagent: Bool) -> Scan {
-            let read = { scan(url, label: label, session: session, isSubagent: isSubagent, options: options, snapshot: snapshot) }
-            return cache?.recalled(Scan(label: label, session: session, transcript: url.path, isSubagent: isSubagent), in: snapshot, since: since, reading: read) ?? read()
-        }
-        var scans: [Scan] = []
+        // Every transcript to scan, in the order the sweep reports them: each in-scope session, then its subagents.
+        var jobs: [Scan] = []
+        var jobSession: [Int] = []
+        var ownJob: [Int?] = Array(repeating: nil, count: windowed.count)
         var scoped: [URL] = []
+        var scratchSessions = 0
         for (index, session) in windowed.enumerated() {
-            advance.reached(index, of: windowed.count)
             let key = session.path
             // Each subagent is scoped by its own `cwd`, never by its parent's: a session started outside the root
             // can dispatch an agent into it, and that agent's lookups are that root's as much as any.
             let agents = snapshot.subagents(of: session).filter { inScope($0, root: root, excludingScratch: excludingScratch) }
-            // The session's own context answers for its subagents as well as for itself: their MCP tools come from
-            // the session's servers, so a session that never held sift's explains why none of its agents did. Read
-            // only where it is in scope — which is every session `render` sweeps, the one caller that names causes;
-            // outside it, its subagents are explained by their own transcripts alone.
-            var own: Scan?
+            if excludingScratch, !inScope(session, root: root, excludingScratch: true), inScope(session, root: root) {
+                scratchSessions += 1
+            }
             if inScope(session, root: root, excludingScratch: excludingScratch) {
                 let named = SubagentFile.identity(of: session, home: home)
-                var scanned = recalledOrScanned(session, label: named?.label ?? label(for: session, home: home), session: named?.session ?? key, isSubagent: named != nil)
-                scanned.sessionHeldNoIndexTools = scanned.heldNoIndexTools
-                scanned.sessionBinaryMissing = scanned.binaryMissingAtStart
-                scans.append(scanned)
-                own = scanned
+                ownJob[index] = jobs.count
+                jobs.append(Scan(label: named?.label ?? label(for: session, home: home), session: named?.session ?? key, transcript: key, isSubagent: named != nil))
+                jobSession.append(index)
             }
             for agent in agents {
-                var agentScan = recalledOrScanned(agent, label: label(for: session, home: home, agent: agent), session: key, isSubagent: true)
-                agentScan.sessionHeldNoIndexTools = own?.heldNoIndexTools ?? false
-                agentScan.sessionBinaryMissing = own?.binaryMissingAtStart ?? false
-                scans.append(agentScan)
+                jobs.append(Scan(label: label(for: session, home: home, agent: agent), session: key, transcript: agent.path, isSubagent: true))
+                jobSession.append(index)
             }
-            if own != nil || !agents.isEmpty {
+            if ownJob[index] != nil || !agents.isEmpty {
                 scoped.append(session)
             }
         }
+
+        let scans = SweepReads(jobs: jobs, jobSession: jobSession, ownJob: ownJob).scans(options: options, snapshot: snapshot, since: since, cache: cache, advance: advance)
         advance.finished(windowed.count)
-        return Sweep(transcripts: scoped, scans: scans, windowed: windowed)
+        return Sweep(transcripts: scoped, scans: scans, windowed: windowed, overruns: overruns(in: withheld, since: since, until: until, root: root, scans: scans, snapshot: snapshot), scratchSessions: scratchSessions)
     }
 }
 
 extension TranscriptAudit {
     static func scan(_ url: URL, label: String, session: String, isSubagent: Bool, options: ScanOptions, snapshot: TranscriptSnapshot) -> Scan {
         var scan = Scan(label: label, session: session, transcript: url.path, isSubagent: isSubagent)
-        guard let data = snapshot.contents(of: url) else { return scan }
+        guard let lines = snapshot.lines(of: url) else { return scan }
         scan.wasRead = true
         let (since, until, timeZone) = (options.since, options.until, options.timeZone)
         var state = TranscriptScanState()
         state.windowLog = options.keepsWindows ? ScanWindowLog() : nil
         var followUp = DigestFollowUpScan(since: since, until: until, day: { day(of: $0, timeZone: timeZone) })
-        for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
-            followUp.consume(line: Data(line))
+        for line in lines {
+            followUp.consume(line: line)
             let events = TranscriptScan.events(
-                line: Data(line),
+                line: line,
                 state: &state,
                 since: since,
                 until: until,
@@ -396,12 +400,13 @@ extension TranscriptAudit {
                 couldAnswer: options.couldAnswer,
                 memberExists: options.memberExists,
                 loggedLetThrough: options.loggedLetThrough,
+                stoodAside: options.stoodAside,
                 answeredCalls: options.answeredCalls
             )
             // The day is read only when a finding on this line will carry it — re-parsing every line
             // for its timestamp would double the JSON work over transcripts that reach 60 MB.
             let wantsDay = options.datesEveryLookup ? !events.isEmpty : events.contains(where: isDated)
-            let day = wantsDay ? day(ofLine: Data(line), timeZone: timeZone) : nil
+            let day = wantsDay ? day(ofLine: line, timeZone: timeZone) : nil
             for event in events {
                 scan.tally.fold(event)
                 if options.datesEveryLookup, let day {
@@ -510,7 +515,7 @@ extension TranscriptAudit {
     /// A file read cold once is ordinary. One read cold in five separate contexts is a type that keeps being rediscovered from source, which is exactly what a digest is for.
     ///
     /// Counted by full path and only then shortened for display. Basenames repeat across repositories — `Package.swift`, `Container.swift`, `Exports.swift` — and counting those together would invent a rediscovery out of two files that merely share a name, in the one list meant to be acted on.
-    private static func repeatedColdFiles(in scans: [Scan]) -> [CountedEntry] {
+    static func repeatedColdFiles(in scans: [Scan]) -> [CountedEntry] {
         var counts: [String: (count: Int, last: String?)] = [:]
         for scan in scans {
             var seen: Set<String> = []
@@ -523,9 +528,11 @@ extension TranscriptAudit {
                 counts[entry.path] = slot
             }
         }
+        // Two paths can share a file name, so the whole path settles a tie the name leaves, as in the list of files read whole.
         return counts.filter { $0.value.count > 1 }
-            .map { CountedEntry(name: name($0.key), count: $0.value.count, last: $0.value.last) }
-            .sorted { ($0.count, $1.name) > ($1.count, $0.name) }
+            .map { (path: $0.key, entry: CountedEntry(name: name($0.key), count: $0.value.count, last: $0.value.last)) }
+            .sorted { ($0.entry.count, $1.entry.name, $1.path) > ($1.entry.count, $0.entry.name, $0.path) }
+            .map(\.entry)
     }
 
     private static func name(_ path: String) -> String {
@@ -533,7 +540,7 @@ extension TranscriptAudit {
     }
 
     /// Occurrence counts by path, most first, displayed by name, each with the last day one happened.
-    private static func countedEntries(_ entries: [(path: String, day: String?)]) -> [CountedEntry] {
+    static func countedEntries(_ entries: [(path: String, day: String?)]) -> [CountedEntry] {
         var counts: [String: (count: Int, last: String?)] = [:]
         for entry in entries {
             var slot = counts[entry.path] ?? (0, nil)
@@ -541,8 +548,11 @@ extension TranscriptAudit {
             slot.last = latest(slot.last, entry.day)
             counts[entry.path] = slot
         }
-        return counts.map { CountedEntry(name: name($0.key), count: $0.value.count, last: $0.value.last) }
-            .sorted { ($0.count, $1.name) > ($1.count, $0.name) }
+        // Two paths can share a file name, so the whole path settles a tie the name leaves: the dictionary's order
+        // differs from run to run, and the list is cut short after it is sorted.
+        return counts.map { (path: $0.key, entry: CountedEntry(name: name($0.key), count: $0.value.count, last: $0.value.last)) }
+            .sorted { ($0.entry.count, $1.entry.name, $1.path) > ($1.entry.count, $0.entry.name, $0.path) }
+            .map(\.entry)
     }
 
     /// The later of two days — `yyyy-MM-dd` orders correctly as text — treating unknown as earliest.
@@ -567,7 +577,7 @@ extension TranscriptAudit {
     /// Whether an event is one the report will date — the findings, not the counts.
     private static func isDated(_ event: TranscriptEvent) -> Bool {
         switch event {
-        case .lookup(.cold), .lookup(.batched), .lookup(.readWholeAfterDigest), .indexFailure, .refusalRoundTrip, .refusalFollowUp: true
+        case .lookup(.cold), .lookup(.batched), .lookup(.stoodAside), .lookup(.readWholeAfterDigest), .indexFailure, .refusalRoundTrip, .refusalFollowUp: true
         default: false
         }
     }
@@ -624,6 +634,10 @@ extension TranscriptAudit {
             // A miss like any cold one, so the context's list of misses names it beside the rest.
             apply(.lookup(.cold(file: file, missed: missed)), day: day, to: &scan)
         case let .lookupRetracted(.batched(file, missed)):
+            apply(.lookupRetracted(.cold(file: file, missed: missed)), day: day, to: &scan)
+        case let .lookup(.stoodAside(file, missed, _)):
+            apply(.lookup(.cold(file: file, missed: missed)), day: day, to: &scan)
+        case let .lookupRetracted(.stoodAside(file, missed, _)):
             apply(.lookupRetracted(.cold(file: file, missed: missed)), day: day, to: &scan)
         case let .lookup(.readWholeAfterDigest(file)):
             scan.readWholeFiles.append((path: file, day: day))
@@ -746,7 +760,7 @@ extension TranscriptAudit {
             "    larger    \(pad(rules.notSmaller))  of those, a read the hook let run, its answer no smaller than what it prints (the hook's logged verdict)",
             "    unshown   \(pad(rules.linesNotShown))  of those, a window the hook let run, its answer not showing the lines asked for (the hook's logged verdict)",
             "    files     \(pad(rules.filesOnly))  of those, a search printing only the names of the files it matches",
-            "    turn      \(pad(rules.notWorthTheTurn))  of those, a whole read of a Swift file the hook let run, its digest sparing less than the turn after it costs (the hook's logged verdict)",
+            "    turn      \(pad(rules.notWorthTheTurn))  of those, a whole read of a Swift file (or a window over most of it) the hook let run, its digest sparing less than the turn after it costs, or a `Read` window, its answer sparing less than the expected re-run (the hook's logged verdict)",
             "    named     \(pad(rules.namedFiles))  of those, a name search of the Swift files it names, which the hook lets run rather than answer with a `where` of the whole tree",
         ]
     }
@@ -918,6 +932,7 @@ public extension TranscriptAudit {
         summary: Bool = false,
         usageLog: URL? = nil,
         transcript: String? = nil,
+        excludingScratch: Bool = false,
         progress: @escaping (String) -> Void = { _ in }
     ) -> (text: String, tallies: AuditTallies) {
         let sweep = sweep(
@@ -927,11 +942,12 @@ public extension TranscriptAudit {
             timeZone: timeZone,
             datesEveryLookup: true,
             root: root,
+            excludingScratch: excludingScratch,
             suppressionLog: suppressionLog,
             progress: progress
         )
-        let saving = usageLog.flatMap { AuditLoggedSaving.line($0, since: since, until: until, root: root, transcript: transcript) }
-        let text = rendered(sweep, directory: projectsDirectory, since: since, until: until, timeZone: timeZone, roots: roots, redactor: redactor, root: root, summary: summary, saving: saving)
+        let saving = usageLog.flatMap { AuditLoggedSaving.line($0, since: since, until: until, root: root, transcript: transcript, includeScratch: !excludingScratch) }
+        let text = sweep.noted(rendered(sweep, directory: projectsDirectory, since: since, until: until, timeZone: timeZone, roots: roots, redactor: redactor, root: root, summary: summary, saving: saving))
         return (text, AuditTallies(sweep.scans))
     }
 
@@ -953,22 +969,5 @@ public extension TranscriptAudit {
     struct DayTally: Sendable, Equatable {
         public let day: String
         public let tally: TranscriptTally
-    }
-}
-
-// MARK: - Root scope
-
-extension TranscriptAudit {
-    /// Whether `url`'s recorded working directory places it inside `root` — every transcript when `root` is `nil`, and otherwise only one whose `cwd` is `root` itself or a directory beneath it, canonically compared so a differently-cased or symlinked spelling still matches (the same rule `LogScope` compares a logged call's `root` field by).
-    ///
-    /// The scratch exclusion additionally drops a transcript whose recorded `cwd` is a scratch root (``ScratchRoot``), so the report's share is real sessions only, as its call counts are; a transcript recording no `cwd` is kept.
-    static func inScope(_ url: URL, root: String?, excludingScratch: Bool = false) -> Bool {
-        let recordedCwd = (root != nil || excludingScratch) ? TranscriptWorkingDirectory.of(transcriptAt: url) : nil
-        if excludingScratch, let recordedCwd, ScratchRoot.contains(recordedCwd) {
-            return false
-        }
-        guard let root else { return true }
-        guard let recordedCwd else { return false }
-        return CanonicalPath.of(recordedCwd).isWithin(root)
     }
 }

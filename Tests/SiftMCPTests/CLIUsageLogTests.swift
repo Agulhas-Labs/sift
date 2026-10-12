@@ -190,6 +190,10 @@ extension CLIUsageLogTests {
         var environment = ProcessInfo.processInfo.environment
         environment["CFFIXED_USER_HOME"] = home.path
         environment["SIFT_USAGE_LOG"] = usageLog.path
+        // The slip directory is looked for under the home chosen here, so no inherited override may move it.
+        environment["SIFT_HOME"] = nil
+        environment["SIFT_ADVICE_DIR"] = home.appendingPathComponent("advice").path
+        environment["CLAUDE_CONFIG_DIR"] = home.appendingPathComponent("claude").path
         // Assigning nil removes the key: the unsessioned case has to be a process the harness gave no
         // session, not one given an empty string, since those are two different claims about the field.
         environment["CLAUDE_CODE_SESSION_ID"] = session

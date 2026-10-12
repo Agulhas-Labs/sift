@@ -53,7 +53,7 @@ struct UsageLogTests {
     /// `SIFT_USAGE_LOG` points a server's writes at another file — how a test that makes real tool calls leaves the record a person reads alone — and an empty value is no value.
     @Test
     func theServersUsageLogCanBePointedElsewhere() {
-        let standard = SiftPaths.home.appendingPathComponent("usage.jsonl")
+        let standard = SiftPaths.home(environment: [:]).appendingPathComponent("usage.jsonl")
 
         #expect(UsageLog.standardFileURL(environment: ["SIFT_USAGE_LOG": "/tmp/sift-usage-elsewhere.jsonl"]).path == "/tmp/sift-usage-elsewhere.jsonl")
         #expect(UsageLog.standardFileURL(environment: [:]) == standard)

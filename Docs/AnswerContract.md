@@ -65,6 +65,21 @@ build)` where the file changed, then one row per line, ascending — `    :<line
 <line>, …[<mark>]` per file under `used by`. A protocol's `used by` verdict line inserts `, <k> of them the
 conformance(s) listed below` after its reference and file counts, and its rows leave those lines out.
 
+A plain `where <Type>` lists no rows under its `used by` verdict line, which ends `— where --refs <Type> lists
+them` (the qualified name where the bare query has several owners); the rows above and below are those of
+`where --refs` and of the hook's in-place answer. `where --refs` then ends with one `not code` section, once
+per answer, after every declaration's sections. Its header is `not code, by written name — <n> DocC-link
+line(s), <n> doc-comment line(s), <n> comment line(s), <n> string-literal line(s), <n> Markdown line(s), <n>
+file name(s)[ (<k> a lead)][; <k> of these lines are also code lines listed above]:`, kinds with none left out,
+and it says `over the working tree, never stale` and `may include same-named symbols'` where several owners
+or a qualified query make it ambiguous. A file's row is `  <path> (<n>): DocC <line>, … · doc <line>, … ·
+comment <line>, … · string <line>, …` (a Markdown file's row lists bare line numbers), each kind capped at the
+store's per-file line cap and ending `+<N> more`; the `file names:` row, on offset 0 only, lists the matching
+paths. Nothing found is one line, `not code, by written name — none in the <N> Swift and <M> Markdown files
+read; storyboards, xibs, plists, string catalogs and project files not read`. Under `--at` the section is the
+one line `not code: not read at a revision`. A list already past its end while another continues prints `(all
+<N> files shown on earlier pages)`. Header counts cover the whole tree on every page.
+
 A protocol's conformers, with a store, are one block headed `conformers of <Protocol> (<N>: <d> direct, <i>
 indirect[, <k> inherited][, <k> through a typealias][, <k> resolved to another declaration][, <k> in a deleted file][, <k> in a changed
 file without its clause] — direct is every inheritance clause in this tree's source that writes the name, so a grep
@@ -153,3 +168,74 @@ containment; `sift help run-output` has the tags and when each applies.)
   `search`, `strings`: stored rows carry the revision hash (`head:`) as provenance, a live read the tree
   it names. A report over time (`usage`, `flakes`, `audit`, `report`) dates what it reports on, because
   the span is its subject.
+
+## Amendment: one header line, standing caveats said once (in force)
+
+**In force since 0.1.4:** the header-line part: §1's last sentence below (a header field written only where
+it can vary, so `digest` carries no `semantic:`), §1's live header (`source: live`), and §3's echo rule for
+`search`, `where` and `strings`; and `where`'s degraded notes: §1's last paragraph (*degraded notes*), with `where`
+carrying one note under its header in place of the `mode:` line, the `NOT ANSWERED` notice and the
+`references:` lines, and a `stores:` note only where the stores have something to say; and the standing
+caveats: §1's added paragraph, §3's `where` sections and §6's missing sites, said once per session in the
+primer, the `where` and `search` tool descriptions and `sift help answers`; and §3's `where`'s `references to`
+(the callers/references fold). Where it differs from the sections above, the amendment is the contract.
+The design and its measurements are in [Design.md](Design.md), *Proposed: one header line, standing caveats
+said once per session*.
+
+**§1, added after "goes under the header, never above it":** What is true of every answer of a kind — a
+boundary of the evidence, a gloss on how a count was split, the limits of matching by written name — is
+said once per session, where the tool can say it before the first answer (a session-start primer, a tool
+description), and not on each answer. An answer repeats such a caveat only where it is true of that answer
+in particular: it was matched by written name because the stronger source was missing, it is stale or
+partial, it was cut short. Notes that are true of this answer share one line under the header where they
+can. A field of the header is written where it can vary for the verb; one that is the same on every answer
+of a verb (sift's `semantic: syntactic-only` on `digest`) is said in the session-level text instead.
+
+**§1, the live header:** an answer read live names the artifact and says so in one field (sift:
+`source: live`); that nothing stored can go stale is said at session level.
+
+**§3, `search`'s echo:** the line under the header echoes the query only where the parse read it as
+something other than what was sent — an alternation, a pattern, a bare word read as `name:`, a regex read
+as plain words — with the readings as today. A query read as sent is not echoed. `where` and `strings` do
+not echo the query.
+
+**§3, `where`'s sections:** the `not code` section's header drops `over the working tree, never stale`
+(said at session level) and keeps `may include same-named symbols'` where several owners or a qualified
+query make it ambiguous. A type's `used by` line drops `split on the XCTest or Testing import, never the
+path` and `which is not use`, keeping the tally and the count; a name-matched section's count line says
+`by written name` in place of the heading line above it.
+
+**§3, `where`'s `references to`:** a function's `--refs` answer lists under `references to` only the sites not
+already shown under `callers of`, headed "N in M files, K of them the call sites above". A site is shown once,
+and every page of a paged sweep shows each site once, above or under `references to`.
+
+**§6, missing sites:** the caveats on written-name matches are said at session level and are part of the
+contract's "nothing silently under-reported": a written-name list may miss protocol, closure and
+unfolded-typealias uses and unapplied instance-method references, and an empty one is not proof of "unused"; property and case uses by name at runtime
+are not seen. A type's answer from no store keeps "an empty list is not unused" on the answer itself.
+
+**§1, degraded notes:** a note saying a source was withheld names what was withheld (references; for a
+subscript, callers too), and says "by written name" only where a written-name list follows.
+
+## Amendment: per-file freshness (in force)
+
+**In force since 0.1.4.** The design, its costs and its examples are in [Design.md](Design.md), *Proposed:
+per-file freshness*. Where it differs from the sections above, the amendment is the contract.
+
+**§1, what fresh means:** a file is fresh against its own last build, the newest build that recorded it,
+never against the newest build of anything. A later build that did not compile a file leaves it measured
+against the build that did, so a partial build never makes an edited file read as current.
+
+**§1, what a stale header counts:** the distinct files the answer cites that differ from their build, by
+kind, in the order changed, deleted, new, kinds with none left out, and the file's path when it counts
+exactly one: `stale since last build (1 file changed: <path>)`, `(3 files changed)`, `(4 files: 1 changed,
+1 deleted, 2 new)`. A file the answer stands on is counted whatever cites it: the declaration's own, a
+caller's, a conformer's, one listed by written name. A file without a unit is not stale when no build of a
+store's project compiles its module (another project in the tree, a module the manifest declares no target
+for), or when a build ran after its last change and left it out; it is declared as before (§6).
+
+**§5, a freshness ambiguity is refused, not guessed:** a declaration in a changed or new file is refused,
+with the build that makes the same request answer, naming what the last build left out where it did. A
+row from a changed or deleted file is listed only under its mark, after the rows that stand, and never
+read as current; a definition recorded only in a deleted file never resolves a declaration the tree holds.
+

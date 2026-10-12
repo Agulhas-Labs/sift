@@ -108,7 +108,7 @@ public extension RunLog {
 
     /// Drops all but the newest ``keptLogs`` *completed* transcripts, matching only names this type wrote under `prefix`.
     ///
-    /// Ordered by when each file was created rather than by its name: the name's stamp is whole seconds, which is legible but coarse enough that a repository built several times in one second would prune by the disambiguating token — that is, arbitrarily, and possibly dropping a transcript newer than one it kept. The name is the tiebreak for two files a filesystem timestamp cannot separate.
+    /// Ordered by when each run finished (``completed(_:)``), never by when it started: a slow run published after four quick ones began and ended during it is the newest transcript there, and ordered by its start it would be the oldest and go at the very next open, under a line saying it lives for four more runs. Not by the name either: its stamp is whole seconds and a start time besides. The name is the tiebreak for two files a filesystem timestamp cannot separate.
     ///
     /// A run still in flight is a `.part` and is invisible to the count — that is the whole point of the extension. Room is therefore *made* for the caller's own transcript rather than it being seen: the newest `keptLogs - 1` completed logs survive here, and the close that publishes this one makes the fifth. Counting it where it stands would leave six on disk in the steady state, which is a bound but not the one every doc states.
     ///
@@ -119,8 +119,8 @@ public extension RunLog {
         }
         let logs = names
             .filter { $0.hasPrefix(prefix) && $0.hasSuffix(fileSuffix) }
-            .map { (name: $0, created: created(directory.appendingPathComponent($0))) }
-            .sorted { ($0.created, $0.name) > ($1.created, $1.name) }
+            .map { (name: $0, completed: completed(directory.appendingPathComponent($0))) }
+            .sorted { ($0.completed, $0.name) > ($1.completed, $1.name) }
         for log in logs.dropFirst(keptLogs - 1) {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(log.name))
         }
@@ -141,32 +141,42 @@ public extension RunLog {
         }
     }
 
-    /// When `url` was created, or the distant past when the filesystem will not say — an unreadable age sorts oldest, so a file nothing can date is the first to go rather than the last.
-    private static func created(_ url: URL) -> Date {
-        (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+    /// When the run whose transcript is at `url` finished, or the distant past when the filesystem will not say — an unreadable age sorts oldest, so a file nothing can date is the first to go rather than the last.
+    ///
+    /// Read from the modification time, which ``markCompleted(_:)`` sets as the run is published and again as it is kept. A rename keeps both dates of a file, so the creation date would be the run's start, whatever pool it has since moved into.
+    private static func completed(_ url: URL) -> Date {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+    }
+
+    /// Stamps the transcript at `url` as finished now, before it is renamed where a count can see it.
+    private static func markCompleted(_ url: URL) {
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
     }
 
     /// Moves the finished transcript at `path` out of reach of the count that prunes the others, and answers where it now stands, or `nil` where it could not be moved.
     ///
     /// For a transcript that has to outlive the next few runs to be read: one explaining a lost result, or a selected run that did not build. Each ``KeptPool`` is bounded on its own, at ``keptLogs``, so neither kind can push out the other.
-    static func keep(_ path: String, in pool: KeptPool = .lostResult) -> String? {
+    ///
+    /// The pool is ordered by when each transcript was kept, and the one kept here is never what its own call drops: the caller is about to print this path, so a slow run kept after five quick ones must not be the oldest in a count that ran by start time.
+    static func keep(_ path: String, in pool: KeptPool = .lostResult, tag: String? = nil) -> String? {
         let source = URL(fileURLWithPath: path)
         let directory = source.deletingLastPathComponent()
         let name = source.lastPathComponent
         guard name.hasPrefix(filePrefix) || name.hasPrefix(temporaryPrefix), name.hasSuffix(fileSuffix) else {
             return nil
         }
-        let prefix = pool.rawValue
+        let prefix = pool.rawValue + (tag.map { "\($0)-" } ?? "")
         let kept = directory.appendingPathComponent(prefix + name)
+        markCompleted(source)
         guard (try? FileManager.default.moveItem(at: source, to: kept)) != nil else {
             return nil
         }
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
         let older = names
-            .filter { ($0.hasPrefix(prefix + filePrefix) || $0.hasPrefix(prefix + temporaryPrefix)) && $0.hasSuffix(fileSuffix) }
-            .map { (name: $0, created: created(directory.appendingPathComponent($0))) }
-            .sorted { ($0.created, $0.name) > ($1.created, $1.name) }
-            .dropFirst(keptLogs)
+            .filter { $0.hasPrefix(pool.rawValue) && $0.hasSuffix(fileSuffix) && $0 != kept.lastPathComponent }
+            .map { (name: $0, completed: completed(directory.appendingPathComponent($0))) }
+            .sorted { ($0.completed, $0.name) > ($1.completed, $1.name) }
+            .dropFirst(keptLogs - 1)
         for log in older {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(log.name))
         }
@@ -181,6 +191,63 @@ public extension RunLog {
         case lostResult = "kept-"
         /// The transcript of a selected test run that did not build, without which its summary is the only record of what failed.
         case didNotBuild = "unbuilt-"
+        /// The transcript of a run that built and failed, kept under its command's tag until a run of that command passes, or until ``keptLogs`` newer failures of any command push it out.
+        case failed = "failed-"
+    }
+
+    /// A short stable tag for one command in one directory, so a failed run's transcript can be found again by the run of the same command that passes.
+    ///
+    /// FNV-1a over the arguments and the directory, eight hex digits: it names a file, it does not defend anything, and a collision costs one kept transcript dropped early.
+    static func commandTag(_ arguments: [String], in directory: URL) -> String {
+        var hash: UInt32 = 2_166_136_261
+        for byte in (arguments + [directory.path]).joined(separator: "\u{0}").utf8 {
+            hash = (hash ^ UInt32(byte)) &* 16_777_619
+        }
+        return String(format: "%08x", hash)
+    }
+
+    /// Deletes the failed-run transcripts kept under `tag`, beside this one: the command has passed, so what they explained is no longer the state of the tree.
+    func clearFailures(tag: String) {
+        let directory = url.deletingLastPathComponent()
+        let prefix = KeptPool.failed.rawValue + tag + "-"
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in names where name.hasPrefix(prefix) && name.hasSuffix(Self.fileSuffix) {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
+    /// Files this finished transcript by how its run ended: a pass clears its command's failed logs, a run that ran nothing stays among the ordinary logs, and anything else is kept among the failed ones.
+    ///
+    /// A run that ran nothing (``RunTestSelector/exitCode``) is not a failure to keep: a mistyped `--filter` never passes, so in the failed pool it would hold a slot that a real failure's transcript needs, and its answer says all it has to say. It does not clear its command's failures either, since it did not pass.
+    func settle(exitCode: Int32, command: [String], in directory: URL) {
+        let tag = Self.commandTag(command, in: directory)
+        switch exitCode {
+        case 0:
+            clearFailures(tag: tag)
+        case RunTestSelector.exitCode:
+            return
+        default:
+            keepFailure(tag: tag)
+        }
+    }
+
+    /// Moves this finished transcript into the failed pool under `tag`, and points ``url`` at where it now stands.
+    func keepFailure(tag: String) {
+        if let kept = Self.keep(url.path, in: .failed, tag: tag) {
+            url = URL(fileURLWithPath: kept)
+        }
+    }
+
+    /// How long the transcript at `path` lives, in the few words a `raw:` line closes on, read from the name it stands under.
+    static func retention(ofPath path: String) -> String {
+        let name = (path as NSString).lastPathComponent
+        if name.hasPrefix(KeptPool.failed.rawValue) {
+            return "kept until it passes or \(keptLogs) newer failures"
+        }
+        if name.hasPrefix(KeptPool.didNotBuild.rawValue) || name.hasPrefix(KeptPool.lostResult.rawValue) {
+            return "kept among the last \(keptLogs) of its kind"
+        }
+        return "kept for the next \(keptLogs - 1) runs"
     }
 
     /// Moves this finished transcript into `pool`, out of reach of the count that prunes, and points ``url`` at where it now stands; where it cannot be moved, ``url`` stays as it was.
@@ -210,9 +277,10 @@ public extension RunLog {
 
     /// Closes the handle and publishes the transcript under the name the receipt names.
     ///
-    /// The rename is the moment the file becomes prunable, and it happens after the last byte is written — which is the whole guarantee. It cannot collide: the name carries this run's own stamp and token, so nothing else is standing there.
+    /// The rename is the moment the file becomes prunable, and it happens after the last byte is written — which is the whole guarantee. It cannot collide: the name carries this run's own stamp and token, so nothing else is standing there. Just before it, the file is stamped finished, since that, not its start, is where it stands in the count it joins.
     func close() {
         try? handle.close()
+        Self.markCompleted(partURL)
         try? FileManager.default.moveItem(at: partURL, to: url)
     }
 

@@ -53,8 +53,8 @@ struct WhereNameMatchedSampleTests {
         let root = try Self.repository()
         let answer = try await WhereCommand.parse(["Beta.assemble", "--root", root.path]).answer(registry: Self.registry())
 
-        #expect(answer.contains("callers/overrides: NOT ANSWERED"), "\(answer)")
-        #expect(answer.contains("\"assemble\" (12 call sites in 1 file"), "\(answer)")
+        #expect(answer.contains("no store for callers, overrides or references; sites by written name"), "\(answer)")
+        #expect(answer.contains("\"assemble\" (12 call sites by written name in 1 file"), "\(answer)")
         #expect(Self.listedLines(in: answer) == Array(Self.callLines.prefix(5)), "\(answer)")
         #expect(answer.contains("\n    truncated: 7 more call sites"), "\(answer)")
     }

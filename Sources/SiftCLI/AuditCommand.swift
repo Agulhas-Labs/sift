@@ -73,6 +73,9 @@ struct AuditCommand: ParsableCommand {
     @Flag(name: .customLong("progress"), help: "Print the transcript scan's advance (a count every 50 sessions) and, with --replay, each session replayed and the time taken so far, on stderr as on a terminal, even when stderr is not one.")
     var progress = false
 
+    @Flag(name: .customLong("include-scratch"), help: "Count sessions recorded in scratch roots too: temporary directories, ~/Library/Caches and any .build directory. Left out by default, with one line saying how many sessions.")
+    var includeScratch = false
+
     var output: CommandOutput = .standard
 
     func validate() throws {
@@ -216,6 +219,7 @@ struct AuditCommand: ParsableCommand {
             window: Self.windowArguments(sinceValue: sinceValue, until: until, all: all, transcript: transcript),
             shareOnly: share,
             usageLog: UsageLog.standardFileURL(),
+            excludingScratch: Self.excludesScratch(includeScratch: includeScratch, transcript: transcript),
             sample: bounds.sample,
             progress: bounds.progress
         )
@@ -249,6 +253,7 @@ struct AuditCommand: ParsableCommand {
         window: String = "--since 7d",
         shareOnly: Bool = false,
         usageLog: URL? = nil,
+        excludingScratch: Bool = false,
         sample: ReplaySample = .everySession,
         progress: @escaping (String) -> Void = { _ in }
     ) -> (report: String, shapes: String?) {
@@ -266,6 +271,7 @@ struct AuditCommand: ParsableCommand {
                 summary: summary,
                 shareOnly: shareOnly,
                 usageLog: usageLog,
+                excludingScratch: excludingScratch,
                 progress: progress
             )
             return (text, nil)
@@ -282,6 +288,7 @@ struct AuditCommand: ParsableCommand {
             summary: summary,
             usageLog: usageLog,
             transcript: transcript,
+            excludingScratch: excludingScratch,
             progress: progress
         )
         let sections = replaySections(
@@ -295,7 +302,7 @@ struct AuditCommand: ParsableCommand {
             timeBudget: timeBudget,
             suppressionLog: suppressionLog,
             interruptions: interruptions,
-            snapshot: snapshot,
+            snapshot: excludingScratch ? snapshot.withoutScratch() : snapshot,
             audited: audit.tallies,
             summary: summary,
             sample: sample,
@@ -306,6 +313,11 @@ struct AuditCommand: ParsableCommand {
             return (audit.text + "\n" + sections.report.joined(separator: "\n"), shapes)
         }
         return (againstSummary(sections.report, window: window), shapes)
+    }
+
+    /// Whether the audit leaves scratch-root sessions out: by default, but never for a transcript named with `--transcript`, which is audited whatever working directory it recorded.
+    static func excludesScratch(includeScratch: Bool, transcript: String?) -> Bool {
+        !includeScratch && transcript == nil
     }
 
     /// The window as the command line gave it, for a line that names the command to run for the rest.
@@ -496,6 +508,7 @@ extension AuditCommand {
         case share
         case sample
         case progress
+        case includeScratch
     }
 
     /// Prints how `against`'s scan and this build's class the windows of one snapshot differently, refusing in one line, with nothing else printed, a binary without the scan-dump entry point or whose dump fails.

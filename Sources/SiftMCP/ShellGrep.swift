@@ -3,6 +3,7 @@
 //
 
 import Foundation
+import SiftCore
 
 /// A `grep` command read for everything that decides which lines it prints, and run in-process over the same files — the proof an in-place answer rests on (``InPlaceAnswerer``).
 ///
@@ -24,6 +25,8 @@ public struct ShellGrep: Equatable, Sendable {
     var cut: Cut?
     /// Whether the last of `-h` and `-H` written was `-h`, which prints no file's name beside its lines.
     var withoutFileNames = false
+    /// Whether `-n` was written, which prints each line's number beside it.
+    var numbersLines = false
     /// Whether the arguments are one of ``DeclarationVocabularyGrep``'s closed spellings.
     private(set) var spellsDeclarationVocabulary = false
 
@@ -121,6 +124,7 @@ public struct ShellGrep: Equatable, Sendable {
             case "--word-regexp": options.wholeWords = true
             case "--ignore-case": options.ignoresCase = true
             case "--line-regexp": options.wholeLine = true
+            case "--line-number": numbersLines = true
             case "--no-filename": withoutFileNames = true
             case "--with-filename": withoutFileNames = false
             default: break
@@ -172,6 +176,7 @@ public struct ShellGrep: Equatable, Sendable {
             case "w": options.wholeWords = true
             case "i": options.ignoresCase = true
             case "x": options.wholeLine = true
+            case "n": numbersLines = true
             case "h": withoutFileNames = true
             case "H": withoutFileNames = false
             default: break
@@ -248,6 +253,8 @@ extension ShellGrep {
         let cost: (_ lines: [Int], _ file: String) -> Int
         /// The most it may spend.
         let budget: Int
+        /// The most bytes the search may print before it stops, its output already larger than any answer weighed against it.
+        var printLimit: Int?
     }
 }
 
@@ -265,6 +272,8 @@ public extension ShellGrep {
         case undecided(String)
         /// Stopped once the ceiling it ran under could not hold what it prints — a line no answer accounts for, or more lines than the budget can name.
         case pastCeiling(Breach)
+        /// Stopped once it would read more files or bytes than ``fileLimit`` and ``byteLimit`` allow, so what it prints is unknown, neither larger nor smaller than any answer.
+        case pastLimit
     }
 
     /// How a search went past its ceiling.
@@ -273,6 +282,8 @@ public extension ShellGrep {
         case unaccounted
         /// More printed lines than an answer inside the budget could name.
         case overBudget
+        /// More bytes printed than the ceiling's print limit.
+        case printsPastLimit
     }
 
     /// The lines this search prints, its relative paths resolved against `directory` — stopping early, where `ceiling` is given, once no answer could account for them.
@@ -283,48 +294,102 @@ public extension ShellGrep {
     ///
     /// `namedFiles` reads the operands as the Swift files a member grep names (``namedFiles(in:)``) — a glob as the files the shell expands it to, a file searched recursively as itself — served in whichever order they print, which `ugrep` varies between runs and prints with no `--` between files.
     internal func run(in directory: String?, ceiling: Ceiling? = nil, namedFiles: Bool = false) -> Outcome {
-        guard let pattern = GrepPattern(pattern, options: options) else { return .undecided("pattern") }
+        measured(in: directory, ceiling: ceiling, namedFiles: namedFiles).outcome
+    }
+
+    /// What ``run(in:ceiling:namedFiles:)`` finds, with the bytes the search writes for the lines it prints after its cut (``printedBytes(of:text:names:)``).
+    ///
+    /// The bytes are those of the grep printing fewer: lines of files every grep reads, each named as `ugrep` names it below an operand of `.`. They are exact where the cut is; where a cut keeps one file's lines under either reading of its separators, they are those of the larger reading. Past a ceiling, or undecided, they are what was counted before it stopped.
+    ///
+    /// Where the shell's `program` is Claude Code's `ugrep`, the walk never enters a version-control directory (``UgrepSkips/versionControlDirectories``), for any search, as that `ugrep` never does (``files(under:swiftOnly:skipping:)``), and leaves out too, for any search, each binary file sift keeps in its cache directory below a walked operand (``isSiftStoreFile(_:below:)``) that opens on a NUL (``opensBinary(_:)``): its index names every name, so a search of the repository would otherwise never be worked out once sift had answered in it, and that `ugrep`, run with `-I`, prints nothing from such a file. The system grep reads both, and reports a match in the database as a line no answer stands in for, so there such a search is left to the encoding check like any other binary file.
+    ///
+    /// Asked to skip the cache, it leaves out every one of sift's binary cache files whatever its bytes. The text files beside them are read as any other.
+    ///
+    /// Asked to weigh any order, it reads on past a cut across files that would drop a line, where no context prints: the outcome is then every line any order could print, and the bytes the fewest any order prints (``leastPrinted(of:text:names:reads:)``). Such a search reads every file, so it reports a breach of the ceiling's budget only once it has, with those bytes, and asks the print limit nothing, which weighs uncut bytes.
+    internal func measured(in directory: String?, ceiling: Ceiling? = nil, namedFiles: Bool = false, weighsAnyOrder: Bool = false, skipsCache: Bool = false, program: Program = .current) -> (outcome: Outcome, bytes: Int) {
+        guard let pattern = GrepPattern(pattern, options: options) else { return (.undecided("pattern"), 0) }
         var files: [String] = []
+        // Each file's name as grep prints it: the operand as written, and a walked file's path below it.
+        var names: [String: String] = [:]
         var walked: [(operand: (path: String, spelled: String), files: [String])] = []
         if namedFiles {
-            guard let named = self.namedFiles(in: directory) else { return .undecided("path") }
+            guard let named = self.namedFiles(in: directory) else { return (.undecided("path"), 0) }
             files = named
         }
         for path in paths where !namedFiles {
-            guard let absolute = Self.absolute(path, in: directory) else { return .undecided("path") }
+            guard let absolute = Self.absolute(path, in: directory) else { return (.undecided("path"), 0) }
             switch Self.kind(of: absolute) {
             case .file where !recursive:
                 // Whether a filter applies to a file named outright differs between implementations.
-                guard !swiftOnly || absolute.hasSuffix(".swift") else { return .undecided("path") }
+                guard !swiftOnly || absolute.hasSuffix(".swift") else { return (.undecided("path"), 0) }
                 files.append(absolute)
+                names[absolute] = path
             case .directory where recursive:
-                switch Self.files(under: absolute, swiftOnly: swiftOnly) {
-                case let .found(found):
+                switch Self.files(under: absolute, swiftOnly: swiftOnly, skipping: program.skippedDirectories) {
+                case let .found(walk):
+                    // The walk spells a path as the file system does (`/private/var` for `/var`), so what lies below
+                    // the operand is cut from whichever spelling of it the path opens on.
+                    let roots = [absolute, Self.resolved(absolute)].map { $0.hasSuffix("/") ? $0 : $0 + "/" }
+                    let found = walk.filter {
+                        let root = roots.first(where: $0.hasPrefix) ?? roots[0]
+                        guard Self.isSiftStoreFile($0, below: root) else { return true }
+                        return !skipsCache && (program == .system || !Self.opensBinary($0))
+                    }
                     files += found
                     walked.append(((absolute, path), found))
+                    // Below an operand of `.`, `ugrep` drops the `./` the system grep prints: the shorter spelling is counted.
+                    let prefix = [".", "./"].contains(path) ? "" : path.hasSuffix("/") ? path : path + "/"
+                    for file in found {
+                        let root = roots.first(where: file.hasPrefix) ?? roots[0]
+                        names[file] = prefix + file.dropFirst(root.count)
+                    }
                 case .unlisted:
-                    return .undecided("unreadable")
+                    return (.undecided("unreadable"), 0)
                 case .refused:
-                    return .undecided("tree")
+                    return (.undecided("tree"), 0)
+                case .pastLimit:
+                    return (.pastLimit, 0)
                 }
             default:
-                return .undecided("path")
+                return (.undecided("path"), 0)
             }
-            guard files.count <= Self.fileLimit else { return .undecided("tree") }
+            guard files.count <= Self.fileLimit else { return (.pastLimit, 0) }
         }
+        // Names print beside the lines wherever more than one file could be searched, unless `-h` drops them.
+        let printsNames = !withoutFileNames && (files.count > 1 || !walked.isEmpty)
+        let fileName = { (file: String) -> String? in printsNames ? names[file] ?? file : nil }
         let acrossFiles = files.count > 1
         let ceiling = cut == nil || acrossFiles ? ceiling : nil
         // Between files, a `--` may or may not print for each boundary a context option opens — the system
         // grep prints one, `ugrep` does not — so a cut across several files has to hold with that many more
         // lines than it holds with none.
         let separatorMargin = acrossFiles && hasContext ? files.count - 1 : 0
+        let readsOn = weighsAnyOrder && acrossFiles && cut != nil && !hasContext
+        // Bytes are counted only over files every grep reads, a walked file `ugrep` may skip counted as unread
+        // (``UgrepSkips``), so they are what the grep printing fewer prints.
+        let walkedSets = walked.map { (operand: $0.operand, files: Set($0.files)) }
+        var readsKnown: [String: Bool] = [:]
+        func readByEveryGrep(_ file: String) -> Bool {
+            if let known = readsKnown[file] {
+                return known
+            }
+            let reads = walkedSets.allSatisfy { walk in
+                !walk.files.contains(file) || UgrepSkips.readsOne(of: [file], under: walk.operand.path, spelled: walk.operand.spelled) == true
+            }
+            readsKnown[file] = reads
+            return reads
+        }
+        var unordered = false
+        var breach: Breach?
         var printed: [Entry] = []
+        var text: [PrintedLine: Int] = [:]
         var bytesRead = 0
         var spent = 0
+        var written = 0
         for file in files {
-            guard let data = FileManager.default.contents(atPath: file) else { return .undecided("unreadable") }
+            guard let data = FileManager.default.contents(atPath: file) else { return (.undecided("unreadable"), written) }
             bytesRead += data.count
-            guard bytesRead <= Self.byteLimit else { return .undecided("tree") }
+            guard bytesRead <= Self.byteLimit else { return (.pastLimit, written) }
             let bytes = Array(data)
             let entries: [Entry]
             if Self.cannotHold(pattern, bytes, options: options) {
@@ -332,30 +397,86 @@ public extension ShellGrep {
                 // file prints nothing and is already decided — its encoding is never asked.
                 entries = []
             } else {
-                guard Self.readsAlikeEverywhere(bytes) else { return .undecided("encoding") }
-                guard let found = search(bytes, in: file, with: pattern) else { return .undecided("line") }
+                guard Self.readsAlikeEverywhere(bytes) else { return (.undecided("encoding"), written) }
+                guard let found = search(bytes, in: file, with: pattern) else { return (.undecided("line"), written) }
                 entries = found
+            }
+            let fileLines = entries.compactMap(\.printedLine)
+            if !fileLines.isEmpty {
+                let lengths = bytes.split(separator: 0x0A, omittingEmptySubsequences: false).map(\.count)
+                for line in fileLines {
+                    text[line] = lengths[line.line - 1]
+                }
+                // A `--` between files where a context option opens one, as the system grep prints it.
+                if readByEveryGrep(file) {
+                    written += (hasContext && !printed.isEmpty ? 3 : 0) + printedBytes(of: fileLines, text: text, names: fileName)
+                }
             }
             // A cut across files that would drop a line is undecided once it would, however many files are left.
             if acrossFiles, let cut, !cut.keepsAll(of: printed.count + entries.count + separatorMargin) {
-                return .undecided("order")
+                guard readsOn else { return (.undecided("order"), written) }
+                unordered = true
             }
-            let lines = entries.compactMap(\.printedLine).map(\.line)
-            if let ceiling, !lines.isEmpty {
-                guard ceiling.admits(file) else { return .pastCeiling(.unaccounted) }
+            let lines = fileLines.map(\.line)
+            if let ceiling, breach == nil, !lines.isEmpty {
+                guard ceiling.admits(file) else { return (.pastCeiling(.unaccounted), written) }
                 spent += ceiling.cost(lines, file)
-                guard spent <= ceiling.budget else { return .pastCeiling(.overBudget) }
+                if spent > ceiling.budget {
+                    guard readsOn else { return (.pastCeiling(.overBudget), written) }
+                    breach = .overBudget
+                }
+                // A cut search's uncut bytes say nothing of what it prints.
+                guard cut != nil || written <= ceiling.printLimit ?? .max else { return (.pastCeiling(.printsPastLimit), written) }
             }
             printed += entries
         }
-        let outcome = cutting(printed, separatorMargin: separatorMargin, acrossFiles: acrossFiles)
+        let outcome = unordered ? .printed(printed.compactMap(\.printedLine)) : cutting(printed, separatorMargin: separatorMargin, acrossFiles: acrossFiles)
+        let kept = switch outcome {
+        case let .printed(lines) where unordered:
+            leastPrinted(of: lines, text: text, names: fileName, reads: readByEveryGrep)
+        case let .printed(lines):
+            printedBytes(of: lines.filter { readByEveryGrep($0.file) }, text: text, names: fileName)
+        default:
+            written
+        }
+        if let breach {
+            return (.pastCeiling(breach), kept)
+        }
         // A walk prints more under the system grep than under `ugrep`, which skips version-control directories
         // and ignored paths: the larger set is answered only where `ugrep` prints some of it too, since a search
         // `ugrep` prints nothing for exits 1 and is never answered.
-        guard case let .printed(lines) = outcome, !lines.isEmpty, !walked.isEmpty else { return outcome }
+        guard case let .printed(lines) = outcome, !lines.isEmpty, !walked.isEmpty else { return (outcome, kept) }
         let printedFiles = Set(lines.map(\.file))
         let readByEveryGrep = walked.contains { UgrepSkips.readsOne(of: $0.files.filter(printedFiles.contains), under: $0.operand.path, spelled: $0.operand.spelled) == true }
-        return readByEveryGrep ? outcome : .undecided("ignored")
+        return (readByEveryGrep ? outcome : .undecided("ignored"), kept)
+    }
+
+    /// The fewest bytes a cut across several files prints in any order of them, as a lower bound: the shortest of `lines`, each with its name and number, as many as the cut keeps of the lines in files every grep reads.
+    ///
+    /// With no context the cut keeps as many lines in any order, so no order prints fewer bytes than its shortest that many. Counting the lines kept only over files `reads` says every grep reads (``UgrepSkips``) keeps it a bound for `ugrep`, which skips ignored paths of a walked operand.
+    internal func leastPrinted(of lines: [PrintedLine], text: [PrintedLine: Int], names: (String) -> String?, reads: (String) -> Bool) -> Int {
+        guard let cut else { return printedBytes(of: lines, text: text, names: names) }
+        let read = lines.count { reads($0.file) }
+        let kept = cut.kept(Array(repeating: 0, count: read)).count
+        return lines.map { printedBytes(of: [$0], text: text, names: names) }.sorted().prefix(kept).reduce(0, +)
+    }
+
+    /// The bytes grep writes for `lines`, in order: each line's file name where `names` gives one, `:` and its number under `-n`, its text of `text` bytes and its newline, and a `--` wherever a context option opens a new group.
+    ///
+    /// A group opens wherever lines stop running on: within one file both greps print that `--`, and between files the system grep does, which is the larger reading.
+    internal func printedBytes(of lines: [PrintedLine], text: [PrintedLine: Int], names: (String) -> String?) -> Int {
+        var total = 0
+        var previous: PrintedLine?
+        for line in lines {
+            if hasContext, let previous, previous.file != line.file || line.line > previous.line + 1 {
+                total += 3
+            }
+            let name = names(line.file).map { $0.utf8.count + 1 } ?? 0
+            let number = numbersLines ? String(line.line).count + 1 : 0
+            total += name + number + (text[line] ?? 0) + 1
+            previous = line
+        }
+        return total
     }
 
     /// The files a search of named Swift files reads, spelled out in full in operand order, or `nil` where an operand is not one: a glob that expands to nothing or is spelled in a syntax only some shells read, or a path that is not a regular file.
@@ -402,11 +523,12 @@ private extension ShellGrep {
         case file, directory, other
     }
 
-    /// What a walk of a directory found: every regular file under it, a directory it could not list, or a tree it refuses.
+    /// What a walk of a directory found: every regular file under it, a directory it could not list, a tree it refuses, or one past the file limit.
     enum Walk: Equatable {
         case found([String])
         case unlisted
         case refused
+        case pastLimit
     }
 
     /// The UTF-8 byte-order mark.
@@ -536,6 +658,38 @@ private extension ShellGrep {
         return URL(fileURLWithPath: expanded, relativeTo: URL(fileURLWithPath: directory, isDirectory: true)).standardizedFileURL.path
     }
 
+    /// Whether `file`, found walking the operand `root`, is one of the binary files sift keeps below it in a cache directory of its own (one named as sift names its own, holding its index): the index and its journal, the semantic store's caches, and the builds `sift run --without` makes.
+    ///
+    /// The text sift writes there — run logs, progress records, locks — is printed by any grep and counted like any other file.
+    static func isSiftStoreFile(_ file: String, below root: String) -> Bool {
+        let components = file.dropFirst(root.count).split(separator: "/")
+        guard let cache = components.dropLast().firstIndex(of: Substring(SiftPaths.directoryName)) else { return false }
+        let directory = root + components[...cache].joined(separator: "/")
+        guard FileManager.default.fileExists(atPath: directory + "/" + SiftPaths.indexFileName) else { return false }
+        let inside = components[(cache + 1)...]
+        guard let first = inside.first.map(String.init) else { return false }
+        let index = SiftPaths.indexFileName
+        return inside.count == 1 ? [index, index + "-wal", index + "-shm", index + "-journal"].contains(first) : ["isdb", "without-build"].contains(first)
+    }
+
+    /// Whether `file` holds a NUL in its opening bytes and opens on no byte-order mark `ugrep` decodes: binary to the shell's `ugrep`, which under the `-I` it is always run with prints nothing from it, however far past the opening a match lies.
+    ///
+    /// Only the opening is read, where every one of sift's database files spells a NUL in its header; a NUL further in is not asked about, since how far into a file `ugrep` looks for one is not something this can know.
+    static func opensBinary(_ file: String) -> Bool {
+        guard let handle = FileHandle(forReadingAtPath: file) else { return false }
+        defer { try? handle.close() }
+        guard let opening = try? handle.read(upToCount: 32) else { return false }
+        let bytes = Array(opening)
+        return bytes.contains(0) && !startsWithByteOrderMark(bytes)
+    }
+
+    /// `path` as the file system spells it, every symbolic link on it resolved, or `path` itself where it cannot be.
+    static func resolved(_ path: String) -> String {
+        guard let real = realpath(path, nil) else { return path }
+        defer { free(real) }
+        return String(cString: real)
+    }
+
     /// A regular file, a directory, or anything else — a symbolic link included, since the implementations differ on following one.
     static func kind(of path: String) -> Kind {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
@@ -554,12 +708,14 @@ private extension ShellGrep {
     ///
     /// A directory grep cannot list is an error it reports and exits 2 on, whatever it printed from the rest, so the walk stops there rather than answering from the files it could read.
     ///
+    /// A directory named in `skipping` is passed over, nothing in it listed or counted, as the shell's `ugrep` passes over a version-control directory.
+    ///
     /// Walked in a release pool of its own, for ``SwiftTree``'s reason: a walk that refuses part-way leaves the enumerator holding a directory handle per level, and nothing else would release it on a thread that never drains a pool.
-    static func files(under directory: String, swiftOnly: Bool) -> Walk {
-        autoreleasepool { walk(under: directory, swiftOnly: swiftOnly) }
+    static func files(under directory: String, swiftOnly: Bool, skipping: Set<String>) -> Walk {
+        autoreleasepool { walk(under: directory, swiftOnly: swiftOnly, skipping: skipping) }
     }
 
-    private static func walk(under directory: String, swiftOnly: Bool) -> Walk {
+    private static func walk(under directory: String, swiftOnly: Bool, skipping: Set<String>) -> Walk {
         let root = URL(fileURLWithPath: directory, isDirectory: true)
         let keys: [URLResourceKey] = [.isSymbolicLinkKey, .isRegularFileKey, .isDirectoryKey]
         var unlisted = false
@@ -573,13 +729,17 @@ private extension ShellGrep {
         var visited = 0
         for case let url as URL in walker {
             visited += 1
-            guard visited <= fileLimit * 4,
-                  let values = try? url.resourceValues(forKeys: Set(keys)),
+            guard visited <= fileLimit * 4 else { return .pastLimit }
+            guard let values = try? url.resourceValues(forKeys: Set(keys)),
                   values.isSymbolicLink != true
             else {
                 return .refused
             }
             if values.isDirectory == true {
+                // A directory the shell's grep never descends into is neither read nor counted toward the limits.
+                if skipping.contains(url.lastPathComponent) {
+                    walker.skipDescendants()
+                }
                 continue
             }
             guard values.isRegularFile == true else { return .refused }
@@ -590,7 +750,7 @@ private extension ShellGrep {
                 guard name.hasSuffix(".swift") else { continue }
             }
             found.append(url.path)
-            guard found.count <= fileLimit else { return .refused }
+            guard found.count <= fileLimit else { return .pastLimit }
         }
         return unlisted ? .unlisted : .found(found.sorted())
     }

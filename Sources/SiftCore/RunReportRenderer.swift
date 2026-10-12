@@ -17,12 +17,15 @@ public struct RunReportRenderer: Sendable {
     private let selector: RunTestSelector?
     /// What ``RunInventoryCheck`` said about the run, printed under the totals line; empty where the run was not one it checks.
     private let inventory: [String]
+    /// The tree and commit the run happened in (``Freshness/stamp(of:headShort:dirtyCount:)``), opening the `raw:` line; `nil` says nothing about one.
+    private let treeStamp: String?
 
     /// - Parameter workingDirectory: Where this answer is being read, which is the only thing the paths in it are stated relative to — and, since that is a fact about the reader rather than about the run, nothing this answer *measures*. See ``RunAnswerPaths``.
     /// - Parameter changedFiles: What the working tree has changed, for the classification's "is this mine?" field. Taken as a value rather than discovered here so this type stays pure — the caller has already paid a `git` process to find the repository root and is the right place to pay for one more. The default states that nobody asked, which is the honest reading and never a zero.
     /// - Parameter sites: The declarations the failure locations resolved to, taken as a value for the same reason and defaulting to nothing resolved — which renders the answer with no resolved lines at all.
     /// - Parameter accessibility: What re-arming the accessibility preference did, one entry per simulator the run named, in argv order — taken as a value for the same reason, since the spawns it costs are the caller's to pay. Empty is a run that put no test on a simulator, and prints no line about one.
     /// - Parameter selector: The tests the command named to run, read from argv by the caller for the same reason as `testBundles`. A run that exited 0 having executed none of them answers `✘` rather than whatever its log declared. `nil` names none, and judges nothing.
+    /// - Parameter treeStamp: The tree and commit the run happened in, which only the caller can ask git for. `nil` leaves the `raw:` line to the log alone.
     /// - Parameter testBundles: How many test bundles the run was owed a count from, which is the one fact about it that is not in its own log — taken as a value for the same reason, since reading it costs a manifest parse the caller decides whether to pay. The default states that nobody asked, and prints nothing about a bundle that never reported.
     public init(
         kind: RunCommandKind,
@@ -32,8 +35,10 @@ public struct RunReportRenderer: Sendable {
         accessibility: [SimulatorAccessibility.Restoration] = [],
         testBundles: RunTestBundles = .undetermined,
         selector: RunTestSelector? = nil,
-        inventory: [String] = []
+        inventory: [String] = [],
+        treeStamp: String? = nil
     ) {
+        self.treeStamp = treeStamp
         self.inventory = inventory
         self.kind = kind
         paths = .read(in: workingDirectory)
@@ -55,15 +60,19 @@ extension RunReportRenderer {
         }
         // The note is owed by what this answer will actually print, not by what the report happened to
         // hold — see ``summaries(of:)`` for the pair that can come apart on that difference.
-        let summaries = summaries(of: report)
-        let totals = totalsLine(report, exitCode: exitCode)
+        // A selector that matched nothing is answered by its headline alone: the tool's own lines (`Build complete!`, a
+        // pass banner), the totals line and the tool's `No matching test cases were run` all say again what the
+        // headline says, and on a log of a few lines that repetition is what made the answer larger than the log.
+        let nothingRan = selector?.matchedNothing(report, exitCode: exitCode) == true
+        let summaries = nothingRan ? [] : summaries(of: report)
+        let totals = nothingRan ? nil : totalsLine(report, exitCode: exitCode)
         lines.append(contentsOf: shown(summaries, of: report, beside: totals).map { "  \($0)" })
         // A pass read off the exit code has no line of the tool's to point at, and sending the reader to the
         // raw log would ask them to find the verdict this answer already says is not there. What it owes them
         // instead is what the pass rests on, and the one case that reading cannot tell apart from it.
         if report.verdict?.inferredFromExitCode == true {
             lines.append("  -quiet prints no closing line on a pass, so this rests on the exit code alone: a -quiet run cut short that still exited 0 would read the same")
-        } else if summaries.isEmpty, report.contract != .diagnostics, report.testCrash == nil {
+        } else if summaries.isEmpty, !nothingRan, report.contract != .diagnostics, report.testCrash == nil {
             // Withheld for a contract that owes no closing line: a linter states its result in the exit
             // code, so a reader sent to the raw log for a summary would be sent to look for something
             // neither the tool nor this answer ever claimed was there.
@@ -75,7 +84,7 @@ extension RunReportRenderer {
             lines.append("  the action this command invoked ends on \(owed), which the log never reached")
         }
         lines.append(contentsOf: knownIssueArithmetic(report))
-        let warnings = warningSection(report)
+        let warnings = warningSection(report, nothingRan: nothingRan) + toolLogSection(report)
         // What the log has left after everything else this answer prints is what the two listings may
         // spend between them — see ``allowance(of:beside:)`` for why an answer owes the log that. The
         // totals line is composed already, same as the summaries and warnings above it, so it is charged
@@ -84,8 +93,9 @@ extension RunReportRenderer {
         // budget is shared on exactly the same terms: one answer, one budget, spent in the order the
         // sections print, because the receipt below them states one number for the whole of it.
         let devices = deviceNotes(of: report)
+        let skipLines = totals == nil ? [] : skippedLines(report)
         let streamNote = report.eventStreamNote.map { ["  \($0)"] } ?? []
-        var allowance = allowance(of: report, beside: lines.count + warnings.count + (totals == nil ? 0 : 1) + streamNote.count + inventory.count, notes: devices.lines.count)
+        var allowance = allowance(of: report, beside: lines.count + warnings.count + (totals == nil ? 0 : 1) + skipLines.count + streamNote.count + inventory.count, notes: devices.lines.count)
         var budget = RunFailureCensus.listingBudget
         let errors = errorSection(report, within: allowance, spending: &budget)
         allowance = max(0, allowance - errors.count)
@@ -95,6 +105,7 @@ extension RunReportRenderer {
         lines.append(contentsOf: warnings)
         if let totals {
             lines.append(totals.line)
+            lines.append(contentsOf: skipLines)
         }
         lines.append(contentsOf: streamNote)
         lines.append(contentsOf: inventory)
@@ -275,7 +286,12 @@ extension RunReportRenderer {
         guard owesThisLine else {
             return nil
         }
-        let counted = [xctestCounts(xctest), swiftTestingCounts(swiftTesting, skipped: swiftTestingSkips(report))].compactMap(\.self)
+        // Under `--parallel` XCTest prints no counter and no skip line, so no skip count the log yields is the run's.
+        let skipsReported = !report.parallelSwiftTest
+        let counted = [
+            xctestCounts(xctest, skipsReported: skipsReported),
+            swiftTestingCounts(swiftTesting, skipped: swiftTestingSkips(report), counted: !report.testOutcomes.swiftTestingNames.isEmpty, skipsReported: skipsReported),
+        ].compactMap(\.self)
         let described = counted.isEmpty ? nothingToDisplay(report, exitCode: exitCode) : counted.joined(separator: " · ")
         let reported = report.reportedBundleCount
         let everyTallySummed = swiftTesting.allSatisfy { RunTestTally.parse(String(RunOutputFilter.undecorated($0))) != nil }
@@ -389,7 +405,7 @@ extension RunReportRenderer {
     /// **One tally is one bundle**, so several are summed and the sum says `across N bundles`: two lines of this same shape cannot be two frameworks over one target set (a process running both prints one of each shape, not two of one), so they are two Swift Testing runs in two processes over two disjoint bundles. A line that will not parse stops the sum rather than being left out of it — a total missing an addend nobody can see is worse than no total — and the run then states every count it read, in the order it read them, with how many of them there were.
     ///
     /// `skipped` is how many of the run's Swift Testing tests its own lines reported skipped, which its tally counts among its tests as XCTest's counter counts an `XCTSkip`, and is said once for the whole clause.
-    private func swiftTestingCounts(_ lines: [String], skipped: Int) -> String? {
+    private func swiftTestingCounts(_ lines: [String], skipped: Int, counted: Bool, skipsReported: Bool) -> String? {
         guard !lines.isEmpty else {
             return nil
         }
@@ -399,7 +415,7 @@ extension RunReportRenderer {
             let tests = readable.reduce(0) { $0 + $1.tests }
             let suites = readable.reduce(0) { $0 + $1.suites }
             let failures = readable.reduce(0) { $0 + $1.failures }
-            return "Swift Testing \(pluralized(tests, "test")) in \(pluralized(suites, "suite")) across \(pluralized(lines.count, "bundle"))\(failureNote(failures))\(skipNote(skipped))"
+            return "Swift Testing \(pluralized(tests, "test")) in \(pluralized(suites, "suite")) across \(pluralized(lines.count, "bundle"))\(failureNote(failures))\(skipNote(skipped, stated: counted, reported: skipsReported))"
         }
         let described = tallies.enumerated().map { index, tally -> String in
             guard let tally else {
@@ -408,10 +424,10 @@ extension RunReportRenderer {
             return "\(pluralized(tally.tests, "test")) in \(pluralized(tally.suites, "suite"))\(failureNote(tally.failures))"
         }.joined(separator: "; ")
         guard lines.count > 1 else {
-            return "Swift Testing \(described)\(skipNote(skipped))"
+            return "Swift Testing \(described)\(skipNote(skipped, stated: counted, reported: skipsReported))"
         }
         // Said apart from the last tally, since the run's lines cannot say which tally each skip belongs to.
-        return "Swift Testing \(lines.count) tallies, not summed — \(described)\(skipped > 0 ? "; \(skipped) skipped across them" : "")"
+        return "Swift Testing \(lines.count) tallies, not summed — \(described)\(skipped > 0 ? "; \(skipped) skipped across them" : skipNote(0, stated: counted, reported: skipsReported).replacingOccurrences(of: ", ", with: "; "))"
     }
 
     /// How many Swift Testing tests the run's own lines last reported skipped (a `.disabled` test, one a trait or a cancellation skipped), counted from the skip lines the runner printed.
@@ -425,7 +441,7 @@ extension RunReportRenderer {
     /// XCTest's own counters, one per test process, or `nil` where it printed none — the half of a run a Swift Testing tally says nothing about.
     ///
     /// Summed on the same terms as the tallies above, and `across N bundles` counts the bundles that printed a counter *worth showing*: a bundle whose only `Executed …` line is `xcodebuild` boilerplate is filtered out upstream (``RunOutputFilter/isVestigialCounter(_:)``), so this population is the display clause's and never the reachability clause's.
-    private func xctestCounts(_ lines: [String]) -> String? {
+    private func xctestCounts(_ lines: [String], skipsReported: Bool) -> String? {
         guard !lines.isEmpty else {
             return nil
         }
@@ -435,13 +451,13 @@ extension RunReportRenderer {
             let tests = readable.reduce(0) { $0 + $1.tests }
             let failures = readable.reduce(0) { $0 + $1.failures }
             let skipped = readable.reduce(0) { $0 + $1.skipped }
-            return "XCTest \(pluralized(tests, "test")) across \(pluralized(lines.count, "bundle"))\(failureNote(failures))\(skipNote(skipped))"
+            return "XCTest \(pluralized(tests, "test")) across \(pluralized(lines.count, "bundle"))\(failureNote(failures))\(skipNote(skipped, stated: true, reported: skipsReported))"
         }
         let described = counters.enumerated().map { index, counts -> String in
             guard let counts else {
                 return "counter \(index + 1) unreadable"
             }
-            return "\(pluralized(counts.tests, "test"))\(failureNote(counts.failures))\(skipNote(counts.skipped))"
+            return "\(pluralized(counts.tests, "test"))\(failureNote(counts.failures))\(skipNote(counts.skipped, stated: true, reported: skipsReported))"
         }.joined(separator: "; ")
         guard lines.count > 1 else {
             return "XCTest \(described)"
@@ -455,9 +471,34 @@ extension RunReportRenderer {
     }
 
     /// How many of a framework's tests were skipped, where any were — an XCTest counter's `XCTSkip`s, or the Swift Testing tests the run's lines reported skipped — so a run whose every selected test skipped is not read as that many tests run and passed.
-    private func skipNote(_ skipped: Int) -> String {
-        skipped > 0 ? ", \(skipped) skipped" : ""
+    ///
+    /// Said as `0 skipped` too where `stated`, which is where the framework's per-test results were read: a reader whose rule is that a skip blocks a pass needs the absence stated, not inferred from a silent line.
+    ///
+    /// Where the run's XCTest results were not all reported (`reported` is false: `--parallel` prints no counter and no skip line for them), a count of nothing is not stated as `0 skipped`; the line says `skips not reported`, since that absence is the log's and not the run's. A skip that was seen is stated either way.
+    private func skipNote(_ skipped: Int, stated: Bool, reported: Bool) -> String {
+        if skipped > 0 {
+            return ", \(skipped) skipped"
+        }
+        guard stated else {
+            return ""
+        }
+        return reported ? ", 0 skipped" : ", skips not reported"
     }
+
+    /// One `skipped: Suite.test — reason` line per skipped test the run named, the first ``skippedListingCap`` of them and a `skipped: +N more` line for the rest, with the reason left off where the log gave none.
+    func skippedLines(_ report: RunReport) -> [String] {
+        let skips = report.testOutcomes.skips
+        var lines = skips.prefix(Self.skippedListingCap).map { skip in
+            skip.reason.map { "skipped: \(skip.name) — \($0)" } ?? "skipped: \(skip.name)"
+        }
+        if skips.count > Self.skippedListingCap {
+            lines.append("skipped: +\(skips.count - Self.skippedListingCap) more")
+        }
+        return lines
+    }
+
+    /// The most skipped tests the totals line is followed by naming.
+    static let skippedListingCap = 10
 
     /// How many lines the two sections that can list have between them.
     ///
@@ -548,8 +589,26 @@ extension RunReportRenderer {
         )
     }
 
-    private func warningSection(_ report: RunReport) -> [String] {
-        guard !report.warnings.isEmpty else {
+    /// What tools logged with a timestamp while the build ran, under a heading of their own beneath the warnings: each line once, as `tool: error: …` with the timestamp and pid gone, at most ``RunOutputFilter/warningCap`` of them.
+    ///
+    /// Shown and never judged. An `error:` here sits beside builds that succeed (`appintentsnltrainingprocessor` logs one on most of them) and states no failure of the command, so it is no ``RunReport/errors`` entry for a verdict to read; the heading says whose words they are, so none is read as the cause of the run's.
+    private func toolLogSection(_ report: RunReport) -> [String] {
+        guard !report.toolLog.isEmpty else {
+            return []
+        }
+        let listed = report.toolLog.prefix(RunOutputFilter.warningCap)
+        var lines = ["", "tool log (\(report.toolLog.count)):"] + listed.map { "  \($0.described)" }
+        let withheld = report.toolLog.count - listed.count
+        if withheld > 0 {
+            lines.append("  +\(withheld) more tool-log lines — see the raw log")
+        }
+        return lines
+    }
+
+    /// - Parameter nothingRan: Whether the headline already says that no test ran, so the tool's own `No matching test cases were run` is left out rather than said a second time.
+    private func warningSection(_ report: RunReport, nothingRan: Bool) -> [String] {
+        let warnings = nothingRan ? report.warnings.filter { $0.message != "No matching test cases were run" } : report.warnings
+        guard !warnings.isEmpty else {
             return []
         }
         // A linter's warnings are the whole of its output — one line per violation, hundreds of them, almost
@@ -558,20 +617,20 @@ extension RunReportRenderer {
         // warning repeating one signature is folded into its first occurrence with a count: a listing with
         // nothing repeated prints one warning per line, and no census heading or sample stands over it.
         guard kind == .linter else {
-            var lines = ["", "warnings (\(report.warnings.count)):"]
-            let listed = RunWarningSignature.grouped(report.warnings).prefix(RunOutputFilter.warningCap)
+            var lines = ["", "warnings (\(warnings.count)):"]
+            let listed = RunWarningSignature.grouped(warnings).prefix(RunOutputFilter.warningCap)
             lines.append(contentsOf: listed.map { group in
                 // The multiplier is what says this line stands for more than itself, as in the errors sample.
                 let shared = group.count > 1 ? "  ×\(group.count)" : ""
                 return "  \(paths.shown(group.example).described)\(shared)"
             })
-            let withheld = report.warnings.count - listed.reduce(0) { $0 + $1.count }
+            let withheld = warnings.count - listed.reduce(0) { $0 + $1.count }
             if withheld > 0 {
                 lines.append("  +\(withheld) more warnings — see the raw log")
             }
             return lines
         }
-        let shape = RunErrorShape.of(report.warnings, changedFiles: changedFiles, paths: paths, noun: "warning")
+        let shape = RunErrorShape.of(warnings, changedFiles: changedFiles, paths: paths, noun: "warning")
         let block = shape.rendered()
         return block.isEmpty ? [] : [""] + block
     }
@@ -584,7 +643,8 @@ extension RunReportRenderer {
         guard let logURL else {
             return "raw: none \(arithmetic) — the raw log could not be written, so what is above is all there is"
         }
-        return "raw: \(paths.shown(logURL.path)) \(arithmetic)"
+        let named = treeStamp.map { "\($0) · " } ?? ""
+        return "raw: \(named)\(paths.shown(logURL.path)) \(arithmetic), \(RunLog.retention(ofPath: logURL.path))"
     }
 
     /// The summary lines this answer prints: every one of ``summaries(of:)``, less those a plain totals line already restates.

@@ -36,6 +36,10 @@ public struct InPlaceAnswerer {
             if match.fallbackFollows, let path = match.call.readPath, OperandFile.readable(path, in: match.directory) == nil {
                 return .withheld(.notExact)
             }
+            var settledUnbuilt: (@Sendable () -> Bool)?
+            if let worth = WorthBeforeAnswer.current {
+                settledUnbuilt = { worth.settles(match) }
+            }
             return answer(
                 match.call,
                 from: match.directory,
@@ -46,7 +50,9 @@ public struct InPlaceAnswerer {
                 sizeBudget: sizeBudget,
                 backoff: backoff,
                 fallbackFollows: match.fallbackFollows,
-                oversized: oversized
+                oversized: oversized,
+                teedFiles: match.teedFiles,
+                settledUnbuilt: settledUnbuilt
             )
         }
         let conditions = Conditions(
@@ -56,7 +62,8 @@ public struct InPlaceAnswerer {
             lookups: match.calls.count,
             sizeBudget: sizeBudget,
             backoff: backoff,
-            oversized: oversized
+            oversized: oversized,
+            teedFiles: match.teedFiles
         )
         return attempt(several: match.calls, literals: match.literals, under: conditions, timeBudget: timeBudget, deadline: deadline)
     }
@@ -96,7 +103,9 @@ public struct InPlaceAnswerer {
         sizeBudget: Int = InPlaceAnswer.sizeBudget,
         backoff: InPlaceBackoff = .standard(),
         fallbackFollows: Bool = false,
-        oversized: (@Sendable (Int) -> Void)? = nil
+        oversized: (@Sendable (Int) -> Void)? = nil,
+        teedFiles: [String] = [],
+        settledUnbuilt: (@Sendable () -> Bool)? = nil
     ) -> Outcome {
         let started = Date()
         let conditions = Conditions(
@@ -106,7 +115,9 @@ public struct InPlaceAnswerer {
             lookups: 1,
             sizeBudget: sizeBudget,
             backoff: backoff,
-            oversized: oversized
+            oversized: oversized,
+            teedFiles: teedFiles,
+            settledUnbuilt: settledUnbuilt
         )
         let anchored = attempt(call, under: conditions, timeBudget: timeBudget, deadline: deadline)
         // `where` resolves a name as it is spelled; a case-folded sweep does not, so a wrong-cased site the sweep
@@ -120,8 +131,8 @@ public struct InPlaceAnswerer {
         // standing rather than starting a second wait the hook's own timeout would cut off.
         let remaining = timeBudget - Date().timeIntervalSince(started)
         guard remaining > 0 else { return anchored }
-        guard !fallbackFollows || search.cut != nil || FallbackProof.printsALine(search, in: directory, under: referenceCeiling(budget: sizeBudget)) else { return anchored }
-        let loose = attempt(.symbols(names: [name], paths: search.paths), under: conditions, timeBudget: timeBudget - Date().timeIntervalSince(started), deadline: deadline)
+        guard !fallbackFollows || search.cut != nil || FallbackProof.printsALine(search, in: directory, under: GrepPrintedLines.referenceCeiling(budget: sizeBudget)) else { return anchored }
+        let loose = attempt(.symbols(names: [name], paths: search.paths, proof: search), under: conditions, timeBudget: timeBudget - Date().timeIntervalSince(started), deadline: deadline)
         guard case let .answered(answered) = loose else { return loose }
         // Timed from the first attempt: what the answer cost is what the caller waited for, the failed proof included.
         return .answered(Answered(
@@ -132,7 +143,7 @@ public struct InPlaceAnswerer {
         ))
     }
 
-    /// One reading answered or withheld, with everything that reading's shape is held to: its rooting, its back-off, its store, its search, and the budgets.
+    /// One reading answered or withheld, with everything that reading's shape is held to: its rooting, its back-off, its search, and the budgets.
     private static func attempt(_ call: InPlaceCall, under conditions: Conditions, timeBudget: TimeInterval, deadline: InPlaceDeadline = .wallClock) -> Outcome {
         let (directory, sizeBudget, backoff) = (conditions.directory, conditions.sizeBudget, conditions.backoff)
         let root: String
@@ -144,21 +155,17 @@ public struct InPlaceAnswerer {
         }
         let shape = call.shape
         guard !backoff.isBackingOff(root: root, shape: shape) else { return .withheld(.backingOff) }
-        // A `where` answer's callers come from the build's index store alone: with none, no `where` answer lists
-        // one, so nothing is searched and nothing is opened to find that out. The names sweep withholds on the
-        // same fact as the anchored one rather than answering declarations alone: both shapes hand over the same
-        // call, and a stand-in that quietly drops what the offer promised is the one thing it may not be.
-        if shape.needsIndexStore, !ReadOnlyIndex.hasIndexStore(atRoot: root) {
-            return .withheld(.noStore)
-        }
-        return settle(root: root, shapes: [shape], under: conditions, timeBudget: timeBudget, deadline: deadline) {
-            try await compute(call, root: root, directory: directory, sizeBudget: sizeBudget, spelling: conditions.spelling, cutting: conditions)
+        // The last thing decided before an engine is opened: a reading no answer could be worth the turn for.
+        guard conditions.settledUnbuilt?() != true else { return .withheld(.notWorthTheTurn) }
+        let indexing = InPlaceIndexing(coldStart: !ReadOnlyIndex.hasUsableIndex(atRoot: root), begun: indexesFirst(call))
+        return settle(root: root, shapes: [shape], indexing: indexing, under: conditions, timeBudget: timeBudget, deadline: deadline) {
+            try await compute(call, root: root, directory: directory, sizeBudget: sizeBudget, spelling: conditions.spelling, indexing: indexing, cutting: conditions)
         }
     }
 
     /// Several calls answered together, each held to every bound it is held to alone, and all withheld where any one would be.
     ///
-    /// **One root for the lot.** Each call is rooted as it would be alone — a Swift file by the repository it sits in, a document or a name search only inside the caller's own — and the roots have to agree, since one freshness header cannot speak for two trees. The back-off of every shape among them is asked, an index store is required where any of them needs one, and an overrun is noted against every one: what ran long cannot be charged to one call rather than another.
+    /// **One root for the lot.** Each call is rooted as it would be alone — a Swift file by the repository it sits in, a document or a name search only inside the caller's own — and the roots have to agree, since one freshness header cannot speak for two trees. The back-off of every shape among them is asked, and an overrun is noted against every one: what ran long cannot be charged to one call rather than another.
     private static func attempt(several calls: [InPlaceCall], literals: [Int: String], under conditions: Conditions, timeBudget: TimeInterval, deadline: InPlaceDeadline = .wallClock) -> Outcome {
         var roots = Set<String>()
         for read in calls {
@@ -172,11 +179,10 @@ public struct InPlaceAnswerer {
         guard roots.count == 1, let root = roots.first else { return .withheld(.outsideRoot) }
         let shapes = Array(Set(calls.map(\.shape)))
         guard !shapes.contains(where: { conditions.backoff.isBackingOff(root: root, shape: $0) }) else { return .withheld(.backingOff) }
-        if shapes.contains(where: \.needsIndexStore), !ReadOnlyIndex.hasIndexStore(atRoot: root) {
-            return .withheld(.noStore)
-        }
         let (directory, sizeBudget) = (conditions.directory, conditions.sizeBudget)
-        return settle(root: root, shapes: shapes, under: conditions, timeBudget: timeBudget, deadline: deadline) {
+        // The index is freshened before any part's search runs, unless every part is a document's outline.
+        let indexing = InPlaceIndexing(coldStart: !ReadOnlyIndex.hasUsableIndex(atRoot: root), begun: !calls.allSatisfy { $0.shape == .outline })
+        return settle(root: root, shapes: shapes, indexing: indexing, under: conditions, timeBudget: timeBudget, deadline: deadline) {
             try await computeParts(calls, literals: literals, root: root, directory: directory, sizeBudget: sizeBudget, spelling: conditions.spelling)
         }
     }
@@ -184,9 +190,12 @@ public struct InPlaceAnswerer {
     /// Runs `compute` under the time budget and frames what it computed as the refusal, under the size budget, with every byte charged to a call.
     ///
     /// Where the whole answer is over the size budget and a bounded one was computed beside it — the members line windows overlap, for their files' whole digests — the bounded one is framed instead, held to the same budget.
+    ///
+    /// `indexing` says whether the repository's index had never completed a build when the answer began, asked by the caller before `compute` starts because an answer abandoned at the deadline reports nothing about what it was doing, so an overrun is the first build's one-off cost and arms the short back-off (``InPlaceBackoff/coldStartWindow``). It counts only where the answer had begun bringing the index up to date by the deadline: an overrun in a document's outline, or in a search that runs before the index is touched, is not the first build and arms the full window.
     private static func settle(
         root: String,
         shapes: [InPlaceCall.Shape],
+        indexing: InPlaceIndexing,
         under conditions: Conditions,
         timeBudget: TimeInterval, deadline: InPlaceDeadline = .wallClock,
         compute: @escaping @Sendable () async throws -> Computation
@@ -195,35 +204,28 @@ public struct InPlaceAnswerer {
         let started = Date()
         let box = ResultBox()
         let finished = DispatchSemaphore(value: 0)
-        // A detached task inherits no task-locals, so the root discovery and the engines a replay bound are carried across by hand.
-        let (roots, engines) = (RootDiscovery.current, EngineReuse.current)
+        // A detached task inherits no task-locals, so the root discovery, the engines a replay bound and the shell's grep are carried across by hand.
+        let (roots, engines, program) = (RootDiscovery.current, EngineReuse.current, ShellGrep.Program.current)
         Task.detached {
             await RootDiscovery.$current.withValue(roots) {
-                await EngineReuse.$current.withValue(engines) { await box.store(Result { try await compute() }) }
+                await EngineReuse.$current.withValue(engines) {
+                    await ShellGrep.Program.$current.withValue(program) { await box.store(Result { try await compute() }) }
+                }
             }
             finished.signal()
         }
-        // Past the budget the query is abandoned where it stands: the hook's process ends with the refusal, and an
-        // interrupted write is SQLite's to roll back.
+        // Past the budget the query is abandoned where it stands: the hook's process ends with the refusal, and the
+        // batch of files being written is SQLite's to roll back. The batches already committed stay, and the next
+        // attempt resumes from them, parsing only the files no current row holds.
         guard finished.wait(timeout: deadline.instant(after: timeBudget)) == .success, let result = box.value else {
-            for shape in shapes {
-                backoff.noteOverrun(root: root, shape: shape)
-            }
+            let window = backoff.noteOverrun(root: root, shapes: shapes, cold: indexing.isColdStart)
+            InPlaceOverrun.current?.record(shapes: shapes, window: window)
             return .withheld(.overTime)
         }
         guard case let .success(computation) = result else { return .withheld(.failed) }
-        let candidates: [Computed]
-        let paged: Computed?
-        switch computation {
-        case let .answer(answer, bounded, cut):
-            candidates = [answer] + (bounded.map { [$0] } ?? [])
-            paged = cut
-        case let .withheld(why):
-            return .withheld(why)
-        }
         let computed: Computed
         let reason: (text: String, served: Int)
-        switch chosen(candidates, cut: paged, under: conditions) {
+        switch served(computation, under: conditions) {
         case let .success(pair):
             (computed, reason) = pair
         case let .failure(why):
@@ -232,13 +234,20 @@ public struct InPlaceAnswerer {
         // Every byte served is charged to some call: each its own text, and the framing to the first.
         let framing = reason.served - computed.calls.reduce(0) { $0 + $1.served }
         let calls = computed.calls.enumerated().map { index, call in
-            Call(tool: call.tool, target: call.target, bytes: AnswerBytes(served: call.served + (index == 0 ? framing : 0), source: call.source))
+            Call(
+                tool: call.tool,
+                target: call.target,
+                bytes: AnswerBytes(served: call.served + (index == 0 ? framing : 0), source: call.source),
+                intercepted: call.fileLines != nil ? .file : call.weighsWindow ? .window : .other,
+                readBytes: call.fileLines == nil ? nil : call.readBytes
+            )
         }
         return .answered(Answered(
             reason: reason.text,
             calls: calls,
             root: computed.root,
-            milliseconds: Int(Date().timeIntervalSince(started) * 1000)
+            milliseconds: Int(Date().timeIntervalSince(started) * 1000),
+            wholeRead: wholeReadBytes(of: computed, served: reason.served)
         ))
     }
 
@@ -279,7 +288,7 @@ public struct InPlaceAnswerer {
             guard let first = roots.first, let root = first else { return .failure(.noRepository) }
             guard roots.allSatisfy({ $0 == root }) else { return .failure(.outsideRoot) }
             return .success(root)
-        case let .symbols(_, paths, _, _, _):
+        case let .symbols(_, paths, _, _, _, _):
             // Rooted by the search's own operands, as a sweep's are — and, unlike a sweep's, required to be the
             // caller's own repository too. What licenses this shape is the hook's assertion that `where` answers
             // it, and that assertion was made against the directory the command runs in (`PreToolUseCommand.lookup`
@@ -295,47 +304,14 @@ public struct InPlaceAnswerer {
         }
     }
 
-    /// The lines the command's own search prints, or why no answer can account for them — worked out before the engine is opened, since it needs nothing but the files.
-    ///
-    /// A whole read — of a Swift file or of a document — makes no search, and prints nothing this has to account for. A search that prints nothing is not answered: an answer would name lines the command never showed. A sweep's search runs under a ceiling (``referenceCeiling(budget:)``) and stops at the first line no `where` answer could locate, or once locating them all would cost more than the whole refusal may.
-    ///
-    /// A names search runs only where it carries a proof (``InPlaceCall/symbols(names:paths:uncovered:proof:)``), and under a ceiling that stops at a line outside Swift source but spends nothing, since the references it is proven against are never served. Printing nothing leaves it the names search it is, which is answered without a search at all.
-    private static func printedLines(of call: InPlaceCall, from directory: String?, sizeBudget: Int) -> Result<[ShellGrep.PrintedLine], Withholding> {
-        let search: ShellGrep
+    /// Whether `call` goes straight to bringing the index up to date, as a digest or a plain names lookup does; any other call runs a search first, and a document's outline never indexes.
+    private static func indexesFirst(_ call: InPlaceCall) -> Bool {
         switch call {
-        case .fileDigest, .documentOutline, .symbols(_, _, _, nil, _), .memberRange:
-            return .success([])
-        case let .declarations(_, grep), let .members(grep), let .references(_, grep), let .symbols(_, _, _, grep?, _):
-            search = grep
-        }
-        let ceiling: ShellGrep.Ceiling? = switch call.shape {
-        case .sweep:
-            referenceCeiling(budget: sizeBudget)
-        case .symbols:
-            ShellGrep.Ceiling(admits: ExactAnswer.whereAnswerLocates(linesOf:), cost: { _, _ in 0 }, budget: 0)
+        case .fileDigest, .memberRange, .symbols(_, _, _, nil, _, _):
+            true
         default:
-            nil
+            false
         }
-        let namedFiles = call.shape == .members || call.shape == .symbols && search.paths.contains { $0.hasSuffix(".swift") }
-        return switch search.run(in: directory, ceiling: ceiling, namedFiles: namedFiles) {
-        case let .printed(lines) where lines.isEmpty && call.shape == .symbols:
-            .success(lines)
-        case let .printed(lines) where lines.isEmpty:
-            .failure(.notExact)
-        case let .printed(lines):
-            .success(lines)
-        case .undecided:
-            .failure(.unchecked)
-        case .pastCeiling(.unaccounted):
-            .failure(.notExact)
-        case .pastCeiling(.overBudget):
-            .failure(.overSize)
-        }
-    }
-
-    /// The most a sweep's search may print: lines only of files a `where` answer lists lines of, and no more of them than the fewest bytes that locate them fit inside `budget`.
-    private static func referenceCeiling(budget: Int) -> ShellGrep.Ceiling {
-        ShellGrep.Ceiling(admits: ExactAnswer.whereAnswerLocates(linesOf:), cost: ExactAnswer.leastSpentLocating(_:ofFileAt:), budget: budget)
     }
 
     /// The answer, computed against an engine on `root` brought up to date for it — opened for this answer, or kept by a bound ``EngineReuse`` — or on `shared`, already brought up to date, where several calls share one — or why it is withheld.
@@ -346,6 +322,7 @@ public struct InPlaceAnswerer {
         sizeBudget: Int,
         spelling: CallSpelling,
         shared: (engine: SiftEngine, freshness: Freshness)? = nil,
+        indexing: InPlaceIndexing? = nil,
         cutting conditions: Conditions? = nil
     ) async throws -> Computation {
         // Before the engine is brought up to date, and without bringing it up to date at all: a document's
@@ -355,12 +332,14 @@ public struct InPlaceAnswerer {
             return try documentOutline(at: path, root: root, directory: directory)
         }
         let printed: [ShellGrep.PrintedLine]
-        switch printedLines(of: call, from: directory, sizeBudget: sizeBudget) {
-        case let .success(lines):
-            printed = lines
+        let printedBytes: Int?
+        switch GrepPrintedLines.of(call, from: directory, sizeBudget: sizeBudget) {
+        case let .success(found):
+            (printed, printedBytes) = found
         case let .failure(why):
             return .withheld(why)
         }
+        indexing?.begin()
         // In a tree that cannot be written, a parse of the whole tree for this one answer: the read runs instead.
         guard let engine = try shared?.engine ?? EngineReuse.freshenable(on: root) else { return .withheld(.treeNotWritable) }
         defer {
@@ -393,7 +372,7 @@ public struct InPlaceAnswerer {
             return try .answer(Computed(
                 calls: [ComputedCall(tool: "digest", target: file.relative, served: digest.text.utf8.count, source: file.bytes)],
                 root: answeredFrom,
-                answer: engine.framing(freshness).headerLine + "\n" + digest.text,
+                answer: engine.framing(freshness).syntacticHeaderLine + "\n" + digest.text,
                 standsIn: "this answer did not weigh itself against the grep's output"
             ))
         case let .members(search):
@@ -401,7 +380,7 @@ public struct InPlaceAnswerer {
             return try .answer(Computed(
                 calls: parts.flatMap(\.calls),
                 root: answeredFrom,
-                answer: engine.framing(freshness).headerLine + "\n" + parts.map(\.text).joined(separator: "\n\n"),
+                answer: engine.framing(freshness).syntacticHeaderLine + "\n" + parts.map(\.text).joined(separator: "\n\n"),
                 standsIn: "a member's source is served as it stands"
             ))
         case let .memberRange(path, range):
@@ -410,14 +389,16 @@ public struct InPlaceAnswerer {
             guard let text = try await ExactAnswer.references(in: engine, of: name, freshness: freshness) else {
                 return .withheld(.notExact)
             }
-            guard locates(ExactAnswer.locations(inWhereAnswer: text), every: printed, in: engine) else { return .withheld(.notExact) }
+            // A site the answer lists by written name shows the line it matched, so it accounts for that line here, though it locates nothing for the audit.
+            guard locates(ExactAnswer.shownLocations(inWhereAnswer: text), every: printed, in: engine) else { return .withheld(.notExact) }
             return .answer(Computed(
                 calls: [ComputedCall(tool: "where", target: name, served: text.utf8.count, source: nil, references: true)],
                 root: answeredFrom,
                 answer: text,
-                standsIn: "a `where` answer stands in for a search's output, which was never produced"
+                standsIn: "a `where` answer stands in for a search's output, which was never produced",
+                printed: printedBytes
             ))
-        case let .symbols(names, paths, uncovered, proof, unchecked):
+        case let .symbols(names, paths, uncovered, proof, unchecked, spelled):
             // The offer's own answer, handed over: one `where` per name, exactly the calls the refusal would
             // have listed. Nothing is proven against the search's output because no search was run — the hook
             // asserts `where` answers this shape at the moment it offers it, and all a refusal adds is the round
@@ -425,16 +406,23 @@ public struct InPlaceAnswerer {
             var headers: [String] = []
             var bodies: [String] = []
             var calls: [ComputedCall] = []
-            var locatedPerName: [Set<ExactAnswer.Location>] = []
+            var shownPerName: [Set<ExactAnswer.Location>] = []
+            var cutSites = Set<ExactAnswer.Location>()
             for name in names {
                 guard let answer = try await ExactAnswer.lookup(in: engine, of: name, freshness: freshness) else {
                     return .withheld(.notExact)
                 }
                 // Kept per name rather than over the lot: an alternation asks about each name, so one name found
                 // inside the paths searched says nothing about another found only outside them.
-                locatedPerName.append(ExactAnswer.locations(inWhereAnswer: answer.body))
+                shownPerName.append(ExactAnswer.shownLocations(inWhereAnswer: answer.body))
+                // A file whose row the answer capped is read again with every line listed, for which lines it cut.
+                if answer.body.contains(", +"), let whole = try await ExactAnswer.references(in: engine, of: name, freshness: freshness) {
+                    cutSites.formUnion(ExactAnswer.cutSites(inWhereAnswer: answer.body, listedWhole: whole))
+                }
                 headers.append(answer.header)
-                bodies.append(answer.body)
+                // Under one shared header the parts would run together, and no part echoes its query, so each of
+                // several is labelled with the call that answers it; a lone name needs no label.
+                bodies.append(names.count > 1 ? "where \(name)\n" + answer.body : answer.body)
                 calls.append(ComputedCall(tool: "where", target: name, served: answer.body.utf8.count, source: nil))
             }
             guard let header = headers.first else { return .withheld(.notExact) }
@@ -442,7 +430,7 @@ public struct InPlaceAnswerer {
             // this is withheld, whatever its header reads — a name declared only under a target the semantic
             // store never built (a test target) carries a header of its own, and blaming that mismatch first
             // would name the wrong reason for an alternation this search was never going to hold anyway.
-            guard locatedPerName.allSatisfy({ Self.searchHolds($0, within: paths, from: directory, engine: engine) }) else {
+            guard shownPerName.allSatisfy({ SearchOperand.operands(paths, from: directory, inRepositoryAt: engine.repoRoot.path, holdAnyOf: $0) }) else {
                 return .withheld(.outsideSearch)
             }
             // One header for the lot: it is a fact about the tree every one of these answers came from, and
@@ -459,7 +447,7 @@ public struct InPlaceAnswerer {
             // A name read through `T.Type`, `T.self` or `Self.x` stands in for the search only where every line it
             // prints is a site the names' references locate: a comment or a string literal spelling the expression
             // is a line no store records, and the name's answer says nothing about it.
-            if proof != nil {
+            if let proof, InPlaceShape.needsProof(proof.pattern) {
                 var located = Set<ExactAnswer.Location>()
                 for name in names {
                     guard let text = try await ExactAnswer.references(in: engine, of: name, freshness: freshness) else { return .withheld(.notExact) }
@@ -470,11 +458,21 @@ public struct InPlaceAnswerer {
             // The prose an alternation carried beside its names is named straight under the header, before any
             // name's sites, so what the answer leaves to a search is read before what it covers.
             let caveat = InPlaceAnswer.caveat(uncovered: uncovered).map { $0 + "\n\n" } ?? ""
+            // An answer standing whole for a search of named paths says it was widened past them, and a matching
+            // line it does not show, a comment no index records above all, is counted, or said to be uncounted:
+            // both under the header, rather than left to be read as the search's.
+            let shown = shownPerName.reduce(into: Set<ExactAnswer.Location>()) { $0.formUnion($1) }
+            let widening = SearchOperand.widening(of: shown, by: paths, spelled: spelled, from: directory, inRepositoryAt: engine.repoRoot.path)
+            let counted = UnshownGrepLines.counted(printed, weighed: printedBytes, cut: proof?.cut)
+            let unshownLines = counted.map { UnshownGrepLines($0, shown: shown, cutSites: cutSites, answer: bodies.joined(separator: "\n"), from: directory, in: engine) }
+            let notes = [widening, unshownLines.map { $0.note(under: spelled ?? paths) } ?? UnshownGrepLines.notCounted].compactMap(\.self)
+            let unshown = notes.isEmpty ? "" : notes.joined(separator: "\n") + "\n\n"
             return .answer(Computed(
                 calls: calls,
                 root: answeredFrom,
-                answer: header + "\n" + caveat + bodies.joined(separator: "\n\n"),
-                standsIn: "a `where` answer stands in for a search's output, which was never produced"
+                answer: header + "\n" + caveat + unshown + bodies.joined(separator: "\n\n"),
+                standsIn: "a `where` answer stands in for a search's output, which was never produced",
+                printed: printedBytes
             ))
         }
     }
@@ -515,23 +513,6 @@ public struct InPlaceAnswerer {
             ExactAnswer.repositoryRelativePath(of: line.file, in: engine).map { located.contains(ExactAnswer.Location(path: $0, line: line.line)) } ?? false
         }
     }
-
-    /// Whether the files and subtrees `paths` names hold any of the sites one name's answer located — the one bound on a shape nothing else proves.
-    ///
-    /// A search narrower than the repository asks a narrower question, and the `where` answer standing in for it does not: `grep -rn Depot Sources` asks whether `Depot` is used in `Sources`, and an answer listing its declaration under `Tests` reads as a yes where the search itself would have printed nothing. So where every site falls outside the operands the answer is withheld and the search runs, printing the nothing that is the truth. It is asked of one name's sites at a time, and an alternation is answered only where every name has a site inside: one name found inside is no evidence about another found only outside, and dropping that one would hand back a partial answer that reads as complete. Where a name has a site inside, its answer stands whole rather than narrowed to it, since dropping the rest would be a narrowing nobody could see.
-    ///
-    /// An operand may be a tree, a Swift file or a shell glob of them (``SearchOperand``): a file holds only a site in that file, and a glob only a site in a file it matches as the shell matches it. An operand that *is* the repository bounds nothing (its scope is empty), and neither does a call carrying no operands — a `Grep` with no path searches everything under the caller. An operand with no scope at all — a file that is not there, a path that resolves nowhere in the repository — holds nothing, so an answer is never handed over for a search that would only have printed an error.
-    private static func searchHolds(_ located: Set<ExactAnswer.Location>, within paths: [String], from directory: String?, engine: SiftEngine) -> Bool {
-        guard !paths.isEmpty else { return true }
-        let searched = paths.compactMap { OperandFile.absolute($0, in: directory) }
-        let operands = searched.map(SearchOperand.init(path:))
-        let scopes = operands.compactMap { operand in operand.scope(inRepositoryAt: engine.repoRoot.path).map { (operand, $0) } }
-        guard scopes.count == paths.count else { return false }
-        guard !scopes.contains(where: \.1.isEmpty) else { return true }
-        return located.contains { site in
-            scopes.contains { $0.holds(site.path, scope: $1) }
-        }
-    }
 }
 
 private extension InPlaceAnswerer {
@@ -570,6 +551,9 @@ private extension InPlaceAnswerer {
         var setAsideWhy: [String] = []
         // Whether any part stands under the one header above them all rather than under its own.
         var sharesHeader = false
+        // What the whole line prints, where every lookup on it weighed what its search prints: the literals it
+        // echoes and each search, counted each time it runs; `nil` once a lookup weighed nothing.
+        var linePrinted: Int? = literals.values.reduce(0) { $0 + $1.utf8.count }
         // A literal is part of what the line printed, served by no call: its bytes are the framing's.
         let literal = { (index: Int) -> (calls: [ComputedCall], text: String)? in
             literals[index].map { (calls: [], text: $0) }
@@ -586,9 +570,11 @@ private extension InPlaceAnswerer {
                 guard try !readsLinesNoDigestShows(path, windows: windows, in: directory, engine: engine, spelling: spelling) else { return .withheld(.linesNotShown) }
                 guard let digest = try FileDigestParts.wholeFileDigest(path, windows: windows, in: directory, engine: engine, spelling: spelling) else { return .withheld(.notExact) }
                 part = (calls: [digest.call], text: digest.text)
+                linePrinted = nil
             case let .documentOutline(path):
                 guard let outline = try documents[path].flatMap({ try outline(ofFile: $0, in: engine) }) else { return .withheld(.notExact) }
                 part = (calls: [outline.call], text: outline.text)
+                linePrinted = nil
             default:
                 guard let freshness else { return .withheld(.notExact) }
                 let computation = try await compute(call, root: root, directory: directory, sizeBudget: sizeBudget, spelling: spelling, shared: (engine, freshness))
@@ -598,9 +584,18 @@ private extension InPlaceAnswerer {
                     }
                     return .withheld(.notExact)
                 }
+                // A sweep is weighed on its own, its listing against what its own search prints, the framing the line
+                // shares left out of both, as each window is below; where every lookup weighed so, the whole refusal,
+                // framing included, is weighed against what the whole line prints once it is framed.
+                if let printed = computed.printed, computed.answer.utf8.count >= printed {
+                    return .withheld(.notSmaller)
+                }
+                linePrinted = linePrinted.flatMap { sum in
+                    computed.printed.map { sum.addingReportingOverflow($0).overflow ? Int.max : sum + $0 }
+                }
                 // An answer opening on the shared header sits under the one header above them all; any other keeps
                 // its own — a `where`'s states the semantic store's freshness as well — so every part's is stated.
-                let header = try engine.framing(freshness).headerLine + "\n"
+                let header = try engine.framing(freshness).syntacticHeaderLine + "\n"
                 if computed.answer.hasPrefix(header) {
                     part = (calls: computed.calls, text: String(computed.answer.dropFirst(header.count)))
                     sharesHeader = true
@@ -654,7 +649,7 @@ private extension InPlaceAnswerer {
         let note = { (files: [(path: String, lines: String)]) in
             files.isEmpty ? nil : "only members of " + files.map { "\($0.path) lines \($0.lines)" }.joined(separator: "; ") + " are shown"
         }
-        let header = try sharesHeader ? freshness.map { try engine.framing($0).headerLine } : nil
+        let header = try sharesHeader ? freshness.map { try engine.framing($0).syntacticHeaderLine } : nil
         let computed = { (parts: [(calls: [ComputedCall], text: String)], note: String?) in
             let body = CompoundAnswerBody.joined(parts.map { (isLiteral: $0.calls.isEmpty, text: $0.text) })
             return Computed(
@@ -669,36 +664,13 @@ private extension InPlaceAnswerer {
         // The members answer shows those files' members too, so its note owes their reasons as well as its own.
         var bounded = boundedFiles.isEmpty ? nil : computed(boundedParts, note(boundedFiles))
         bounded?.setAsideWhy = setAsideWhy
-        return .answer(computed(parts, wholeNote), bounded: bounded)
+        var whole = computed(parts, wholeNote)
+        whole.printed = linePrinted
+        return .answer(whole, bounded: bounded)
     }
 }
 
 extension InPlaceAnswerer {
-    /// A read of one Swift file, whole or through windows, answered with its digest and — where the windows' lines can be read — the members they overlap beside it, or why it is withheld.
-    ///
-    /// Where `conditions` is given, a whole digest whose refusal runs past the size budget is answered beside with its first page cut to fit (``pageCut(of:bounded:digest:read:engine:under:onRender:)``).
-    static func digestAnswer(_ path: String, windows: [LineWindow], in directory: String?, engine: SiftEngine, freshness: Freshness, spelling: CallSpelling, cutting conditions: Conditions? = nil, onRender: (() -> Void)? = nil) throws -> Computation {
-        guard try !unparsed(path, in: directory, engine: engine) else { return .withheld(.parseError) }
-        guard try !readsLinesNoDigestShows(path, windows: windows, in: directory, engine: engine, spelling: spelling) else { return .withheld(.linesNotShown) }
-        guard let digest = try FileDigestParts.wholeFileDigest(path, windows: windows, in: directory, engine: engine, spelling: spelling) else { return .withheld(.notExact) }
-        // Framed once the digests have read: the one that found the file stale is the one that reparsed it.
-        let bounded = try FileDigestParts.windowAnswers(path, windows: windows, in: directory, engine: engine, spelling: spelling).map { parts -> Computed in
-            let lines = parts.map { String($0.call.target.dropFirst(digest.call.target.count + 1)) }.joined(separator: ", ")
-            let text = try engine.framing(freshness).headerLine + "\n" + DigestRenderer.joinedAnswers(parts.map(\.text))
-            return Computed(calls: parts.map(\.call), root: engine.repoRoot.path, answer: text, standsIn: "these member lines did not weigh themselves against the lines asked for", note: "only the members of lines \(lines) are shown")
-        }
-        let whole = try Computed(calls: [digest.call], root: engine.repoRoot.path, answer: engine.framing(freshness).headerLine + "\n" + digest.text, standsIn: "this digest did not weigh itself against the file's source")
-        // A page that stops short of a window's members, or a digest naming them on their type's line alone,
-        // accounts for none of what the window prints there: the members stand in, or the read runs — as it does
-        // where the window prints `import` lines, which the members leave without a trace.
-        guard digest.call.standsInForWindow else {
-            guard var members = bounded, !members.calls.contains(where: \.overlapsImports) else { return .withheld(.notExact) }
-            members.note = members.note.map { "\($0); \(FileDigestParts.whyNotStandingIn(digest.call))" }
-            return .answer(members, bounded: nil)
-        }
-        return try .answer(whole, bounded: bounded, cut: conditions.flatMap { try pageCut(of: whole, bounded: bounded, digest: digest, read: DigestRead(path: path, windows: windows, directory: directory), engine: engine, under: $0, onRender: onRender) })
-    }
-
     /// The source of the one member a pattern range prints, where the lines it prints from the file are proven to be exactly that member's first line through its closing one, served verbatim — or why it is withheld.
     private static func memberRange(_ path: String, range: RangeRead, in directory: String?, engine: SiftEngine, freshness: Freshness) throws -> Computation {
         guard let file = try OperandFile.indexed(path, in: directory, engine: engine), let lines = range.printedLines(of: file.lines),
@@ -711,9 +683,19 @@ extension InPlaceAnswerer {
         return try .answer(Computed(
             calls: answer.calls,
             root: engine.repoRoot.path,
-            answer: engine.framing(freshness).headerLine + "\n" + answer.text,
+            answer: engine.framing(freshness).syntacticHeaderLine + "\n" + answer.text,
             standsIn: "a member's source is served as it stands"
         ), bounded: nil)
+    }
+
+    /// The candidate `computation` serves, framed as the refusal carrying it (``chosen(_:cut:under:)``), or why it is withheld.
+    static func served(_ computation: Computation, under conditions: Conditions) -> Result<(Computed, (text: String, served: Int)), Withholding> {
+        switch computation {
+        case let .answer(answer, bounded, cut):
+            chosen([answer] + (bounded.map { [$0] } ?? []), cut: cut, under: conditions)
+        case let .withheld(why):
+            .failure(why)
+        }
     }
 
     /// The candidate answer served, framed as the refusal carrying it, or why none may be: the whole answer over the size budget, or no candidate smaller than the window it stands in for.
@@ -725,6 +707,11 @@ extension InPlaceAnswerer {
         // A whole answer whose closing line can state no size that is its own is withheld outright where it fits,
         // since a bounded answer's note could name no true reason for setting it aside.
         guard let whole = candidates.first.map({ frame($0, $0.note) }), whole.1.served > sizeBudget || whole.1.statesItsSize else { return .failure(.notSmaller) }
+        // A sweep is served only where the whole refusal is smaller than what its search prints, before the size
+        // budget is asked: a refusal no smaller than the grep is not worth serving, however large either is.
+        if let printed = whole.0.printed, whole.1.served >= printed {
+            return .failure(.notSmaller)
+        }
         // A bounded answer's note says why the whole digest was set aside, which only the whole's own framing decides:
         // the first check `servable` finds it failing.
         let setAside = whole.0.whySetAside(whole.0.shortfall(as: whole.1, sizeBudget: sizeBudget, weighed: whole.0.weighsRead), served: whole.1.served)
@@ -785,17 +772,6 @@ extension InPlaceAnswerer {
 }
 
 private extension InPlaceAnswerer {
-    /// Whether any of `windows` on the file at `path` reads lines no digest shows — only lines of a declaration's leading doc comment, which a digest carries the summary of at most, or lines whose members answer would name one member and nothing else, which the reader who chose the window already knew — so that window is never answered in place, whatever an answer would save.
-    private static func readsLinesNoDigestShows(_ path: String, windows: [LineWindow], in directory: String?, engine: SiftEngine, spelling: CallSpelling) throws -> Bool {
-        guard !windows.isEmpty,
-              let file = try OperandFile.indexed(path, in: directory, engine: engine),
-              let ranges = LineWindow.ranges(of: windows, in: file.lines, byteLengths: file.byteLengths)
-        else {
-            return false
-        }
-        return try ranges.contains { try engine.liesInLeadingDocComment($0, inFile: file.relative) || engine.namesOneMember($0, inFile: file.relative, options: DigestOptions(spelling: spelling)) }
-    }
-
     /// The lines a declaration grep's digest accounts for — every declaration's first line it lists, its attribute lines and name line too where the search is one of the closed vocabulary spellings (``DeclarationVocabularyGrep``), and, where the pattern asks for column-0 braces, the ends of its top-level declarations' ranges — or `nil` where a brace in the file is not one of those ends.
     ///
     /// Every column-0 brace is asked of, printed or cut away: one the digest does not name is a sign the file is not what the digest's ranges make it look like.
@@ -884,6 +860,10 @@ extension InPlaceAnswerer {
         let backoff: InPlaceBackoff
         /// Told how many bytes an answer came to where it was built and then withheld over ``sizeBudget``.
         var oversized: (@Sendable (Int) -> Void)?
+        /// The files a trailing `tee` of the command would have written, as it spells them, which the answer says were not written.
+        var teedFiles: [String] = []
+        /// Whether the reading is never worth the turn whatever its answer, asked once its repository and back-off are known (``WorthBeforeAnswer``).
+        var settledUnbuilt: (@Sendable () -> Bool)?
 
         /// The face the answer's own advice is spelled for: the one the opening line names its calls in.
         var spelling: CallSpelling {
@@ -906,6 +886,8 @@ extension InPlaceAnswerer {
         var weighsWindow = false
         /// The line count of the whole file a read prints, where `source` is that file's size on disk, and `nil` where it is not.
         var fileLines: Int?
+        /// The bytes of the lines one whole-file `Read` of that file returns, its first ``LineWindow/readDefaultLimit``, where `fileLines` is set.
+        var readBytes: Int?
         /// The text of every non-blank line the window this call weighs prints, without indentation, or none for a call that weighs no window.
         var windowText: [String] = []
         /// Whether the whole-file digest this call serves for a window lists the members the window reaches — false where a paged digest's first page stops short of them, so it accounts for none of the lines the window prints there.
@@ -953,6 +935,14 @@ extension InPlaceAnswerer {
         var note: String?
         /// Why the whole digests of files on a line of several were already set aside for their windows' members, in the line's order: a members answer showing those members owes these reasons as well as its own.
         var setAsideWhy: [String] = []
+        /// What the whole read of the file this answers windows over most of is served, against the file's size, where that read would be answered: the whole digest where it fits the size budget, its first page cut to fit otherwise (``wholeReadBytes(_:in:engine:freshness:under:onRender:)``).
+        ///
+        /// It is what ``WholeReadWorth`` weighs such a window with, so the window agrees with the whole read whichever candidate is served.
+        var wholeRead: AnswerBytes?
+        /// The bytes the command's own search prints after its cut, where the answer is a sweep the whole refusal must be smaller than; `Int.max` where the search stopped past the size budget, and `nil` for every other answer.
+        ///
+        /// On a line of several lookups it is what the whole line prints, its literals and every search on it, where each lookup weighed what its search prints; `nil` where any weighed nothing.
+        var printed: Int?
         /// Whether some call weighed itself against what a read prints — a window's lines or a whole file — so the whole answer has to be smaller than what it weighed.
         var weighsRead: Bool {
             calls.contains { $0.weighsWindow || $0.fileLines != nil }

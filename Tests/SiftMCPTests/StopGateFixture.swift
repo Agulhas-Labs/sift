@@ -14,8 +14,13 @@ struct StopGateFixture {
     let marks: ReuseNudgeMarks
     let transcripts: URL
 
-    init(package: Bool = true) throws {
-        repo = try MCPTestRepo.make(declaring: "Depot")
+    /// A neutral path puts the repository in a directory whose path names nothing of the tool, for a test that proves a scan does not match on it.
+    init(package: Bool = true, neutralPath: Bool = false) throws {
+        if neutralPath {
+            repo = try MCPTestRepo.make(at: TemporaryDirectory.make("repo", prefix: "stopgate"), declaring: "Depot")
+        } else {
+            repo = try MCPTestRepo.make(declaring: "Depot")
+        }
         if package {
             try "// swift-tools-version:6.0\nimport PackageDescription\nlet package = Package(name: \"Depot\")\n"
                 .write(to: repo.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)

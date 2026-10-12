@@ -44,7 +44,7 @@ struct WhereFlagRowTests {
             """
         )
 
-        #expect(output.contains("\"P.init\" (4 call sites in 1 file"))
+        #expect(output.contains("\"P.init\" (4 call sites by written name in 1 file"))
         #expect(!output.contains("with the labels"))
         let rows = WhereAnswerRepetitionTests.sitesOnePerLine(output).split(separator: "\n").map(String.init)
         let oneRow = try #require(rows.first { $0.contains("in Calls.one(") })

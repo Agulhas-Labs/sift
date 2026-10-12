@@ -90,23 +90,23 @@ struct NoStoreSweepPagingTests {
         }
 
         #expect(pages.count > 1, "\(first)")
-        #expect(first.contains("references: all sites by written name, paged by file"), "\(first)")
+        #expect(first.contains("no store for callers, overrides or references; sites by written name"), "\(first)")
         #expect(!first.contains("references: UNAVAILABLE"), "\(first)")
         #expect(!first.contains("more call sites"), "\(first)")
-        #expect(first.contains("\"Point.init\" (300 call sites in \(Self.callerCount + 1) files)"), "\(first)")
+        #expect(first.contains("\"Point.init\" (300 call sites by written name in \(Self.callerCount + 1) files)"), "\(first)")
         let files = (1 ... Self.callerCount).map { "Sources/App/Caller\($0).swift:" } + ["Sources/App/Points.swift:"]
         for file in files {
             #expect(pages.count { $0.contains(file) } == 1, "\(file) should be on exactly one page")
         }
     }
 
-    /// A cursor past the last file says how many it skipped rather than serving the first page again.
+    /// A cursor past the last file says how many files there are rather than serving the first page again.
     @Test
-    func anOffsetPastTheEndSaysItSkippedEveryFile() async throws {
+    func anOffsetPastTheEndNamesTheFileCount() async throws {
         let worktree = try Self.makeWorktree(named: "agent-2a3b4c5d")
         let output = try await Self.answer("relay()", in: worktree, offset: 500)
 
-        #expect(output.contains("(…\(Self.callerCount) files skipped)"), "\(output)")
+        #expect(output.contains("offset 500 is past the last of \(Self.callerCount) files — drop offset to see them"), "\(output)")
         #expect(!output.contains("Sources/App/Caller1.swift:"), "\(output)")
     }
 
@@ -119,7 +119,7 @@ struct NoStoreSweepPagingTests {
         let paged = try await Self.answer("relay()", in: worktree, offset: 40)
 
         #expect(withoutRefs.contains("(offset 40 unused"), "\(withoutRefs)")
-        #expect(syntactic.contains("references: UNAVAILABLE"), "\(syntactic)")
+        #expect(syntactic.contains("--syntactic: callers, overrides or references not asked for, sites by written name"), "\(syntactic)")
         #expect(syntactic.contains("(offset 40 unused"), "\(syntactic)")
         #expect(!paged.contains("unused"), "\(paged)")
     }
@@ -136,16 +136,16 @@ struct NoStoreSweepPagingTests {
         #expect(!single.contains("unrelated owners"), "\(single)")
     }
 
-    /// The sweep answers references after all, so the mode line never says they do not answer, and the sweep line says only a typealias use no type's block folded in may be missing.
+    /// The sweep answers references after all, so the degraded note never says they do not answer, and the retired sweep line's limits are not repeated on the answer.
     @Test
     func theModeLineAndTheSweepLineAgree() async throws {
         let worktree = try Self.makeWorktree(named: "agent-4a5b6c7d")
         let output = try await Self.answer("relay()", in: worktree)
-        let mode = try #require(output.split(separator: "\n").first { $0.hasPrefix("mode:") })
+        let mode = try #require(output.split(separator: "\n").first { $0.hasPrefix(DegradedNote.noStoreOpening) })
 
         #expect(!mode.contains("references do not"), "\(mode)")
         #expect(!mode.contains(SiftEngine.syntaxOnlyTail), "\(mode)")
-        #expect(output.contains("may miss protocol, closure, unfolded-typealias uses"), "\(output)")
+        #expect(!output.contains("unapplied instance-method references"), "\(output)")
         #expect(!output.contains("(a typealias, a protocol, a closure) is not among them"), "\(output)")
     }
 }

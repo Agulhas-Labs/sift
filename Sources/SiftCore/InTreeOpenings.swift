@@ -6,7 +6,7 @@
 struct InTreeOpenings {
     /// The stores open for this query, in path order.
     var opened: [SemanticStore] = []
-    /// A clause for each store still loading or failed to open, for the `where` mode line.
+    /// A clause for each store still loading or failed to open, for the degraded `where` note.
     var pending: [String] = []
     /// The warming note for the first store still loading, which answers for them all when no store opened.
     var warmingNote: String?

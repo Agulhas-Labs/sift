@@ -18,6 +18,8 @@ public struct DigestOptions: Sendable {
     ///
     /// The CLI and the MCP tool use the default alone: only the hook's answer cut to fit a size budget sets another.
     public var pageSize: Int = DigestRenderer.memberCap
+    /// Whether a module's digest can be asked for: false for an answer read at a revision, which refuses a module, so a type answer does not point at one.
+    var servesModules = true
 
     public init(includeAllAccess: Bool = false, signaturesOnly: Bool = false, offset: Int = 0, spelling: CallSpelling = .commandLine) {
         self.includeAllAccess = includeAllAccess

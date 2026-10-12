@@ -21,6 +21,10 @@ struct InPlaceNamesPartialTests {
             "Sources/App/Depot.swift": "public struct Depot {\n    public init() {}\n}\n",
             "Sources/App/Gizmo.swift": "public struct Gizmo {\n    public init() {}\n}\n",
             "Sources/App/Uses.swift": "struct Holder {\n    var depot = Depot()\n    var second = Gizmo()\n}\n",
+            // Each name on many lines of its own under a deep directory, so a search for either name, or for both,
+            // prints more than the answer to it.
+            "Sources/App/Stock/Aisles/Bays/Racks/Shelves/Bins/Trays/Slots/Rows/Columns/Pallets.swift": (1 ... 24).map { "func pallet\($0)(first: Depot = Depot()) {}" }.joined(separator: "\n") + "\n",
+            "Sources/App/Stock/Aisles/Bays/Racks/Shelves/Bins/Trays/Slots/Rows/Columns/Spares.swift": (1 ... 24).map { "func spare\($0)(first: Gizmo = Gizmo()) {}" }.joined(separator: "\n") + "\n",
         ], to: root)
         try MCPTestRepo.build(root)
         try await SiftEngine(directory: root).ensureFresh()
@@ -107,8 +111,8 @@ struct InPlaceNamesPartialTests {
         let shell = InPlaceShape.match(forShell: #"grep -rn "Depot\|stale index" Sources"#, in: "/repo")
         let tool = InPlaceShape.match(forSearchTool: "Grep", input: ["output_mode": "content", "pattern": "Depot|stale index", "path": "Sources"], in: "/repo")
 
-        #expect(shell?.call == .symbols(names: ["Depot"], paths: ["Sources"], uncovered: ["stale index"]))
-        #expect(tool?.call == .symbols(names: ["Depot"], paths: ["/repo/Sources"], uncovered: ["stale index"]))
+        #expect(shell?.call == .symbols(names: ["Depot"], paths: ["Sources"], uncovered: ["stale index"], proof: ShellGrep(arguments: ["-rn", #"Depot\|stale index"#, "Sources"], rawArguments: ["-rn", #""Depot\|stale index""#, "Sources"])))
+        #expect(tool?.call == .symbols(names: ["Depot"], paths: ["/repo/Sources"], uncovered: ["stale index"], spelled: ["Sources"]))
     }
 
     /// The answer is the name's `where` with one line naming the prose it does not cover; its identical re-run goes through, and the answer is logged under its own rule.
@@ -121,7 +125,9 @@ struct InPlaceNamesPartialTests {
         #expect(answered.calls.map(\.target) == ["Depot"])
         let answer = try #require(InPlaceAnswer.answer(inReason: answered.reason))
         #expect(answer.contains(#"This answer does not cover "stale index"; re-run the identical command to sweep for that."#))
-        #expect(answer.contains("where Depot"))
+        #expect(answer.contains("App.Depot — struct"))
+        // One name, so no part needs a label naming it.
+        #expect(!answer.contains("where Depot"))
 
         let directory = try TemporaryDirectory.make("partial-verdict")
         let first = try await Self.outcome(command, in: root, records: directory)

@@ -53,7 +53,7 @@ struct WhereOperatorHandedOnStoreTests {
         let syntactic = try await engine.lookup(symbol: "<~>", freshness: engine.ensureFresh(), options: WhereOptions(includeSemantic: false))
 
         #expect(built.contains("semantic: fresh"), "\(built)")
-        #expect(syntactic.contains("\"<~>\" (2 call sites in 1 file"), "\(syntactic)")
+        #expect(syntactic.contains("\"<~>\" (2 call sites by written name in 1 file"), "\(syntactic)")
         #expect(built.contains("every call spelled \"<~>\" is listed above — 2 call sites by name, 2 listed above (for <~>)"), "\(built)")
         #expect(built.components(separatedBy: "return vaults.reduce(first, <~>)").count == 2, "\(built)")
     }
@@ -106,7 +106,7 @@ struct WhereOperatorHandedOnStoreTests {
         let syntactic = try await engine.lookup(symbol: name, freshness: engine.ensureFresh(), options: WhereOptions(includeSemantic: false))
 
         #expect(built.contains("semantic: fresh"), "\(built)")
-        #expect(syntactic.contains("\"\(name)\" (2 call sites in 1 file"), "\(syntactic)")
+        #expect(syntactic.contains("\"\(name)\" (2 call sites by written name in 1 file"), "\(syntactic)")
         #expect(built.contains("every call spelled \"\(name)\" is listed above — 2 call sites by name, 2 listed above (for \(name))"), "\(built)")
         #expect(built.components(separatedBy: "return [first] + \(bare)").count == 2, "\(built)")
     }

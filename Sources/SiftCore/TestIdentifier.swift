@@ -58,18 +58,14 @@ public extension TestIdentifier {
 
     /// The target's name as a Swift module name, which is not the target's name wherever the target is named something Swift cannot spell — and it is the module name, not the target, that XCTest's log qualifies a class with.
     ///
-    /// **Measured on a target named `Demo Spaced Tests`** (17 Sep 2026, `ValidationProjects/README.md`): it enumerates as `Demo Spaced Tests/SpacedTests/testCountsUp()`, spaces intact, and logs `-[Demo_Spaced_Tests.SpacedTests testCountsUp]`. Xcode derives `PRODUCT_MODULE_NAME` from the product name through its `c99ext_identifier` operator — every character that is not an ASCII letter, digit or `_` becomes `_`, and a name that would begin with a digit takes a `_` in front of it. The substitution is the measured half; the leading-digit prefix is the operator's other half, which no target here is named to exercise, and it costs nothing to honour because a module name beginning with a digit is a string XCTest can never print.
+    /// **Measured on a target named `Demo Spaced Tests`** (17 Sep 2026, `ValidationProjects/README.md`): it enumerates as `Demo Spaced Tests/SpacedTests/testCountsUp()`, spaces intact, and logs `-[Demo_Spaced_Tests.SpacedTests testCountsUp]`. Xcode derives `PRODUCT_MODULE_NAME` from the product name through its `c99extidentifier` operator, and SwiftPM derives a target's module the same way; ``C99ExtendedIdentifier`` holds the measured spelling, Unicode letters kept and a leading digit replaced.
     var moduleName: String {
         Self.moduleName(ofTarget: target)
     }
 
     /// The module name a target named `target` builds, spelt as ``moduleName`` spells it.
     internal static func moduleName(ofTarget target: String) -> String {
-        let substituted = String(target.map { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") ? $0 : "_" })
-        guard let first = substituted.first, first.isNumber else {
-            return substituted
-        }
-        return "_" + substituted
+        C99ExtendedIdentifier.spelling(of: target)
     }
 
     /// The `-only-testing:` argument that selects this one test.

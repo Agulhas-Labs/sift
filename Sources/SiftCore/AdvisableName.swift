@@ -40,7 +40,7 @@ public struct AdvisableName {
     /// A `couldAnswer(member:of:from:)` that answers each type-member-root triple once, against the indexes as `state` first read them.
     ///
     /// Built the same way ``memoised(in:)`` is, for the same reason: `SearchToolAdvice` and `ShellAdvice` each ask this fresh per call, on both search surfaces the hook nudges and inside every transcript a scan walks, so an audit over a window asks it once per distinct member-shaped search across the whole run rather than once per occurrence. Keyed on the resolved root rather than the raw directory, since two calls from different directories of the same checkout are the same question — which is also where the sharing comes from: an audit's transcripts run from many working directories inside the one repository they are about.
-    public static func memoisedMember(in state: RunIndexState = RunIndexState()) -> (String, String, String?) -> Bool {
+    public static func memoisedMember(in state: RunIndexState = RunIndexState()) -> @Sendable (String, String, String?) -> Bool {
         { member, type, directory in
             // No directory, or one outside any repository, is answered without caching: `couldAnswer`
             // itself always says so with no root to key on, and there is nothing here worth memoising.

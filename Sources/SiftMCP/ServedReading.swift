@@ -87,7 +87,7 @@ public struct ServedReading: Sendable, Equatable, Codable {
             [(path as NSString).lastPathComponent]
         case let .references(name, _):
             [name]
-        case let .symbols(names, _, _, _, _):
+        case let .symbols(names, _, _, _, _, _):
             names
         case .members, .memberRange:
             []

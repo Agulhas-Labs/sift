@@ -15,7 +15,7 @@ import Testing
 struct AnswerHeaderTests {
     /// What a live read opens with, spelled out rather than rebuilt from the function under test.
     private static func liveHeader(repository: URL, worktree: String) -> String {
-        "tree: \(repository.lastPathComponent) (worktree \(worktree))  source: working tree, read live — nothing stored to go stale"
+        "tree: \(repository.lastPathComponent) (worktree \(worktree))  source: live"
     }
 
     private static func temporaryRegistry() throws -> RootsRegistry {

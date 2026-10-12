@@ -46,7 +46,7 @@ public struct MCPToolCatalog {
                 "inputSchema": [
                     "type": "object",
                     "properties": [
-                        "target": ["type": "string", "description": "Type, Type.member, file, File.swift:12-40, module, .md path, or . (repo)."],
+                        "target": ["type": "string", "description": "Type, Type.member, file, File.swift:12-40, module (Name/), .md path, or . (repo)."],
                         "targets": ["type": "array", "items": ["type": "string"], "description": "Several at once."],
                         "root": ["type": "string", "description": "Repository root."],
                         "all": ["type": "boolean", "description": "Include private symbols."],
@@ -58,13 +58,13 @@ public struct MCPToolCatalog {
             ],
             [
                 "name": "where",
-                "description": "Call this instead of grepping for a Swift symbol's definition, callers, uses, conformers or overrides: resolved file:line ranges.",
+                "description": "Call this instead of grepping for a Swift symbol's definition, callers, uses, conformers or overrides: resolved file:line ranges. " + StandingCaveats.sentences,
                 "inputSchema": [
                     "type": "object",
                     "properties": [
                         "symbol": ["type": "string", "description": "Name or Type.member."],
                         "root": ["type": "string", "description": "Repository root."],
-                        "refs": ["type": "boolean", "description": "Every reference site (code only; grep comments and strings)."],
+                        "refs": ["type": "boolean", "description": "Every reference site, plus non-code mentions under not code."],
                         "offset": ["type": "integer", "description": "From a truncated: marker."],
                         "at": ["type": "string", "description": "Answer as of a commit."],
                     ],
@@ -73,7 +73,7 @@ public struct MCPToolCatalog {
             ],
             [
                 "name": "search",
-                "description": "Call this instead of grepping for Swift code by shape, across nesting and line breaks.",
+                "description": "Call this instead of grepping for Swift code by shape, across nesting and line breaks. " + StandingCaveats.searchClause,
                 "inputSchema": [
                     "type": "object",
                     "properties": [

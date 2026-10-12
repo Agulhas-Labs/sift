@@ -28,6 +28,6 @@ import Testing
         #expect(scans.first?.isSubagent == true)
         #expect(scans.first?.session.hasSuffix("projects/-repo/parent-session.jsonl") == true)
         #expect(scans.first?.label.hasSuffix("parent-s · subagent agent-abc123") == true)
-        #expect(TranscriptAudit.render(projectsDirectory: directory.appendingPathComponent("projects"), transcript: transcript.path).contains("1 session, 1 Swift lookup"))
+        #expect(TranscriptAudit.render(projectsDirectory: directory.appendingPathComponent("projects"), transcript: transcript.path).contains("1 session (+1 subagent), 1 Swift lookup"))
     }
 }

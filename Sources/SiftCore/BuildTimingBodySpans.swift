@@ -9,10 +9,11 @@ import SwiftSyntax
 struct BuildTimingBodySpans {
     /// The outermost body of every function, initializer, `deinit`, accessor and getter in `source`.
     static func spans(in source: String) -> [Span] {
-        let tree = Parser.parse(source: source)
-        let finder = Finder(converter: SourceLocationConverter(fileName: "", tree: tree))
-        finder.walk(tree)
-        return finder.spans
+        NestingGate.parseOrEmpty(source) { tree in
+            let finder = Finder(converter: SourceLocationConverter(fileName: "", tree: tree))
+            finder.walk(tree)
+            return finder.spans
+        }
     }
 }
 

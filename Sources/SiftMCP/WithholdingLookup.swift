@@ -69,9 +69,9 @@ struct WithholdingLookup {
         return .textSearch(cause: .patternInOneFile)
     }
 
-    /// A name search of several Swift files it names outright that the hook declined to answer, scored as the hook treats it: no answer stands in for it, since a `where` lists the name's sites across the whole tree and not the files the caller scoped the search to.
+    /// A search of the Swift files it names that the hook let run rather than answer, scored as the hook treats it: no answer stands in for it, since a `where` lists the name's sites across the whole tree and not the files the caller scoped the search to.
     ///
-    /// Asked of what would otherwise be cold, with the hook's own predicate (``InPlaceShape/namesOnlySwiftFiles(_:)``); `unanswered` is that the hook found no in-place reading of the line, so a member grep it does answer stays a lookup.
+    /// Asked of what would otherwise be cold, with the hook's own reading of the line (``InPlaceShape/namedFileSearch(_:)``); `unanswered` is that the hook found no in-place reading of the line, so a member grep it does answer stays a lookup.
     static func namedFiles(of command: String, unanswered: Bool, holdsSource: ((String) -> Bool)?, skipping sanctioned: Set<String>) -> SwiftLookup? {
         guard unanswered, ShellAdvice.searchesNamedSwiftFiles(command, holdsSource: holdsSource, skipping: sanctioned) else { return nil }
         return .withheldOnWorth(rule: .namedFiles)

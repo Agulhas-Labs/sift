@@ -14,13 +14,13 @@ struct DigestCommand: AsyncParsableCommand {
         )
     }
 
-    @Argument(help: "A type (Type, Module.Type, Outer.Nested), a member (Type.member, or a labeled Type.save(_:to:)) to print its source, a file path, a module name, . for the repo overview, or a File.swift:12-40 line range. A .md path (exact, repo-relative or absolute under the root; a bare document name is not matched) answers with its heading outline and each section's line range, read live from disk — the locating step for a ranged read of a large doc. Each argument is one target, so a quoted path with spaces in it is one; several answer in this one call.")
+    @Argument(help: "A type (Type, Module.Type, Outer.Nested), a member (Type.member, or a labeled Type.save(_:to:)) to print its source, a file path, a module name (a bare name shared by a module and a type serves the type; write Name/ for the module), . for the repo overview, or a File.swift:12-40 line range. A .md path (exact, repo-relative or absolute under the root; a bare document name is not matched) answers with its heading outline and each section's line range, read live from disk — the locating step for a ranged read of a large doc. Each argument is one target, so a quoted path with spaces in it is one; several answer in this one call.")
     var targets: [String]
 
     @Flag(name: .customLong("all"), help: "Include private/fileprivate symbols in a module digest; type and file digests always show them.")
     var includeAll = false
 
-    @Flag(name: [.customLong("signatures-only"), .customLong("signaturesOnly")], help: "Drop doc summaries and leading attributes.")
+    @Flag(name: [.customLong("signatures-only"), .customLong("signaturesOnly")], help: "Drop doc summaries and leading attributes; a Type.member returns its signature, no body.")
     var signaturesOnly = false
 
     @Option(help: "Skip this many member lines — declaration lines for a module, heading lines for a .md outline (pagination cursor from a truncated: marker).")
@@ -57,7 +57,7 @@ struct DigestCommand: AsyncParsableCommand {
         // query that has one, and it is settled here, before the framing, exactly as the server settles it.
         let digest = try engine.measuredDigest(targets: targets, options: options)
         freshness = freshness.noting(digest)
-        let text = Freshness.placing([note], under: freshness.headerLine + "\n" + digest.text)
+        let text = Freshness.placing([note], under: freshness.syntacticHeaderLine + "\n" + digest.text)
         return LoggedLookup.Served(text: text, root: engine.repoRoot.path, source: digest.bytes?.source, parts: digest.parts)
     }
 }

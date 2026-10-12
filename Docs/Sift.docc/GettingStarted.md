@@ -65,7 +65,7 @@ module:
 
 ```text
 $ sift digest Stacks
-tree: Shelf  head: ec26cde  clean  semantic: syntactic-only
+tree: Shelf  head: ec26cde  clean
 module Stacks — 4 top-level declarations
 
 Sources/Stacks/Book.swift:
@@ -86,7 +86,7 @@ comes back:
 
 ```text
 $ sift digest Library.lend
-tree: Shelf  head: ec26cde  clean  semantic: syntactic-only
+tree: Shelf  head: ec26cde  clean
 Stacks.Library.lend(title:to:days:) — func — Sources/Stacks/Library.swift:16-27
 
     public func lend(title: String, to borrower: String, days: Int) -> Loan? {
@@ -104,29 +104,19 @@ Stacks.Library.lend(title:to:days:) — func — Sources/Stacks/Library.swift:16
 ```
 
 For a short type or file, a digest would cost about as much as the code, so `sift digest Library` returns
-the source itself and says so.
+its declaration's source and says so.
 
 To find where something is used, ask `sift where`. Without a build it matches written names:
 
 ```text
 $ sift where Loan
-tree: Shelf  head: ec26cde  clean  semantic: none (no index store — see note)
-where Loan
-mode: syntactic (sift help answers); no index store for this tree yet; how to build one: sift help answers, section (index store)
-used by: NOT ANSWERED from the index store (by written name — an empty list is not "unused"); see the mode line above.
+tree: Shelf  head: ec26cde  clean  semantic: none (no index store for this tree yet)
+no store for uses; sites by written name, an empty list is not "unused"; how to build one: sift help answers, section (index store)
 
 declarations (1):
   Stacks.Loan — struct — public struct Loan: Sendable — Sources/Stacks/Loan.swift:3-13  /// A book out on loan.
 
-syntactic uses — by written name over the working tree, never stale — see sift help answers (call sites)
-
-"Loan" used by 5 lines in 1 file — 5 production · 0 tests, split on the XCTest or Testing import, never the path (for Stacks.Loan):
-  Sources/Stacks/Library.swift (5):
-    :4  | public private(set) var loans: [Loan] = []
-    :16  | public func lend(title: String, to borrower: String, days: Int) -> Loan? {
-    :24  | let loan = Loan(book: book, borrower: borrower, days: days)
-    :42  | public func overdue(after days: Int) -> [Loan] {
-    :50  | public func longestLoan() -> Loan? {
+"Loan" (5 uses by written name in 1 file) — 5 production · 0 tests (for Stacks.Loan) — where --refs Loan lists them
 ```
 
 On a large repository, `sift init` first reports which files got their module from a directory-name guess
@@ -138,7 +128,7 @@ you pass `--write`.
 The first line of every answer says what it describes and how far to trust it:
 
 ```text
-tree: Shelf  head: ec26cde  clean  semantic: syntactic-only
+tree: Shelf  head: ec26cde  clean  semantic: fresh
 ```
 
 - `tree:` is the checkout the answer was read from. A linked git worktree is named
@@ -149,7 +139,8 @@ tree: Shelf  head: ec26cde  clean  semantic: syntactic-only
 - `dirty:` is how far the working tree has moved from that revision.
 - `parse_errors:` counts files in the repository that did not parse cleanly. Only a banner under the
   header says the answer in front of you drew on one.
-- `semantic:` is the mode that produced this answer, not a property of the tree. `syntactic-only` means it
+- `semantic:` (on `where`, `status` and `affected`; `digest` never opens the store and carries none) is the
+  mode that produced this answer, not a property of the tree. `syntactic-only` means it
   came from the source alone, which is never stale: files you have edited are reparsed before it answers.
   `none` means the answer asked for the compiler's index and no build has produced one for this tree. After
   a build, `where` can say `fresh`. If the build is older than your edits, it says `stale` and refuses the

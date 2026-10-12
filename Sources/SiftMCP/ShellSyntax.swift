@@ -399,9 +399,15 @@ public struct ShellSyntax {
     /// The body of every outermost command substitution in `text` — `$(…)` and backticks — read where the shell would run it: outside single quotes and escapes, inside double quotes or out.
     ///
     /// `$((…))` is arithmetic rather than a command and has no body. A substitution nested inside a body is found when that body is read in turn.
-    private static func substitutionBodies(in text: String) -> [String] {
+    static func substitutionBodies(in text: String) -> [String] {
         let characters = Array(text)
-        var bodies: [String] = []
+        return substitutionBodyRanges(in: text).map { String(characters[$0]) }
+    }
+
+    /// Where each body ``substitutionBodies(in:)`` finds sits in `text`, as offsets in characters, in the order they appear.
+    static func substitutionBodyRanges(in text: String) -> [Range<Int>] {
+        let characters = Array(text)
+        var bodies: [Range<Int>] = []
         var inDoubleQuotes = false
         var index = 0
         while index < characters.count {
@@ -415,11 +421,11 @@ public struct ShellSyntax {
             case "$" where index + 1 < characters.count && characters[index + 1] == "("
                 && (index + 2 == characters.count || characters[index + 2] != "("):
                 let end = closingParenthesis(in: characters, from: index + 2)
-                bodies.append(String(characters[(index + 2) ..< end]))
+                bodies.append((index + 2) ..< end)
                 index = end
             case "`":
                 let end = closingBacktick(in: characters, from: index + 1)
-                bodies.append(String(characters[(index + 1) ..< end]))
+                bodies.append((index + 1) ..< end)
                 index = end
             default:
                 break

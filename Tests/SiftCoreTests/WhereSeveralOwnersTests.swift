@@ -216,4 +216,40 @@ struct WhereSeveralOwnersTests {
         #expect(output.contains("declarations (2):"))
         #expect(!output.contains("owners"))
     }
+
+    /// Extensions written through a qualified path are counted as not listed, and a bare extension already a row is not; with only bare extensions, the answer says nothing of them.
+    @Test
+    func extensionsOfASharedNameCountOnlyThoseNotAlreadyRows() async throws {
+        let alpha = "public struct Configuration {}\nextension Configuration {\n    func tweak() {}\n}\n"
+        let beta = "public struct Configuration {}\nextension Configuration {\n    func tune() {}\n}\npublic struct Outer {\n    public struct Configuration {}\n}\nextension Outer.Configuration {\n    func shape() {}\n}\nextension Alpha.Configuration {\n    func reach() {}\n}\nextension Foreign.Configuration {\n    func stray() {}\n}\n"
+        let output = try await Self.answer("Configuration", files: ["Sources/Alpha/Alpha.swift": alpha, "Sources/Beta/Beta.swift": beta])
+
+        // `Foreign.Configuration` extends no owner of the name, so it is not counted; each owner's own query is the one named, `Outer.Configuration` for the nested owner and not `Beta.Configuration`.
+        #expect(output.contains("extensions: 2 more written through a qualified name, not listed here — an owner's own query lists its extensions: where Outer.Configuration, where Alpha.Configuration"))
+        #expect(!output.contains("extensions: 3"))
+        #expect(!output.contains("where Beta.Configuration lists"))
+        #expect(!output.contains("an extension writes only the name"))
+
+        // Two owners end in `Outer.Configuration`; the extension is in `Beta`, so it is Beta's, and the line names Beta's query, not the first owner's in sorted order.
+        let outer = "public struct Outer {\n    public struct Configuration {}\n}\n"
+        let nested = try await Self.answer("Configuration", files: [
+            "Sources/Alpha/A.swift": outer,
+            "Sources/Beta/B.swift": outer + "extension Outer.Configuration {\n    func extra() {}\n}\n",
+            "Sources/Gamma/G.swift": "public struct Configuration {}\n",
+        ])
+
+        #expect(nested.contains("an owner's own query lists its extensions: where Beta.Outer.Configuration"))
+        #expect(!nested.contains("lists its extensions: where Alpha"))
+        #expect(nested.contains("extensions: 1 more"))
+
+        let bareOnly = try await Self.answer("Configuration", files: ["Sources/Alpha/Alpha.swift": alpha, "Sources/Beta/Beta.swift": "public struct Configuration {}\n"])
+
+        #expect(bareOnly.contains("declarations (3) under 2 owners"))
+        #expect(!bareOnly.contains("extensions:"))
+
+        let bare = try await Self.answer("Configuration", files: ["Sources/Alpha/Alpha.swift": "public struct Configuration {}\n", "Sources/Beta/Beta.swift": "public struct Configuration {}\n"])
+
+        #expect(bare.contains("declarations (2) under 2 owners"))
+        #expect(!bare.contains("extensions:"))
+    }
 }

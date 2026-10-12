@@ -36,8 +36,7 @@ public struct UsageScan: Sendable {
 
     /// The one line both faces print when scratch calls were left out, or `nil` when none were.
     public var scratchNote: String? {
-        guard scratchCalls > 0 else { return nil }
-        return "\(scratchCalls) call\(scratchCalls == 1 ? "" : "s") against scratch roots (temporary, cache or .build directories) not counted"
+        ScratchRoot.note(count: scratchCalls, noun: "call")
     }
 
     /// When the CLI's first logged lookup was answered, over the whole log rather than the window — `nil` where the log holds none.
@@ -57,16 +56,27 @@ public struct UsageScan: Sendable {
             return .failure(.missingOrEmpty)
         }
         var parsed: [Entry] = []
+        var readAnyway = Set<ReadAnyway>()
         var malformed = 0
         for line in data.split(separator: 0x0A) {
             guard let entry = Entry(line: Data(line)) else {
-                malformed += 1
+                if let taken = ReadAnyway(line: Data(line)) {
+                    readAnyway.insert(taken)
+                } else {
+                    malformed += 1
+                }
                 continue
             }
             parsed.append(entry)
         }
         guard !parsed.isEmpty else {
             return .failure(.unreadable(malformed: malformed))
+        }
+        // A hook answer the context then read anyway saved nothing: the line the hook wrote when it let the read
+        // through names the answer, and the answer is marked, so every figure drawn from it leaves it unpriced.
+        for index in parsed.indices where parsed[index].via == "hook" {
+            guard let call = parsed[index].call, let target = parsed[index].target else { continue }
+            parsed[index].readAnyway = readAnyway.contains(ReadAnyway(call: call, target: target, session: parsed[index].session))
         }
 
         let positions = scope?.positions(of: Set(parsed.map(\.root)))
@@ -87,67 +97,42 @@ public struct UsageScan: Sendable {
         ))
     }
 
-    /// What the measured calls in scope saved, or `nil` when none of them measured anything.
+    /// What the priced calls in scope saved, or `nil` when none was priced.
     ///
-    /// Summed on both sides rather than averaged over per-call ratios: a mean would let a handful of tiny answers — the shapes a digest compresses worst — outweigh the large ones the tool exists for, and read as a worse result than the log actually holds.
+    /// **Priced only where the counterfactual was observed** (Docs/Design.md §4): a read the advice hook intercepted and answered in place, whose command named the file or the window it would have printed, so the saving is those bytes less the answer served. A call made by choice — a `digest`, `where`, `search` or `strings` by the server or the CLI — and a grep the hook answered stand in for something nobody ran and nobody can size, so they are counted and sized, never priced: a figure priced on a guess is worse than none.
     ///
-    /// **Three populations, kept apart.** The calls that compressed and the calls the compression floor decided to serve source for are both measured, and averaging them into one ratio lets answers the tool *declined to compress* drag down the ones where it won — 73% where the compressing calls alone come to 77%, on the committed usage-log fixture. Beside them sit the calls that recorded no denominator at all, and they are not a saving of zero either: they are an absence, and an absence folded into a ratio is a number about nothing. So each is counted separately and stated separately, and the total says it is a floor.
+    /// Summed on both sides rather than averaged over per-call ratios: a mean would let a handful of tiny answers outweigh the large ones.
     public var savings: Savings? {
-        let measured = entries.compactMap { entry in entry.measured.map { (tool: entry.tool, day: entry.day, bytes: $0) } }
-        let source = measured.reduce(0) { $0 + $1.bytes.source }
-        guard !measured.isEmpty, source > 0 else { return nil }
-        // Carried only when the window actually reaches back past the fields, which is what a call with no
-        // measurement *before* the first measured day proves. An unmeasured call after that day is an
-        // ordinary one — `where` and `search` stand in for a grep, not a run of source, and never measure —
-        // so dating the onset on their account would explain a denominator by something that is not its cause.
-        //
-        // The call has to have *succeeded* for that proof to hold. A failed `digest` records no bytes
-        // whatever version wrote it — a refusal replaces no source — and an answer that stands in for
-        // nothing measures nothing, so a pre-onset failure would date the fields to a day that proves only
-        // that something went wrong, which is the same wrong-cause error one line up.
-        let firstMeasured = measured.map(\.day).min()
-        let measuring = Set(measured.map(\.tool))
-        let reachesPastTheFields = firstMeasured.map { first in
-            entries.contains { $0.succeeded && measuring.contains($0.tool) && $0.measured == nil && $0.day < first }
-        } ?? false
-        // An answer that came back no smaller than the source it stood in for did not compress it — that is
-        // what the words mean, and it is the only split this log supports over its own history. A flag
-        // written from now on would say the same thing about the calls made after today and nothing at all
-        // about every call already in the log, which is the wrong trade for a number whose subject is the past.
-        let compressing = measured.filter { $0.bytes.served < $0.bytes.source }
-        let passthrough = measured.filter { $0.bytes.served >= $0.bytes.source }
+        let priced = entries.compactMap(\.credited)
+        guard !priced.isEmpty else { return nil }
+        let compressing = priced.filter { $0.served < $0.source }
+        let passthrough = priced.filter { $0.served >= $0.source }
         return Savings(
             split: compressing.isEmpty || passthrough.isEmpty
                 ? []
                 : [
-                    Savings.Row(label: "compressed", of: compressing.map(\.bytes)),
-                    Savings.Row(label: "served source", of: passthrough.map(\.bytes)),
+                    Savings.Row(label: "compressed", of: compressing),
+                    Savings.Row(label: "served source", of: passthrough),
                 ],
-            total: Savings.Row(label: "measured", of: measured.map(\.bytes)),
+            total: Savings.Row(label: "priced", of: priced),
             calls: entries.count,
-            tools: measuring.sorted(),
-            measuredSince: reachesPastTheFields ? firstMeasured : nil,
-            unrecorded: unrecorded(by: measuring),
-            unpriced: unpriced(besides: measuring),
-            subagents: attributedToSubagents,
-            // No `cli` line anywhere leaves the clause in: a log that never saw the CLI and one that predates
-            // its logging read the same, and only the second is missing lookups — so the floor keeps saying so.
-            //
-            // Decided on the window's own start instant against the onset's own instant, not on which entries
-            // happen to sit in scope: a window can start before the CLI ever logged and still hold no entry
-            // from that gap, and the clause is about what the window could reach, not about what it happened
-            // to catch. `since` is a day (`YYYY-MM-DD`), read as that day's midnight, so it compares correctly
-            // against the onset's full timestamp without truncating either side to a day: a window starting at
-            // a day's midnight reaches past an onset later that same day, though the two share a day.
-            reachesPastCLILogging: cliLoggedSince.map { onset in (since ?? "") < onset } ?? true
+            unpriced: unpriced,
+            subagents: attributedToSubagents
         )
+    }
+
+    /// The Markdown outlines that measured themselves, kept out of the headline and reported whether or not any code call measured too, or `nil` when there were none.
+    public var markdown: Savings.Markdown? {
+        let measured = entries.compactMap(\.markdownShare)
+        guard !measured.isEmpty else { return nil }
+        return Savings.Markdown(row: Savings.Row(label: "markdown", of: measured))
     }
 
     /// The measured calls a subagent made, or `nil` when none of them names one.
     ///
     /// Measured calls only, so it is a share *of the figure it sits under* rather than a second population with its own arithmetic — a subagent's `where` calls save real context and measure nothing, exactly as a session's do, and are counted in neither.
     private var attributedToSubagents: Savings.Attributed? {
-        let mine = entries.compactMap { entry in entry.agent.flatMap { agent in entry.measured.map { (agent, $0) } } }
+        let mine = entries.compactMap { entry in entry.agent.flatMap { agent in entry.credited.map { (agent, $0) } } }
         guard !mine.isEmpty else { return nil }
         return Savings.Attributed(
             row: Savings.Row(label: "subagents", of: mine.map(\.1)),
@@ -155,40 +140,19 @@ public struct UsageScan: Sendable {
         )
     }
 
-    /// The calls by a measuring tool that recorded no bytes — the shortfall that would otherwise just shrink the denominator.
-    ///
-    /// Where only part of the `digest` calls carry both fields, the rest are invisible unless counted: a ratio "measured over M of N calls" says how many measured but not how many *could have* and didn't. Naming it makes a capture rate a stated fact rather than something a reader has to derive by subtraction.
-    private func unrecorded(by measuring: Set<String>) -> Savings.Unrecorded? {
-        let shortfall = entries.filter { measuring.contains($0.tool) && $0.measured == nil }
-        guard !shortfall.isEmpty else { return nil }
-        return Savings.Unrecorded(
-            tools: Self.named(shortfall),
-            calls: shortfall.count,
-            failed: shortfall.filter { !$0.succeeded }.count
-        )
-    }
-
-    /// The calls no denominator exists for, and how much of what they served has been recorded.
-    ///
-    /// Derived from which tools measured anything rather than from a list of names, so a tool that starts measuring leaves this set by itself and one that never does is never quietly forgotten.
-    private func unpriced(besides measuring: Set<String>) -> Savings.Unpriced? {
-        let unpriced = entries.filter { !measuring.contains($0.tool) }
+    /// Every call in scope that is not priced, Markdown outlines apart (they have a line of their own), or `nil` when there is none.
+    private var unpriced: Savings.Unpriced? {
+        let unpriced = entries.filter { $0.credited == nil && !$0.isMarkdownOnly }
         guard !unpriced.isEmpty else { return nil }
         let recorded = unpriced.compactMap(\.answer)
-        // The same age test the measured onset uses, for the same reason and against its own later start
-        // day: `outBytes` reached these tools long after it reached `digest`, so a window spanning that day
-        // holds calls that are unrecorded because they are old, not because they served nothing.
-        let firstRecorded = unpriced.filter { $0.answer != nil }.map(\.day).min()
-        let reachesPastTheField = firstRecorded.map { first in
-            unpriced.contains { $0.succeeded && $0.answer == nil && $0.day < first }
-        } ?? false
         return Savings.Unpriced(
             tools: Self.named(unpriced),
             calls: unpriced.count,
             failed: unpriced.filter { !$0.succeeded }.count,
             recorded: recorded.count,
             served: recorded.reduce(0) { $0 + $1.served },
-            recordedSince: reachesPastTheField ? firstRecorded : nil
+            unlabelled: unpriced.count(where: \.predatesItsPricing),
+            readAnyway: unpriced.count(where: \.readAnyway)
         )
     }
 
@@ -281,6 +245,30 @@ public extension UsageScan {
         public let source: Int
     }
 
+    /// A line the hook wrote on letting a read through that an answer had stood in for: the answer's command id and target, in its session.
+    struct ReadAnyway: Hashable {
+        let call: String
+        let target: String
+        let session: String?
+
+        init(call: String, target: String, session: String?) {
+            self.call = call
+            self.target = target
+            self.session = session
+        }
+
+        /// One read-anyway line, or `nil` when the line is not one.
+        init?(line: Data) {
+            guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                  let call = object["readAnyway"] as? String,
+                  let target = object["target"] as? String
+            else {
+                return nil
+            }
+            self.init(call: call, target: target, session: object["session"] as? String)
+        }
+    }
+
     /// One parsed log line.
     struct Entry: Sendable, Equatable {
         public let tool: String
@@ -318,11 +306,78 @@ public extension UsageScan {
         /// The face that answered where it was not the server — `hook` for a lookup the advice hook answered in place, `cli` for one of the query subcommands — and `nil` for the server's own calls.
         public let via: String?
 
+        /// What a call the hook answered in place stood in for — `file`, `window` or `other` (``InPlaceAnswerer/Interception``) — and `nil` for every other call and every hook line written before the field.
+        public let intercepted: String?
+
         /// Both sides of this call's cost, where both were counted.
         ///
         /// Derived rather than stored, because the two halves arrive independently now: ``AnswerBytes`` carries a served size for every answered call and a denominator only where the tool read one, and a saving is exactly the case where both are present. Everything downstream that speaks of a *measured* call means this.
         public var measured: Measured? {
             answer.flatMap { answer in answer.source.map { Measured(served: answer.served, source: $0) } }
+        }
+
+        /// The names a call with several targets recorded one by one (`parts`), empty for every other call.
+        public let parts: [Part]
+
+        /// The harness's id for the command a hook answer stood in for, which a read-anyway line names; `nil` on every other line.
+        public let call: String?
+
+        /// For a whole file the hook intercepted a read of, the bytes of the lines one whole-file `Read` returns, as the hook measured them.
+        public let readBytes: Int?
+
+        /// Whether the context read anyway what this hook answer stood in for — re-ran the command, or read the file whole — so it saved nothing.
+        public internal(set) var readAnyway = false
+
+        /// What this call saved, where its counterfactual was observed.
+        ///
+        /// A whole file the hook intercepted a read of, against the bytes one whole-file `Read` of it returns (``readBytes``), or a window, its own bytes — each less the answer served. `nil` for every other call: a hook answer the context then read anyway, and a hook line written before the field its pricing needs (``predatesItsPricing``), among them.
+        public var credited: Measured? {
+            guard via == "hook", !readAnyway, let code = split.code, let measured else { return nil }
+            return switch intercepted {
+            case "file": readBytes.map { Measured(served: code.served, source: $0) }
+            case "window": measured
+            default: nil
+            }
+        }
+
+        /// Whether this is a measured hook answer logged before the field that prices it: before ``intercepted``, or a whole file before ``readBytes``.
+        var predatesItsPricing: Bool {
+            via == "hook" && !readAnyway && measured != nil && (intercepted == nil || intercepted == "file" && readBytes == nil)
+        }
+
+        /// Whether the call named nothing but Markdown, which the outlines' own line reports.
+        var isMarkdownOnly: Bool {
+            markdownShare != nil && split.code == nil
+        }
+
+        /// The part of this call a Markdown document accounts for, reported on a line of its own and never in the headline saving, or `nil` where the call named none.
+        ///
+        /// Nobody reads a long design document whole, so pricing its outline against the whole file (one 184 kB outline made up 95.6% of a trial's headline) says nothing about what the index saves on code.
+        public var markdownShare: Measured? {
+            split.markdown
+        }
+
+        /// ``measured`` divided between code and Markdown, each name classified by ``MarkdownOutline/names(_:)``.
+        ///
+        /// A call that recorded `parts` is divided part by part, each keeping its own source, and the served bytes (recorded for the call, not per part) are shared out in proportion to the sources. A call without parts is read name by name from its whitespace-separated targets and is Markdown only if every name is; otherwise it is code.
+        private var split: (code: Measured?, markdown: Measured?) {
+            guard let measured else { return (nil, nil) }
+            let total = parts.reduce(0) { $0 + ($1.source ?? 0) }
+            if !parts.isEmpty, total > 0 {
+                let documents = parts.filter { MarkdownOutline.names($0.target) }
+                let code = parts.filter { !MarkdownOutline.names($0.target) }
+                let documentSource = documents.reduce(0) { $0 + ($1.source ?? 0) }
+                let documentServed = measured.served * documentSource / total
+                return (
+                    code.isEmpty ? nil : Measured(served: measured.served - documentServed, source: code.reduce(0) { $0 + ($1.source ?? 0) }),
+                    documents.isEmpty ? nil : Measured(served: documentServed, source: documentSource)
+                )
+            }
+            let names = targets.flatMap { $0.split(whereSeparator: \.isWhitespace).map(String.init) }
+            if !names.isEmpty, names.allSatisfy(MarkdownOutline.names) {
+                return (nil, measured)
+            }
+            return (measured, nil)
         }
 
         /// One log line, or `nil` when it is not one this understands.
@@ -338,6 +393,9 @@ public extension UsageScan {
             self.root = root
             target = object["target"] as? String
             targets = object["targets"] as? [String] ?? target.map { [$0] } ?? []
+            parts = (object["parts"] as? [[String: Any]] ?? []).compactMap { part in
+                (part["target"] as? String).map { Part(target: $0, source: part["srcBytes"] as? Int) }
+            }
             milliseconds = object["ms"] as? Int ?? 0
             succeeded = object["ok"] as? Bool ?? true
             error = object["err"] as? String
@@ -349,6 +407,9 @@ public extension UsageScan {
             answer = (object["outBytes"] as? Int).map { AnswerBytes(served: $0, source: object["srcBytes"] as? Int) }
             agent = object["agent"] as? String
             via = object["via"] as? String
+            intercepted = object["intercepted"] as? String
+            call = object["call"] as? String
+            readBytes = object["readBytes"] as? Int
         }
     }
 
@@ -377,36 +438,22 @@ public extension UsageScan {
     ///
     /// Four facts, deliberately not one number: what compressed, what was served as source instead, what a measuring tool recorded nothing for, and what has no denominator to record. Each face lays them out in its own idiom; the wording of every claim they make is generated here, once, so the page and the summary cannot come to disagree about the same log.
     struct Savings: Sendable, Equatable {
-        /// The compressing calls and the passthrough calls, each with its own arithmetic — empty when every measured call fell on one side, where a second row would only restate the total.
+        /// The compressing calls and the passthrough calls, each with its own arithmetic — empty when every priced call fell on one side, where a second row would only restate the total.
         public let split: [Row]
 
-        /// Every measured call in scope, both sides summed.
+        /// Every priced call in scope, both sides summed.
         public let total: Row
 
-        /// Every call in scope, measured or not — the denominator that keeps a partial aggregate from reading as a whole one.
+        /// Every call in scope, priced or not.
         public let calls: Int
 
-        /// The tools that measured a denominator at all, sorted.
-        public let tools: [String]
-
-        /// The earliest day a call in this window measured itself, when the window reaches back past the fields — otherwise `nil`.
-        ///
-        /// "Measured over a few dozen of a thousand-odd calls" invites exactly one reading, and it is the wrong one: that the tool sampled, or that most answers declined to weigh themselves. What actually happened is that the fields were added on a day the window spans, and everything before it is a log older than the measurement. Naming that day turns a number that looks like a defect into one that reads as an age, and it costs a clause.
-        public let measuredSince: String?
-
-        /// The calls by a measuring tool that recorded no bytes, or `nil` when every one of them did.
-        public let unrecorded: Unrecorded?
-
-        /// The calls no saving can honestly be claimed for, or `nil` when every call in scope was made by a measuring tool.
+        /// The calls in scope no saving is claimed for, Markdown outlines apart, or `nil` when there is none.
         public let unpriced: Unpriced?
 
-        /// How much of the measured saving is work a subagent did, and how many subagents did it — `nil` when none of the measured calls carries a caller.
+        /// How much of the priced saving is work a subagent did, and how many subagents did it — `nil` when none of the priced calls carries a caller.
         ///
-        /// A *floor within a floor*, and the wording says so where it is printed. Only calls a hook was present for carry an agent at all, so this can only ever understate; that is the right direction for the one number the tool is judged on, and the wrong direction to leave unstated.
+        /// A *floor within a floor*, and the wording says so where it is printed: only calls a hook was present for carry an agent at all.
         public let subagents: Attributed?
-
-        /// Whether a lookup the CLI served before it began logging could fall inside this window — false only where every call in scope was answered after the log's first `cli` line.
-        public let reachesPastCLILogging: Bool
 
         public var served: Int {
             total.served
@@ -432,50 +479,41 @@ public extension UsageScan {
             total.percentText
         }
 
-        /// The one sentence both faces state the measurement in.
-        ///
-        /// Named while one tool does all the measuring, generic as soon as more than one does: the sum spans every measured call, so attributing it to a single tool then would be a wrong label on a real number.
+        /// What the figure was priced on, in the words every face states it: `on 3 intercepted reads (file or window asked for − answer served); 28 other calls unpriced`.
         public var sentence: String {
-            let subject = tools.count == 1 ? "\(tools[0]) served" : "measured answers served"
-            let pronoun = tools.count == 1 ? "it" : "they"
-            let onset = measuredSince.map { " — fields recorded since \($0)" } ?? ""
-            return "\(subject) \(percentText) of the source \(pronoun) replaced "
-                + "(measured over \(measured) of \(calls) call\(calls == 1 ? "" : "s")\(onset))"
+            let readAnyway = unpriced?.readAnyway ?? 0
+            let others = (unpriced?.calls ?? 0) - readAnyway
+            let clauses = [
+                readAnyway > 0 ? "\(readAnyway) read anyway" : nil,
+                others > 0 ? "\(others) other call\(others == 1 ? "" : "s") unpriced" : nil,
+            ].compactMap(\.self)
+            let tail = clauses.isEmpty ? "" : "; " + clauses.joined(separator: ", ")
+            return "on \(measured) intercepted read\(measured == 1 ? "" : "s") (\(TokenEstimate.baseline))\(tail)"
         }
 
-        /// The saving as the reader prices it — `~2.2M tokens saved (est. vs whole-file reads)`, gross — or `nil` in the one case where "saved" would be a lie: a window whose measured answers cost more than the source, which is what a run of nothing but passthroughs looks like.
-        ///
-        /// Context, in tokens, rather than bytes: tokens are the unit an agent's context is counted in. An estimate, marked as one, at the conservative ratio ``TokenEstimate`` documents.
+        /// The saving as the reader prices it — `~2.1k tokens saved` — or `nil` where the priced answers cost more than what was asked for, where "saved" would be a lie.
         public var savedText: String? {
             total.saved > 0 ? TokenEstimate.saved(bytes: total.saved) : nil
         }
 
-        /// What the estimate was made from — `8.7 MB gross at 4 bytes a token`, the bytes saved before anything read whole afterwards — so the arithmetic behind the token figure is on the page beside it, or `nil` when there is no saving to explain.
+        /// What the estimate was made from — `8.4 kB gross at 4 bytes a token` — or `nil` when there is no saving to explain.
         public var savedBasis: String? {
             total.saved > 0 ? TokenEstimate.basis(bytes: total.saved) : nil
         }
 
-        /// The headline both faces lead with — the absolute first, then the ratio.
-        ///
-        /// The ratio alone cannot answer the question anyone actually asks of it: how much. A percentage is a shape; the tokens not spent are the thing, and the measured bytes they were estimated from stand in the same line so the estimate is never quoted without its basis. It falls back to the sentence alone when nothing was saved. Either way it closes on the baseline (``TokenEstimate/baseline``), the one place this face says the figure leans high.
+        /// The headline every face leads with: the priced figure and its scope in one line, so it is never quoted without what it was priced on — `~2.1k tokens saved on 3 intercepted reads (file or window asked for − answer served); 28 other calls unpriced — 8.4 kB gross at 4 bytes a token`.
         public var headline: String {
-            guard let savedText, let savedBasis else { return "\(sentence); \(TokenEstimate.baseline)" }
-            return "\(savedText), \(savedBasis): \(sentence); \(TokenEstimate.baseline)"
+            guard let savedText, let savedBasis else { return "no saving \(sentence): \(total.outcome)" }
+            return "\(savedText) \(sentence) — \(savedBasis)"
         }
+    }
+}
 
-        /// Why the figure above is a floor, or `nil` when nothing in scope went unmeasured and it is simply the total.
-        ///
-        /// Never omitted where it applies. A saving quoted without the calls it could not see is the same overclaim as a ratio quoted without its denominator, one level up — and this one flatters in the *other* direction, which is exactly why it is easy to leave unsaid.
-        ///
-        /// **Two reasons, and it used to name one.** Unweighed calls are the reason the line was written for, and for a long time the larger reason went unsaid: a face that did not log left its lookups out of this file altogether, so the figure was a floor over a population the reader could not even see the size of. The CLI's four query subcommands log now, which fixes it going forward and not backwards — a window reaching back before they did holds none of the lookups they served, and the line says so rather than letting "only the calls above were weighed" imply the rest of the file was complete. A window lying wholly after that onset has no such lookup to miss, and there the second reason is left unsaid (``reachesPastCLILogging``).
-        public var floorNote: String? {
-            guard unrecorded != nil || unpriced != nil, let figure = savedText else { return nil }
-            let weighed = "only the \(total.calls) call\(total.calls == 1 ? "" : "s") above were weighed"
-            // No baseline here: the headline or caption this note sits under states it, and once is the rule.
-            guard reachesPastCLILogging else { return "\(figure) leaves out what was not weighed: \(weighed)." }
-            return "\(figure) leaves out what was not weighed: \(weighed), "
-                + "and a lookup served before its face began logging is not in the log to weigh at all."
-        }
+public extension UsageScan.Entry {
+    /// What the log recorded for each name of a split target: the name, and the source its own answer stood in for where it has one.
+    struct Part: Sendable, Equatable {
+        public let target: String
+        public let source: Int?
     }
 }
 
@@ -533,6 +571,17 @@ public extension UsageScan.Savings {
         }
     }
 
+    /// The measured Markdown calls, reported beside the saving and not in it.
+    struct Markdown: Sendable, Equatable {
+        public let row: Row
+
+        /// The line both faces print: what was served for how much document, with no claim of a saving.
+        public var note: String {
+            "Markdown outlines: \(row.calls) call\(row.calls == 1 ? "" : "s"), \(ByteSize.short(row.served)) served "
+                + "for \(ByteSize.short(row.source)) of documents"
+        }
+    }
+
     /// One population of measured calls attributed to subagents, and how many of them there were.
     struct Attributed: Sendable, Equatable {
         public let row: Row
@@ -547,69 +596,41 @@ public extension UsageScan.Savings {
         }
     }
 
-    /// The calls by a tool that *does* measure a denominator, which nevertheless recorded none.
-    struct Unrecorded: Sendable, Equatable {
-        public let tools: [String]
-        public let calls: Int
-
-        /// How many of them failed.
-        ///
-        /// A refusal replaces no source and so records nothing under any version of the writer, which makes it a different explanation from the rest and one worth separating: it is already counted in the failures section, and folding it in here would make the capture rate look worse than the measurement is.
-        public let failed: Int
-
-        /// The line the two faces print beside the count.
-        ///
-        /// The remainder is given as a category rather than enumerated, because the shapes that reach it are not a closed list a reader could check off — a repo overview, a module listing, a member body, a miss, an ambiguity, a paged or signatures-only digest, and any site whose source could not be re-read. What they share is the only thing worth stating: nothing was weighed, so nothing is claimed.
-        public var note: String {
-            let single = calls == 1
-            let subject = "\(tools.spelled) call\(single ? "" : "s") recorded no bytes"
-            let shapes = "no run of source: a module listing, a member body, a miss, "
-                + "or source that could not be re-read"
-            if failed == calls {
-                return "\(subject) — \(single ? "it failed" : "every one of them failed")"
-            }
-            guard failed > 0 else {
-                return "\(subject) — \(single ? "it stands" : "they stand") in for \(shapes)"
-            }
-            return "\(subject) — \(failed) failed; the rest stand in for \(shapes)"
-        }
-    }
-
-    /// The calls whose saving is not measurable at all, and how much of what they served is on the record.
+    /// The calls whose saving is not priced, and how much of what they served is on the record.
     struct Unpriced: Sendable, Equatable {
         public let tools: [String]
         public let calls: Int
 
-        /// How many of them failed, split out for the reason ``Unrecorded/failed`` is: a refusal replaces no source, so it does not stand in for an unrunnable grep — it stands in for nothing.
+        /// How many of them failed: a refusal stands in for nothing at all.
         public let failed: Int
 
-        /// How many of them recorded what they served, and the sum of it — a served size needs no counterfactual, so this grows towards `calls` as the log ages past the day the field reached these tools.
+        /// How many of them recorded what they served, and the sum of it — a served size needs no counterfactual.
         public let recorded: Int
         public let served: Int
 
-        /// The first day one of them recorded what it served, when the window reaches back past that day.
-        public let recordedSince: String?
+        /// How many of them are hook answers logged before the field that prices one, which therefore cannot be told from a grep and are not priced either.
+        public let unlabelled: Int
 
-        /// The line the two faces print beside the count.
-        ///
-        /// The refusals are named because they are a different claim, not because the arithmetic needs them: every number here is right without them, and the sentence around them would not be. Describing the whole population as standing in for a grep nobody ran is true of each of these calls except the ones that failed, and ``Unrecorded`` two lines above makes exactly that split in exactly these words — so leaving it out here would read as an oversight rather than as a distinction not worth drawing.
+        /// How many of them the hook answered in place and the context then read anyway, so they saved nothing.
+        public let readAnyway: Int
+
+        /// The line the faces print beside the count.
         public var note: String {
             let single = calls == 1
-            let subject = "\(tools.spelled) call\(single ? "" : "s") stand\(single ? "s" : "") in for a grep "
-                + "nobody ran and nobody can size — no saving is claimed for \(single ? "it" : "them")"
-            let refused = switch failed {
-            case 0: ""
-            case calls: "; \(single ? "it failed" : "every one of them failed") and stands in for nothing"
-            default: "; \(failed) of them failed and stand in for nothing"
+            var note = "\(tools.spelled) call\(single ? "" : "s") unpriced — nothing observed to price \(single ? "it" : "them") against"
+            if recorded > 0 {
+                note += recorded < calls ? "; \(recorded) of them served \(ByteSize.short(served))" : "; \(single ? "it" : "they") served \(ByteSize.short(served))"
             }
-            guard recorded > 0 else {
-                return "\(subject)\(refused), and \(single ? "it has not" : "none has") recorded what it served"
+            if failed > 0 {
+                note += "; \(failed) failed"
             }
-            let onset = recordedSince.map { ", recorded since \($0)" } ?? ""
-            guard recorded < calls else {
-                return "\(subject)\(refused); \(single ? "it" : "they") served \(ByteSize.short(served))\(onset)"
+            if unlabelled > 0 {
+                note += "; \(unlabelled) of them hook answers logged before the field that prices one"
             }
-            return "\(subject)\(refused); \(recorded) of them served \(ByteSize.short(served))\(onset)"
+            if readAnyway > 0 {
+                note += "; \(readAnyway) answered in place by the hook and then read anyway"
+            }
+            return note
         }
     }
 }

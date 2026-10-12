@@ -23,7 +23,7 @@ struct WorktreeIndexTopic {
 
         **To build one here:** \(SiftEngine.buildCommandNote).
 
-        **A nested package needs one more step:** \(SiftEngine.nestedStoreNote).
+        **Anywhere else needs one more step:** \(SiftEngine.nestedStoreClause).
 
         **The other way out is not a build at all.** Running the same query against the repository's \
         own checkout is a perfectly good answer *about that tree* — read it as being about the \
@@ -43,5 +43,12 @@ struct WorktreeIndexTopic {
         body or a string literal, is invisible to it. An empty list here is never "nothing uses this" — a \
         rename sweep that trusts it can miss every one of those sites.
         """
+    }
+}
+
+extension SiftEngine {
+    /// ``nestedStoreNote`` as the continuation of a sentence, its first letter lower-case, for a help topic that reads it after a colon.
+    static var nestedStoreClause: String {
+        nestedStoreNote.prefix(1).lowercased() + nestedStoreNote.dropFirst()
     }
 }

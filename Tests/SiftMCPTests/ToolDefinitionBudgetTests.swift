@@ -8,8 +8,8 @@ import Testing
 
 /// The tool list loads in full in every Swift session, so its schema is held to a budget (Docs/Design.md §4) without dropping a tool or a parameter.
 struct ToolDefinitionBudgetTests {
-    /// Measured at about 1.4k tokens before this budget; the slim list serializes to about 2.5 kB here, alwaysLoad marks included.
-    static let budget = 2600
+    /// Measured at about 1.4k tokens before this budget; the slim list serialized to about 2.5 kB here, alwaysLoad marks included, and the standing caveats the `where` description carries, and the `search` clause, for a client the primer never reaches (Docs/Design.md §2) bring it to about 3.3 kB.
+    static let budget = 3400
 
     @Test
     func theServedToolListFitsTheBudget() throws {

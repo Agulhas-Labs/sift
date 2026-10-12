@@ -136,7 +136,7 @@ struct WhereAnswerTrimTests {
 
         let output = try await engine.lookup(symbol: "Depot.run", freshness: freshness)
 
-        #expect(output.contains("syntactic call sites — by written name over the working tree, never stale — see sift help answers (call sites)"))
+        #expect(output.components(separatedBy: "sites by written name").count == 2)
         #expect(!output.contains("a name is not a symbol"))
         #expect(!output.contains("verify a hit"))
     }

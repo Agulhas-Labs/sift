@@ -37,7 +37,7 @@ struct StopLowsTests {
         ("cd /w/xc\nsift run -- swift build", []),
     ])
     func theDirectoriesARunLaidOutThisWayVouchesFor(command: String, directories: [String]) {
-        #expect(SwiftEditsSinceGreenRun.validatedDirectories(of: command, cwd: "/w/repo") == directories)
+        #expect(BuildInputEditsSinceGreenRun.validatedDirectories(of: command, cwd: "/w/repo") == directories)
     }
 
     /// Six edited files in three directories, nothing run: git is asked about each directory once, not once per file and again per directory.

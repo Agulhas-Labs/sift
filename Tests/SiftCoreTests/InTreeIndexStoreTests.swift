@@ -56,11 +56,11 @@ struct InTreeIndexStoreTests {
         }
         let greet = try await engine.lookup(symbol: "greet()", freshness: freshness)
 
-        #expect(helper.contains("mode: syntactic + semantic (index store via .build; in-tree store via .build/fake-dd)\n"))
+        #expect(helper.contains("stores: index store via .build; in-tree store via .build/fake-dd\n"))
         #expect(helper.contains("callers of Lib.helper() (1):"))
         #expect(helper.contains("callGreet"))
         #expect(!helper.contains("REFUSED"))
-        #expect(greet.contains("mode: syntactic + semantic (index store via .build)\n"))
+        #expect(!greet.contains("stores:"))
         #expect(greet.contains("overrides of Lib.Base.greet()"))
     }
 
@@ -187,7 +187,7 @@ struct InTreeIndexStoreTests {
             try await engine.lookup(symbol: "helper()", freshness: freshness)
         }
 
-        #expect(helper.contains("mode: syntactic + semantic (index store via .build; in-tree store via .build/a-dd)\n"))
+        #expect(helper.contains("stores: index store via .build; in-tree store via .build/a-dd\n"))
     }
 
     @Test
@@ -233,7 +233,9 @@ struct InTreeIndexStoreTests {
         let affected = try await engine.affected(options: AffectedOptions(), freshness: freshness)
         let status = try engine.statusText(freshness: freshness)
 
-        #expect(greet.contains("mode: syntactic + semantic (in-tree store via .build/runner-dd)\n"))
+        // One store answered and nothing was passed over, so the answer has no `stores:` note, and no degraded one either.
+        #expect(!greet.contains("stores:"))
+        #expect(!greet.contains("mode:"))
         #expect(greet.contains("overrides of Lib.Base.greet()"))
         #expect(!greet.contains("index store via"))
         #expect(affected.contains("mode: syntactic (sift help answers); "))
@@ -290,6 +292,8 @@ struct InTreeIndexStoreTests {
         try TestSources.write(".build/\n", to: ".gitignore", in: root)
         // Discovered fresh by this query, with no prior open to reuse — a budget of 0 below holds it warming.
         try Self.makeStoreShape(at: root.appendingPathComponent(".build/fake-dd/Index.noindex/DataStore"))
+        // The shape's one unit predates the edit below by more than the anchor's millisecond, as a real build before it would: a file with no unit is dated against every store's newest unit.
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)], ofItemAtPath: root.appendingPathComponent(".build/fake-dd/Index.noindex/DataStore/v5/units/u1").path)
         // No store, primary or in-tree, has ever compiled this file — genuinely stale, a fact a store opening
         // later can never change.
         try TestSources.write("func wisp() {}\n", to: "Sources/Lib/Extra.swift", in: root)
@@ -301,7 +305,7 @@ struct InTreeIndexStoreTests {
         let stray = try await engine.lookup(symbol: "wisp()", freshness: freshness)
 
         #expect(!stray.contains("semantic: warming"), "\(stray)")
-        #expect(stray.contains("changed since the last build"), "\(stray)")
+        #expect(stray.contains("new since the last build"), "\(stray)")
     }
 
     @Test
@@ -368,8 +372,7 @@ struct InTreeIndexStoreTests {
     @Test
     func theNoStorePathLeavesExactlyOneBuildAdviceLine() {
         var lines = [
-            "mode: syntactic (sift help answers); no index store for this tree yet — "
-                + "build one: \(SiftEngine.buildCommandNote). \(SiftEngine.nestedStoreNote). syntax-only otherwise.",
+            "no store for callers, overrides or references; sites by written name; \(DegradedNote.checkoutRemedy)",
         ]
 
         WhereStoreLines.appendNoStoreProjectHints(
@@ -380,7 +383,7 @@ struct InTreeIndexStoreTests {
 
         // The generic advice is folded out of the mode line, and the one hint that replaces it names the project.
         #expect(lines.count == 3, "\(lines)")
-        #expect(!lines[0].contains(SiftEngine.buildCommandNote))
+        #expect(!lines[0].contains(DegradedNote.checkoutRemedy))
         #expect(lines[1].isEmpty)
         #expect(lines[2] == "Runner/Sources is built by App.xcodeproj")
     }

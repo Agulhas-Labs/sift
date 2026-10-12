@@ -26,13 +26,19 @@ public struct ConfigPlan: Sendable {
     public let resolvedModules: [String: Int]
     /// Path groups with no declaring build file, ordered by file count.
     public let unresolvedGroups: [UnresolvedGroup]
+    /// Path groups a build file claims but renames the module of through a setting this tool cannot read, ordered by file count — listed apart, and never proposed a module, since the only draft to hand is the target's own name, which the build replaces.
+    public var unreadableRenames: [UnresolvedGroup] = []
 
     public var unresolvedFileCount: Int {
         unresolvedGroups.reduce(0) { $0 + $1.fileCount }
     }
 
+    public var unreadableRenameFileCount: Int {
+        unreadableRenames.reduce(0) { $0 + $1.fileCount }
+    }
+
     public var resolvedFileCount: Int {
-        filesScanned - unresolvedFileCount
+        filesScanned - unresolvedFileCount - unreadableRenameFileCount
     }
 
     /// Builds the plan by resolving every indexable file against the layout the tool already understands.
@@ -40,6 +46,7 @@ public struct ConfigPlan: Sendable {
         let resolver = ModuleResolver(repoRoot: repoRoot, config: config)
         var resolved: [String: Int] = [:]
         var unresolved: [String: Int] = [:]
+        var renamed: [String: Int] = [:]
         var swiftDirectories: Set<String> = []
         var hasLooseTopLevelFile = false
         var manifestCount = 0
@@ -57,12 +64,17 @@ public struct ConfigPlan: Sendable {
             }
             if let module = resolver.resolvedModule(for: path) {
                 resolved[module, default: 0] += 1
+            } else if let prefix = resolver.unreadableRenamePrefix(for: path) {
+                renamed[prefix, default: 0] += 1
             } else {
                 unresolved[groupPrefix(of: path), default: 0] += 1
             }
         }
 
         let groups = unresolved
+            .map { UnresolvedGroup(prefix: $0.key, fileCount: $0.value) }
+            .sorted { ($1.fileCount, $0.prefix) < ($0.fileCount, $1.prefix) }
+        let renamedGroups = renamed
             .map { UnresolvedGroup(prefix: $0.key, fileCount: $0.value) }
             .sorted { ($1.fileCount, $0.prefix) < ($0.fileCount, $1.prefix) }
         // A `roots` allowlist would drop a Swift file sitting at the repo root, so it is only ever proposed when there is none to drop.
@@ -77,7 +89,8 @@ public struct ConfigPlan: Sendable {
             swiftDirectories: swiftDirectories.sorted(),
             skippableDirectories: skippable,
             resolvedModules: resolved,
-            unresolvedGroups: groups
+            unresolvedGroups: groups,
+            unreadableRenames: renamedGroups
         )
     }
 

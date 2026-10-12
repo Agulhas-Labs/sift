@@ -15,6 +15,17 @@ struct DoctorClaude {
         .claude
     }
 
+    /// Whether nothing of sift's is in Claude Code: no hook registered and no server of this tool's, read the way ``checks()`` reads them; a file that cannot be read or parsed is not nothing, and a server named sift is something however it runs.
+    var hasNothingOfSift: Bool {
+        let data: Data?
+        do {
+            data = try CursorInstall.read(SiftPaths.claudeSettings(environment: environment), agent: "claude", flag: "--settings")
+        } catch {
+            return false
+        }
+        return DoctorTraces.hooksHoldNothing(data) && DoctorTraces.serversHoldNothing(in: SiftPaths.claudeConfig(environment: environment))
+    }
+
     /// Every check, in the order the answer lists them.
     func checks() -> [DoctorCheck] {
         let settings = SiftPaths.claudeSettings(environment: environment)

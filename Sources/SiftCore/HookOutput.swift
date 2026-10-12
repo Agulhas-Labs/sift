@@ -58,13 +58,17 @@ public struct HookOutput {
     /// **No `permissionDecision`, deliberately.** `updatedInput` is honoured on its own, and the call still goes through whatever permission flow it would have gone through — so a hook that only wanted to add an argument does not also grant the call. Saying `"allow"` here would turn a correction into a blanket approval of every call this server ever sees, which is a much larger thing than the one it is fixing.
     ///
     /// `input` is the **whole** input the call should run with, not the delta: the merge semantics of a partial object are not something this can pin from outside, and sending the complete object is correct under either reading.
-    public static func preToolUseAmendment(input: [String: Any]) -> String? {
-        let payload: [String: Any] = [
-            "hookSpecificOutput": [
-                "hookEventName": "PreToolUse",
-                "updatedInput": input,
-            ],
+    ///
+    /// `context`, where given, rides in the same output as `additionalContext`, which Claude Code hands the model beside the call's result whether or not the input was replaced (probed on 2.1.296); like the amendment it decides nothing.
+    public static func preToolUseAmendment(input: [String: Any], context: String? = nil) -> String? {
+        var specific: [String: Any] = [
+            "hookEventName": "PreToolUse",
+            "updatedInput": input,
         ]
+        if let context {
+            specific["additionalContext"] = context
+        }
+        let payload: [String: Any] = ["hookSpecificOutput": specific]
         guard JSONSerialization.isValidJSONObject(payload),
               let data = try? JSONSerialization.data(
                   withJSONObject: payload,

@@ -401,7 +401,7 @@ struct ShellAdviceTests {
         #expect(try Self.call("git grep -n UsageWindow -- '*.swift'") == "where UsageWindow")
         #expect(try Self.call(#"git grep -n "func signedDelta" -- 'Sources/*.swift'"#) == "where signedDelta")
         #expect(try Self.call("grep -n signedDelta Sources/App/*.swift") == "where signedDelta")
-        #expect(try Self.call("cat Sources/App/*.swift") == "digest App")
+        #expect(try Self.call("cat Sources/App/*.swift") == "digest App/")
         #expect(try Self.call("git grep -n signedDelta -- Sources/Trend.swift") == "digest Trend.signedDelta")
 
         // The call is built in one place for every surface, so the rule is held there.
@@ -560,9 +560,9 @@ struct ShellAdviceTests {
     @Test
     func aReadOfSeveralFilesIsADigestOfEach() throws {
         #expect(try Self.call("cat Sources/App/Depot.swift Sources/App/Gizmo.swift") == "digest Depot\ndigest Gizmo")
-        #expect(try Self.call("cat Sources/App/*.swift") == "digest App")
-        #expect(try Self.call("head -50 Sources/App/*.swift") == "digest App")
-        #expect(try Self.call("less Tests/SiftMCPTests/*Tests.swift") == "digest SiftMCPTests")
+        #expect(try Self.call("cat Sources/App/*.swift") == "digest App/")
+        #expect(try Self.call("head -50 Sources/App/*.swift") == "digest App/")
+        #expect(try Self.call("less Tests/SiftMCPTests/*Tests.swift") == "digest SiftMCPTests/")
         #expect(try Self.call("cat *.swift") == "digest .")
 
         let files = (1 ... 7).map { "Sources/App/File\($0).swift" }

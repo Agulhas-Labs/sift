@@ -24,7 +24,9 @@ struct RunNothingToDisplayReasonTests {
         let answer = RunReportRenderer(kind: .swiftTest, workingDirectory: URL(fileURLWithPath: "/Users/dev/Widget"), selector: selector)
             .render(report, exitCode: 0, logURL: nil)
 
-        #expect(Self.totalsLine(of: answer) == "totals: ✘ nothing ran — no test matched --filter aFailingTest · nothing to display, since no test ran")
+        // The headline says it, so the answer carries no totals line to say it again.
+        #expect(Self.totalsLine(of: answer) == nil)
+        #expect(answer.hasPrefix("✘ swift test — nothing ran: no test matched --filter aFailingTest"))
     }
 
     /// A run that failed with no compiler or linker error and no test line says what the log shows — no process announced it started — rather than that none did.

@@ -161,7 +161,9 @@ public extension RunVerdict.Contract {
         "-retry-tests-on-failure", "-run-tests-until-failure", "-enumerate-tests",
     ]
 
-    /// `xcodebuild` options observed to take a value, kept for ``standsAlone(in:)`` alone — the other readers here take the opposite direction on an option neither table names, so listing the value-taking ones for them would make an unrecognised flag swallow the word behind it instead of leaving it be.
+    /// `xcodebuild` options observed to take a value: for ``standsAlone(in:)`` the word behind one is a value rather than a word to check, and for ``xcodebuildAction(of:)`` a value spelled like an action word is settled rather than doubted.
+    ///
+    /// Membership only ever settles a reading, never unsettles one. Neither reader treats an option missing from here as valueless on that account: ``xcodebuildAction(of:)`` still assumes it takes a value and doubts an action word behind it, so an unrecognised flag can never have a scheme name read as the action.
     ///
     /// Not exhaustive over `-help`'s option list the way ``valuelessFlags`` tries to be: only the flags a pass-through was observed to carry legitimately, so a value-taking option this list has never heard of still gets the safe reading ``standsAlone(in:)`` gives it — treated as if it took no value, so the word behind it is checked rather than assumed to be somebody's value.
     ///
@@ -233,18 +235,21 @@ extension RunVerdict.Contract {
     ///
     /// **`nil` is what makes the whole reading safe**, and it is a refusal rather than an absence. An unread contract that claimed anything would let the reader downstream take whichever `** … **` the log carried, so moving `-quiet` one word to the left would turn a run whose only verdict was `** CLEAN SUCCEEDED **` from a reported anomaly into a green tick. The log inherits the same discipline: a run whose action went unread files under the bare tool name, where nothing can count it as a run that could have executed a test.
     ///
-    /// **But a collision is doubt, not a verdict, and doubt a later word can settle is not doubt.** Refusing on the spot at an option value spelled like an action word would throw away every argument after it: `xcodebuild -derivedDataPath build -scheme App -destination … test` would stop at `build` and never see the bare `test` four words later, so a shape a CI script writes constantly would draw `⚠ … could not tell which verdict the command owed` over a log closing on `** TEST SUCCEEDED **` — the false alarm this reading exists to avoid, at the one spelling it is cheapest to avoid it. So the collision is recorded and read at the end. A later bare action word clears it, because the run's verdict is its last action's whichever way the doubted word was meant; a collision standing *after* the last bare action does not, because if the flag in front of it takes no value then that word is the last action and the wording owed is a different one.
+    /// **The value of an option known to take one is never an action.** `-derivedDataPath build`, `-scheme build` and `-configuration test` are a path, a scheme and a configuration, because ``valueTakingFlags`` says the option in front consumes the word behind it; so `xcodebuild build-for-testing -scheme App -derivedDataPath build` owes `** TEST BUILD SUCCEEDED **` rather than reading as doubt. Only an option neither table names leaves an action word behind it in doubt.
+    ///
+    /// **And that collision is doubt, not a verdict, and doubt a later word can settle is not doubt.** Refusing on the spot at an unknown option's value spelled like an action word would throw away every argument after it: `xcodebuild -aFlagAddedAfterThisTableWasWritten build -scheme App -destination … test` would stop at `build` and never see the bare `test` four words later, so a shape a CI script writes constantly would draw `⚠ … could not tell which verdict the command owed` over a log closing on `** TEST SUCCEEDED **` — the false alarm this reading exists to avoid, at the one spelling it is cheapest to avoid it. So the collision is recorded and read at the end. A later bare action word clears it, because the run's verdict is its last action's whichever way the doubted word was meant; a collision standing *after* the last bare action does not, because if the flag in front of it takes no value then that word is the last action and the wording owed is a different one.
     static func xcodebuildAction(of arguments: [String]) -> String? {
         var action = defaultAction
         var doubted = false
         var expectingValue = false
+        var valueIsKnown = false
         for argument in arguments.dropFirst() {
             if expectingValue {
                 expectingValue = false
-                // An option's value spelled like an action word is doubt, not a verdict: this table can
-                // be wrong about whether the flag in front of it takes one, so the word might be the
-                // action. Recorded and read at the end, because a *later* bare action word settles it.
-                doubted = doubted || stems[argument] != nil
+                // An unknown option's value spelled like an action word is doubt, not a verdict: this
+                // table can be wrong about whether that flag takes one, so the word might be the action.
+                // Recorded and read at the end, because a *later* bare action word settles it.
+                doubted = doubted || !valueIsKnown && stems[argument] != nil
                 continue
             }
             if actionsWithNoWording.contains(argument) {
@@ -252,6 +257,7 @@ extension RunVerdict.Contract {
             }
             guard !argument.hasPrefix("-") else {
                 expectingValue = !valuelessFlags.contains(argument) && !argument.contains(":")
+                valueIsKnown = valueTakingFlags.contains(argument)
                 continue
             }
             if stems[argument] != nil {

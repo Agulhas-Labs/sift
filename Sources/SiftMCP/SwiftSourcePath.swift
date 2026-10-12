@@ -15,6 +15,11 @@ public struct SwiftSourcePath {
         text.contains(extensionExpression)
     }
 
+    /// Whether `path` names a Swift source file: its extension is exactly `swift`, with nothing after it, so a backup copy `A.swift.bak` is not one.
+    public static func isSourceFile(_ path: String) -> Bool {
+        path.contains(/\.swift$/.ignoresCase())
+    }
+
     /// Whether `path` is a glob — a pattern standing for every file it matches, and so never one file.
     ///
     /// `git grep pat -- '*.swift'` and `grep pat Sources/*.swift` restrict a search to Swift source, the intent `--include=*.swift` spells as a flag. Neither names a file to digest, and the stem read off one is `*`.

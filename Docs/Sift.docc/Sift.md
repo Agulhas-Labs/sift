@@ -4,22 +4,28 @@
     @TechnologyRoot
 }
 
-A Swift code index for AI coding agents, and a wrapper for the builds and tests they run.
+Two tools in one binary for AI coding agents working in Swift: build and test output an agent can afford to
+read, and semantic lookups for when grep is too noisy.
 
 ## Overview
 
 Sift is one binary, `sift`. It is a command-line tool, and it is an MCP server for the agent you already use.
 It installs hooks for Claude Code, and experimentally for Cursor and Codex.
 
-What it is for:
+What pays from the first command:
 
-- **Compact structural views of Swift code.** `digest` lists a type's members, each with its line range,
-  so an agent can read the lines it needs instead of the whole file. `where` finds declarations,
-  conformers, overrides and callers. `search` finds code by a shape that grep cannot express.
 - **Build and test output without the log.** `sift run` wraps `swift build`, `swift test` and
-  `xcodebuild` and prints what failed.
-- **Semantic answers from your build.** With an index store, `where` resolves callers, `affected` names
-  the tests a diff reaches, and `diff` reviews a change declaration by declaration.
+  `xcodebuild` and prints the verdict and what failed, not the log.
+- **Answers in place, from the hooks.** A whole-file Read of a large Swift file is answered with its
+  digest, and an edit that leaves a `.swift` file unparseable comes straight back with its errors.
+
+Semantic lookups, for when grep is too noisy:
+
+- **`where`** finds declarations, conformers, overrides and the real callers.
+- **`search`** finds code by a shape that grep cannot express.
+- **`strings`** traces on-screen text to its localization key.
+- **`digest`** lists a type's members, each with its line range, so an agent can read the lines it needs.
+- **`affected`**, with an index store, names the tests a diff reaches.
 
 Every answer opens with a line saying which tree it describes and how fresh it is, and it says so when it
 cannot be sure.

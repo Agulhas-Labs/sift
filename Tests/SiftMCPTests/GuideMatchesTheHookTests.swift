@@ -24,8 +24,13 @@ struct GuideMatchesTheHookTests {
     /// The `refusals` topic `Sift.md` points a reader at for this exact accounting, with line breaks folded the same way.
     ///
     /// The size pass that split the rule moved this material behind `sift help refusals` rather than carrying it twice, so a claim this file checks lives in exactly one of the two — asserted against separately, never against the two joined into one string, which would let a claim missing from `Sift.md` hide behind the topic actually carrying it.
-    private static func topicText() -> String {
-        (HelpTopics.topic(named: "refusals")?.body ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    private static func topicText(named name: String = "refusals") -> String {
+        (HelpTopics.topic(named: name)?.body ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// The `queries` topic, folded the same way: the reading-code habits the rule no longer repeats in full.
+    private static func queriesText() -> String {
+        topicText(named: "queries")
     }
 
     /// Every `sed -n` either source names carries the script that decides what it is — bare, it is both a search and a read.
@@ -47,6 +52,17 @@ struct GuideMatchesTheHookTests {
         #expect(topic.contains("`sed -n '120,160p'`, `head`, `tail` on one file"))
     }
 
+    /// The topic says what a command let through means — no smaller answer — and that it is no advice to run it that way.
+    ///
+    /// The wording it replaces called a let-through one the hook "decided against", and an agent read the silence as permission for the whole read.
+    @Test
+    func theTopicDoesNotReadALetThroughAsApproval() {
+        let topic = Self.topicText()
+
+        #expect(topic.contains("A command the hook lets through is one it had no smaller answer for; that is not a recommendation to run it that way — `digest` and `where` are still the cheaper first call."))
+        #expect(!topic.contains("decided against"))
+    }
+
     /// The rule sends a location cited by an issue, a review or a build error to the digest that takes it, and puts the CLI in a Bash line already being made.
     @Test
     func theRuleSendsACitedLocationToAnAnchoredDigest() throws {
@@ -54,7 +70,8 @@ struct GuideMatchesTheHookTests {
 
         #expect(rule.contains("**A cited location is not already located**"))
         #expect(rule.contains("`digest File.swift:120` (or `:95-135`)"))
-        #expect(rule.contains("`sift digest …` and `sift where …` go in the same line"))
+        // The same-line habit moved behind `sift help queries`.
+        #expect(Self.queriesText().contains("`sift digest …` and `sift where …` go in the same line"))
     }
 
     /// The two scripts the rule gives are classified the way the rule files them: the pattern address a search, the numeric window a ranged read, advised as the read of its file.
@@ -101,15 +118,28 @@ struct GuideMatchesTheHookTests {
         #expect(lookups == [.indexed, .guided(file: "/repo/Sources/App/RecordDetailView.swift")])
     }
 
-    /// The never-interrupted list names every shape the hook actually lets through: a fixed-string search for anything but a name, which the hook never refuses (``SearchToolAdvice/textSearchReason(tool:input:in:)``, ``TextSearch/Reason/fixedString``), and every one of a merge's three markers, not just the two that open and close it — in `Sift.md` and in the `refusals` topic alike, each checked on its own.
+    /// The never-interrupted list names every shape the hook actually lets through: a fixed-string search for anything but a name, which the hook never refuses (``SearchToolAdvice/textSearchReason(tool:input:in:)``, ``TextSearch/Reason/fixedString``), and every one of a merge's three markers, not just the two that open and close it.
+    ///
+    /// The list lives in the `refusals` topic, which `Sift.md` points at; the short rule no longer repeats it.
     @Test
-    func theNeverInterruptedListNamesFixedStringsAndEveryConflictMarker() throws {
-        for text in try [Self.ruleText(), Self.topicText()] {
-            #expect(text.contains("a fixed-string search (`-F`, `fgrep`) for anything but a name"))
-            #expect(text.contains("`<<<<<<<`"))
-            #expect(text.contains("`=======`"))
-            #expect(text.contains("`>>>>>>>`"))
-        }
+    func theNeverInterruptedListNamesFixedStringsAndEveryConflictMarker() {
+        let text = Self.topicText()
+
+        #expect(text.contains("a fixed-string search (`-F`, `fgrep`) for anything but a name"))
+        #expect(text.contains("`<<<<<<<`"))
+        #expect(text.contains("`=======`"))
+        #expect(text.contains("`>>>>>>>`"))
+    }
+
+    /// The rule's hook paragraph states the lookup rule, the escape hatch and the rewrite; the topic it points at names what a lookup is.
+    @Test
+    func theRuleStatesTheLookupRuleAndTheTopicNamesWhatALookupIs() throws {
+        let rule = try Self.ruleText()
+
+        #expect(rule.contains("A lookup of Swift source is answered in place, or let through."))
+        #expect(rule.contains("a re-run is never held against you"))
+        #expect(rule.contains("A raw build or test is rewritten to `sift run --`, and the answer's first line says so"))
+        #expect(Self.topicText().contains("a shell command, a Grep, a Glob, or a whole-file Read"))
     }
 
     /// The `refusals` topic says a build the user's own ask or deny rule matches runs as written, neither rewritten nor refused with its wrapping named.

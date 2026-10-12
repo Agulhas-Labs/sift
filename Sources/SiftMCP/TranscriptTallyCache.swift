@@ -134,16 +134,6 @@ extension TranscriptTallyCache {
             return scan
         }
 
-        /// `blank`'s transcript as stored where that still holds, and otherwise what `read` returns, kept for the next sweep.
-        func recalled(_ blank: TranscriptAudit.Scan, in snapshot: TranscriptSnapshot, since: Date?, reading read: () -> TranscriptAudit.Scan) -> TranscriptAudit.Scan {
-            if let held = scan(of: blank, in: snapshot, since: since) {
-                return held
-            }
-            let fresh = read()
-            store(fresh, in: snapshot, since: since)
-            return fresh
-        }
-
         /// Keeps `scan` for the next sweep, where its transcript was read and its key is known, beside the other windows stored for the same bytes.
         func store(_ scan: TranscriptAudit.Scan, in snapshot: TranscriptSnapshot, since: Date?) {
             let path = scan.transcript

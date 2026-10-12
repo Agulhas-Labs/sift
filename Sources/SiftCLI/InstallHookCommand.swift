@@ -66,6 +66,9 @@ struct InstallHookCommand: ParsableCommand {
     /// This process's own executable, injected so a test can say which file is running.
     var executable: String? = Bundle.main.executablePath
 
+    /// The directory a relative PATH entry is taken against, injected so a test need not change the process's own.
+    var currentDirectory = FileManager.default.currentDirectoryPath
+
     /// Refuses a `--command` that `uninstall-hook` would not be able to find again.
     ///
     /// Recognition is by shape — the binary's name plus the subcommand — and it is the *only* handle either the re-run path or the uninstall has on a previous registration. A command outside that shape installs a hook nothing can subsequently see: the uninstall reports a clean sweep while leaving it running, and the next install appends a second primer beside it rather than repointing the first. Validation runs before a byte is written, so the refusal costs nothing.
@@ -213,15 +216,18 @@ struct InstallHookCommand: ParsableCommand {
         let asks = allowRun == nil && !allowLookups
         let lookupsMissing = try !LookupAllowRules.missing(from: settings).isEmpty
         let runsMissing = try !RunAllowRules.missing(from: settings).isEmpty
-        guard lookupsMissing || (runsMissing && !allowLookups) else {
+        // `--allow-run` adds the run rules even beside `--allow-lookups`, so a file already holding the lookups is not the end of it.
+        let wantsRuns = runsMissing && (allowRun == true || !allowLookups)
+        guard lookupsMissing || wantsRuns else {
             return (false, allowLookups ? "permissions: lookups already allowed" : "permissions: wrapped builds and lookups already allowed")
         }
         if asks, !prompt.isInteractive {
-            return (false, "permissions: nothing added — `sift install-hook --allow-run` lets sift's lookups and a wrapped build run without a prompt, `sift install-hook --allow-lookups` the lookups alone")
+            let binary = Self.binaryPath(invokedAs: arguments.first ?? SiftPaths.binaryName, environment: environment, executable: executable)
+            return (false, Self.noTerminalNote(binary: binary, environment: environment, currentDirectory: currentDirectory))
         }
         // A block already in the file is not asked about again.
         let addLookups = lookupsMissing && wantsLookups(asking: asks)
-        let addRuns = runsMissing && (allowRun == true || (asks && AllowRunPrompt.accepts(prompt.ask(AllowRunPrompt.runsQuestion), defaultsTo: false)))
+        let addRuns = wantsRuns && (allowRun == true || (asks && AllowRunPrompt.accepts(prompt.ask(AllowRunPrompt.runsQuestion), defaultsTo: false)))
         // Each set is a block of its own, so an install over a file holding only one set adds only the other.
         var added: [String] = []
         if addRuns, let updated = try RunAllowRules.adding(to: settings) {
@@ -233,6 +239,24 @@ struct InstallHookCommand: ParsableCommand {
             added += LookupAllowRules.rules
         }
         return added.isEmpty ? (false, "permissions: nothing added") : (true, "permissions: allowed \(added.joined(separator: ", "))")
+    }
+
+    /// The permissions line where nobody can answer: the command that adds the rules, the form to type it in from a Claude Code session, and the flag for the lookups alone.
+    ///
+    /// The command is spelled as the user must type it: bare `sift` where the first `sift` on the PATH in `environment` is this binary, otherwise the binary's own path.
+    static func noTerminalNote(binary: String, environment: [String: String], currentDirectory: String) -> String {
+        let typed = typedCommand(binary: binary, environment: environment, currentDirectory: currentDirectory)
+        return "permissions: nothing added (no terminal to ask in) — to allow sift's lookups and wrapped builds without a prompt, run: \(typed) install-hook --allow-run (from Claude Code: ! \(typed) install-hook --allow-run); `\(typed) install-hook --allow-lookups` for the lookups alone"
+    }
+
+    /// What the user types to run `binary`: its bare name where the first `sift` on the PATH is this binary, else its quoted path.
+    ///
+    /// A directory on the PATH after another `sift` does not make the bare name run this one, so the files are compared by resolved path.
+    private static func typedCommand(binary: String, environment: [String: String], currentDirectory: String) -> String {
+        guard let first = InvokedBinary.onPath(SiftPaths.binaryName, environment: environment, currentDirectory: currentDirectory),
+              URL(fileURLWithPath: first).resolvingSymlinksInPath().path == URL(fileURLWithPath: binary).resolvingSymlinksInPath().path
+        else { return ShellWord.quoted(binary) }
+        return SiftPaths.binaryName
     }
 
     /// Whether the lookups block is to be added: yes without asking where a flag gave the answer, otherwise the answer to the question, which defaults to no after an earlier decline.

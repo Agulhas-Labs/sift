@@ -59,7 +59,7 @@ struct WhereQualifierNarrowingTests {
         #expect(!output.contains("in Orchard.tend()"))
         #expect(!output.contains("in Orchard.also()"))
         let line = try Self.nameLine(output, "load")
-        #expect(line.contains("8 call sites by name, 4 on other types dropped, 4 kept, in 2 files"))
+        #expect(line.contains("8 call sites by written name, 4 on other types dropped, 4 kept, in 2 files"))
     }
 
     /// Calls on the type itself, implicit or on self inside an extension of it, and on a receiver the scan cannot type stay listed.

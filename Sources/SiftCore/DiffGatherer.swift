@@ -52,7 +52,7 @@ struct DiffGatherer {
         let files = try await compare(brokenDown, range: range, links: links, stats: stats, untrackedNow: untrackedNow, member: options.member).sorted { $0.path < $1.path }
         let summaryPage = options.member == nil && options.offset == 0
         let callers = summaryPage ? try await callerReports(files: files, semantic: semantic) : []
-        let tests = summaryPage && !brokenDown.isEmpty ? try await reachingTests(brokenDown, excludedByConfig: notBrokenDown, range: range, semantic: semantic) : nil
+        let tests = summaryPage && !brokenDown.isEmpty ? try await reachingTests(brokenDown, files: files, excludedByConfig: notBrokenDown, range: range, semantic: semantic) : nil
 
         return try DiffRenderer.render(DiffRenderer.Input(
             range: range,
@@ -64,18 +64,18 @@ struct DiffGatherer {
             tests: tests,
             options: options,
             rawDiffBytes: rawDiffByteCount(range: range, untracked: allChanges.filter { untracked.contains($0.path) }.map(\.path)),
-            axis: Self.axis(of: tests, judging: callers.flatMap(\.staleFiles))
+            axis: Self.axis(of: tests, judging: callers.reduce(into: [:]) { $0.merge($1.staleFiles) { min($0, $1) } })
         ))
     }
 
-    /// The header's axis: the reaching tests' own, counting once more each file the callers' wrapper listings relied on that is newer than the build.
-    static func axis(of tests: AffectedRenderer.Output?, judging staleFiles: [String]) -> SemanticAxis {
+    /// The header's axis: the reaching tests' own, counting once more, under its own kind, each file the callers' wrapper listings relied on that is newer than the build.
+    static func axis(of tests: AffectedRenderer.Output?, judging staleFiles: [String: FileKind]) -> SemanticAxis {
         let base = tests?.axis ?? .syntacticOnly
-        let extra = Set(staleFiles).subtracting(tests?.newerFiles ?? [])
+        let extra = staleFiles.filter { !(tests?.newerFiles ?? []).contains($0.key) }
         guard !extra.isEmpty else { return base }
         return switch base {
-        case let .stale(newer, deleted): .stale(newerFiles: newer + extra.count, deletedOccurrenceFiles: deleted)
-        case .fresh, .unresolved, .partial: .stale(newerFiles: extra.count, deletedOccurrenceFiles: 0)
+        case let .stale(files): .stale(files.adding(extra))
+        case .fresh, .unresolved, .partial: .stale(StaleFiles().adding(extra))
         default: base
         }
     }
@@ -227,7 +227,7 @@ private extension DiffGatherer {
             }
         }
         guard !targets.isEmpty else { return [] }
-        return try await DiffCallers(store: store, repoRoot: repoRoot, enumerator: enumerator).reports(for: targets, semantic: semantic)
+        return try await DiffCallers(store: store, repoRoot: repoRoot, enumerator: enumerator, projectDirectories: projectDirectories).reports(for: targets, semantic: semantic)
     }
 
     /// Whether the working tree the callers are read from is this range's after side, as far as Swift is concerned: the default range, or one ending at the commit `HEAD` names with no Swift file dirty.
@@ -240,6 +240,7 @@ private extension DiffGatherer {
     /// The tests `affected` finds reaching the changed files, for the same change set.
     func reachingTests(
         _ changes: [GitContext.Change],
+        files: [FileDiff],
         excludedByConfig skipped: [DiffRenderer.SkippedFile],
         range: DiffRange,
         semantic: SemanticInput
@@ -247,6 +248,9 @@ private extension DiffGatherer {
         let scanner = NameMentionScanner(repoRoot: repoRoot, enumerator: enumerator)
         var renderer = AffectedRenderer(store: store, repositoryRoot: repoRoot, projectDirectories: projectDirectories)
         renderer.mentions = { await scanner.mentions(of: $0) }
+        let callScanner = CallSiteScanner(repoRoot: repoRoot, enumerator: enumerator)
+        renderer.callSites = { await callScanner.callSites(named: $0) }
+        renderer.fileDiffs = { paths in files.filter { paths.contains($0.path) } }
         return try await renderer.render(
             changes: changes,
             excludedByConfig: skipped.map(\.path).filter { enumerator.isNarrowedAwayByConfig(relativePath: $0) },

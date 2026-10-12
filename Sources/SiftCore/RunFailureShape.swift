@@ -138,7 +138,7 @@ public extension RunFailureShape {
     ///
     /// **And it is a sample only once it has to be**, which is ``RunErrorShape``'s rule applied to this side too — both of them decide on the rendered answer rather than on a count. A sample of failures loses their *names*, which no other field of the answer carries, so the block spends its whole budget listing them before it gives that up. A cap on the count would show five of six failures with distinct messages and count the sixth, and would collapse three sharing one message — which ``RunOutputFilter`` guarantees for every failure the framework declared and never explained, since they all get the identical sentence — to one signature, one name and a `×3`, with two test names gone and nothing in the answer saying so. Forty distinct failures have exactly the same problem five times over, and a count cannot tell the two cases apart because the difference between them is how much they *print*.
     ///
-    /// **The clipping rule is the one thing this does not share with ``RunErrorShape``, and the asymmetry is deliberate.** There a listing prints the compiler's own sentence whole; here every line of a failure's own words is bounded by ``RunFailureCensus/wordsCap`` in *both* forms, because a message, a note and a set of arguments are arbitrary program output — a dumped SwiftUI view tree runs to 1.5 KB and one `↳` note in the corpus is a thousand characters of accessibility labels. One of those inside a listing that fits the budget is a paragraph where the reader wanted a line.
+    /// **The clipping rule is the one thing this does not share with ``RunErrorShape``, and the asymmetry is deliberate.** There a listing prints the compiler's own sentence whole; here every line of a failure's own words is bounded by ``RunFailureCensus/wordsCap`` (its message by ``RunFailureCensus/messageCap``) in *both* forms, because a message, a note and a set of arguments are arbitrary program output — a dumped SwiftUI view tree runs to 1.5 KB and one `↳` note in the corpus is a thousand characters of accessibility labels. One of those inside a listing that fits the budget is a paragraph where the reader wanted a line.
     ///
     /// - Parameter budget: What the whole answer has left of ``RunFailureCensus/listingBudget``, reduced by whatever this block lists. See ``RunErrorShape/rendered(within:spending:)``, which is the other section spending it.
     func rendered(within allowance: Int, spending budget: inout Int) -> [String] {
@@ -258,7 +258,7 @@ private extension RunFailureShape {
         // A note's first line is the `↳` sentence; a list printed beneath it keeps its own lines.
         let noteLines = failure.note.map { $0.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) } ?? []
         let merged = noteLines.first.flatMap { Self.merging(failure.message, with: $0) }
-        var lines = [heading, "    \(RunFailureCensus.clipped(merged ?? failure.message))"]
+        var lines = [heading, "    \(RunFailureCensus.clipped(merged ?? failure.message, to: RunFailureCensus.messageCap))"]
         if let closest = failure.closestLine {
             lines.append("    \(closest)")
         }

@@ -38,7 +38,7 @@ struct AnswerThenRead {
                 return false
             }
             if answer.counted {
-                events.append(.answerReadAnyway(shape: shape, saving: answer.saving))
+                events.append(.answerReadAnyway(shape: shape))
             }
             return true
         }
@@ -67,36 +67,22 @@ struct AnswerThenRead {
             return (path, shape)
         }
         guard !answered.isEmpty else { return [] }
-        // One closing line prices every call on the refusal together, so each file answered is given its share of it.
-        let savings = shares(of: claimedSaving(inReason: text), among: answered.map(\.path))
         var events: [TranscriptEvent] = []
-        for ((path, shape), saving) in zip(answered, savings) {
+        for (path, shape) in answered {
             let rereads = zip(reading.paths, reading.rereads).filter { $0.0 == path }.map(\.1)
             state.openAnswers.append(
-                OpenAnswer(paths: [path], rereads: rereads, call: reading.call, turn: reading.turn, counted: reading.counted, shape: shape, saving: saving)
+                OpenAnswer(paths: [path], rereads: rereads, call: reading.call, turn: reading.turn, counted: reading.counted, shape: shape)
             )
             if reading.counted {
-                events.append(.fileAnswer(shape: shape, saving: saving))
+                events.append(.fileAnswer(shape: shape))
             }
         }
         return events
     }
 
-    /// The bytes an answered refusal's closing line weighs as spared — the source it states less what it served — or zero where it states no smaller size.
+    /// The audit's row for answers to reads, under `answered`: the misses by shape.
     ///
-    /// Read back from the rounded figures the line prints, so it is as close as they are: a tenth of a kilobyte below ten, a kilobyte above.
-    static func claimedSaving(inReason text: String) -> Int {
-        guard let closing = text.split(whereSeparator: \.isNewline).last,
-              let match = closing.firstMatch(of: #/([0-9.]+) (B|kB|MB) of source → ([0-9.]+) (B|kB|MB) served/#),
-              let source = bytes(match.1, unit: match.2),
-              let served = bytes(match.3, unit: match.4)
-        else {
-            return 0
-        }
-        return max(0, source - served)
-    }
-
-    /// The audit's rows for answers to reads, under `answered`: the misses by shape, and the saving that stands without them.
+    /// No saving is printed beside it: the one figure `audit` prints is the usage log's (``UsageScan``), which leaves an answer read anyway unpriced.
     static func auditLines(_ tally: AnswerMissTally, pad: (Int) -> String) -> [String] {
         guard tally.answerCount > 0 else { return [] }
         let shapes = AnswerShape.allCases.compactMap { shape -> String? in
@@ -105,27 +91,9 @@ struct AnswerThenRead {
             let misses = tally.misses[shape] ?? 0
             return "\(shape.rawValue) \(misses) of \(answers) (\(misses * 100 / answers)%)"
         }
-        let withdrawn = tally.withdrawn > 0 ? ", \(TokenEstimate.short(bytes: tally.withdrawn)) the misses claimed withdrawn" : ""
         return [
             "    read anyway\(pad(tally.missCount))  of \(tally.answerCount) answers to a read, the file then read whole or the call re-run within \(window) calls — a miss, not a saving: \(shapes.joined(separator: ", "))",
-            "    saving      \(TokenEstimate.saved(bytes: tally.saved)), as those answers' closing lines priced it\(withdrawn)",
         ]
-    }
-
-    /// Splits one closing line's claimed saving among the files its answer covered, in proportion to each file's size on disk where every one of them can be sized, and evenly where any cannot.
-    ///
-    /// An even split would let a miss on a small file withdraw as much as a large file's answer saved, since a file's source is most of what its answer stood in for.
-    static func shares(of saving: Int, among paths: [String], size: (String) -> Int? = sourceSize(of:)) -> [Int] {
-        guard !paths.isEmpty else { return [] }
-        let sizes = paths.compactMap(size)
-        let total = sizes.reduce(0, +)
-        guard sizes.count == paths.count, total > 0 else { return paths.map { _ in saving / paths.count } }
-        return sizes.map { Int(Double(saving) * Double($0) / Double(total)) }
-    }
-
-    /// The size in bytes of the file at `path` as it is on disk now, or `nil` where it cannot be read.
-    private static func sourceSize(of path: String) -> Int? {
-        (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int
     }
 
     /// How many calls a call that read files is held for while its result is awaited — far more than one turn's calls ever are.
@@ -143,8 +111,9 @@ struct AnswerThenRead {
             let resolved = InPlaceShape.resolve(path, against: cwd) ?? path
             return [FileRead(path: resolved, whole: range == ["-", "-"], reread: "Read \(resolved) \(range.joined(separator: " "))")]
         case "Bash":
-            guard let command = input["command"] as? String,
-                  let statements = InPlaceShape.statementDirectories(of: command, from: cwd, requiringDirectories: false)
+            // Read as the hook judged it: a `tee` ending the lookup's pipeline is taken out, so a teed lookup, and its re-run, key as the lookup alone.
+            guard let written = input["command"] as? String,
+                  let statements = InPlaceShape.statementDirectories(of: ShellInspection.withoutPassThroughTees(written), from: cwd, requiringDirectories: false)
             else {
                 return []
             }
@@ -189,16 +158,5 @@ struct AnswerThenRead {
             spelled = String(spelled.dropFirst().dropLast()).replacing(#"'\''"#, with: "'")
         }
         return spelled
-    }
-
-    /// A byte count as ``ByteSize`` prints it, read back.
-    private static func bytes(_ figure: Substring, unit: Substring) -> Int? {
-        guard let value = Double(figure) else { return nil }
-        let scale: Double = switch unit {
-        case "kB": 1000
-        case "MB": 1_000_000
-        default: 1
-        }
-        return Int((value * scale).rounded())
     }
 }

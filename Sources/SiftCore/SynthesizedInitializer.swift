@@ -63,23 +63,24 @@ struct SynthesizedInitializer {
 
     /// `name: Type` for a stored property, followed by ` = …` where the parameter has a default; the initial value itself is shown where the stored signature carries it.
     private static func parameter(_ property: SymbolRow, defaulted: Bool) -> String {
-        let tree = Parser.parse(source: property.signature)
-        var label = property.name + ": <inferred>"
-        var initial: String?
-        if let declaration = tree.statements.first?.item.as(VariableDeclSyntax.self) {
-            let bindings = Array(declaration.bindings)
-            if let index = bindings.firstIndex(where: { $0.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == property.name }) {
-                if let type = bindings[index...].lazy.compactMap(\.typeAnnotation).first?.type {
-                    label = property.name + ": " + type.trimmedDescription
-                }
-                initial = bindings[index].initializer?.value.trimmedDescription
-                // An optional `var` with no value is defaulted to nil, which is no guess.
-                if initial == nil, let type = bindings[index...].lazy.compactMap(\.typeAnnotation).first?.type, type.is(OptionalTypeSyntax.self) {
-                    initial = "nil"
+        NestingGate.parseOrEmpty(property.signature) { tree in
+            var label = property.name + ": <inferred>"
+            var initial: String?
+            if let declaration = tree.statements.first?.item.as(VariableDeclSyntax.self) {
+                let bindings = Array(declaration.bindings)
+                if let index = bindings.firstIndex(where: { $0.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == property.name }) {
+                    if let type = bindings[index...].lazy.compactMap(\.typeAnnotation).first?.type {
+                        label = property.name + ": " + type.trimmedDescription
+                    }
+                    initial = bindings[index].initializer?.value.trimmedDescription
+                    // An optional `var` with no value is defaulted to nil, which is no guess.
+                    if initial == nil, let type = bindings[index...].lazy.compactMap(\.typeAnnotation).first?.type, type.is(OptionalTypeSyntax.self) {
+                        initial = "nil"
+                    }
                 }
             }
+            return defaulted ? label + " = " + (initial ?? "…") : label
         }
-        return defaulted ? label + " = " + (initial ?? "…") : label
     }
 }
 

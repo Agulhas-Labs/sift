@@ -229,7 +229,7 @@ struct SemanticCacheTests {
         try FileManager.default.removeItem(at: failing)
         let moved = try await engine.lookup(symbol: "helper()", freshness: freshness)
 
-        #expect(failed.contains("but failed to open:"), "\(failed)")
+        #expect(failed.contains("index store failed to open ("), "\(failed)")
         #expect(!moved.contains("failed to open"), "the failure belongs to .build/out, which is gone: \(moved)")
     }
 

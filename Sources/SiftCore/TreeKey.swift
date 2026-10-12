@@ -81,15 +81,40 @@ public extension TreeKey {
 
     /// Whether `earlier` is this tree with nothing changed but files a compiler or the package resolver never reads, so a green run of `earlier` stands for this one too.
     ///
-    /// What counts as read is a Swift source (`.swift`, which holds `Package.swift` as well), a `Package.resolved` and an Xcode project file; a note, a changelog or any other file whose bytes moved is outside it. A tree the object store no longer holds is *unknown*, which is a no.
+    /// What counts as read is a source, a manifest or build setting, or a resource a build compiles, by an explicit list; a note, a changelog or any other file whose bytes moved is outside it. A tree the object store no longer holds is *unknown*, which is a no.
     func sameSwiftSources(as earlier: TreeKey, repositoryRoot: URL) -> Bool {
         guard let changed = changedPaths(since: earlier, repositoryRoot: repositoryRoot) else { return false }
         return !changed.contains(where: Self.isBuildInput)
     }
 
-    private static func isBuildInput(_ path: String) -> Bool {
-        let name = path.split(separator: "/").last.map(String.init) ?? path
-        return name.hasSuffix(".swift") || name == "Package.resolved" || name == "project.pbxproj"
+    /// Source and resource extensions a build reads, by explicit list: anything not named here is not an input.
+    private static let buildInputExtensions: Set<String> = [
+        "swift", "h", "hpp", "m", "mm", "c", "cc", "cpp", "metal", "modulemap",
+        "xcconfig", "plist", "entitlements", "strings", "stringsdict", "xcstrings",
+        "storyboard", "xib", "xcdatamodel", "intentdefinition",
+    ]
+
+    /// Directories whose whole contents a build reads, whatever the file inside is called.
+    private static let buildInputContainers: Set<String> = ["xcworkspace", "xcodeproj", "xcassets", "xcdatamodeld", "xcdatamodel"]
+
+    /// Whether a changed repository-relative path is one a build reads: a source, a manifest or build setting, or a resource it compiles.
+    static func isBuildInput(_ path: String) -> Bool {
+        let components = path.split(separator: "/").map(String.init)
+        guard let name = components.last else { return false }
+        let insideContainer = components.dropLast().contains { directory in
+            directory.contains(".") && directory.split(separator: ".").last.map { buildInputContainers.contains(String($0)) } == true
+        }
+        if insideContainer {
+            return true
+        }
+        if ["Package.resolved", "project.pbxproj", "project.yml", "project.yaml"].contains(name) {
+            return true
+        }
+        if name.hasPrefix("Package@swift-"), name.hasSuffix(".swift") {
+            return true
+        }
+        guard name.contains("."), let ext = name.split(separator: ".").last else { return false }
+        return buildInputExtensions.contains(String(ext))
     }
 
     /// Whether the index hides no entry from the working tree — no `assume-unchanged` bit, no `skip-worktree`.

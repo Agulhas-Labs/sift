@@ -48,7 +48,7 @@ struct ImplementedRequirement: Equatable {
         if requirements.isEmpty {
             plain.append(qualified)
         } else {
-            hedged.append("no direct \(relation.empty) of \(qualified) recorded in the store\(verdict.hedge) — " + hedge(requirements, relation: relation))
+            hedged.append("no direct \(relation.empty) of \(qualified) \(verdict.recordedIn)\(verdict.hedge) — " + hedge(requirements, relation: relation))
         }
     }
 }

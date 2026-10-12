@@ -70,8 +70,12 @@ public struct UsageReport {
         // Failures ahead of calls (Docs/AnswerContract.md §2): the call count only ever rises, and leading with it
         // reads as adoption whatever the failure count beside it says.
         var lines = [
-            "usage — \(failures) failure\(failures == 1 ? "" : "s"), \(entries.count) call\(entries.count == 1 ? "" : "s")\(scopeSuffix), \(days.first ?? "?") → \(days.last ?? "?")",
+            "usage — \(failures) failure\(failures == 1 ? "" : "s"), \(entries.count) call\(entries.count == 1 ? "" : "s")\(scopeSuffix), "
+                + "\(days.first ?? "?") → \(days.last ?? "?")\(sessionClause(entries))",
             "log: \(logPath)",
+            // What a call is, against what `audit` counts, so the two numbers are not read as one count that disagrees.
+            "counted: one call per answer sift logged, failures and Markdown outlines included; "
+                + "sift audit counts the transcripts' Swift lookups by any route instead, the ones sift served among them",
         ]
         if scan.malformed > 0 {
             lines.append("(\(scan.malformed) malformed line\(scan.malformed == 1 ? "" : "s") skipped)")
@@ -80,8 +84,15 @@ public struct UsageReport {
             lines.append(note)
         }
         lines.append(contentsOf: savingsSection(scan.savings))
-        if let savings = scan.savings, let gross = grossNote(entries, savings: savings) {
+        if let savings = scan.savings, let gross = grossNote(savings: savings) {
             lines.append(gross)
+        }
+        // Last of the saving block, under the subagent line (a share of the total) so that line never reads as a
+        // share of this one; and printed whether or not any code call measured, so a window of only Markdown
+        // outlines does not look as though nothing was measured. The note carries its own count.
+        if let markdown = scan.markdown {
+            lines.append(contentsOf: scan.savings == nil ? [""] : [])
+            lines.append("        \(markdown.note)")
         }
 
         lines.append("")
@@ -173,34 +184,35 @@ public struct UsageReport {
                     + "\(ByteSize.short(row.source).leftPadded(8)) → \(ByteSize.short(row.served).leftPadded(8))   \(row.outcome)"
             )
         }
-        if let unrecorded = savings.unrecorded {
-            lines.append("  \(String(unrecorded.calls).leftPadded(4))  \(unrecorded.note)")
-        }
         if let unpriced = savings.unpriced {
             lines.append("  \(String(unpriced.calls).leftPadded(4))  \(unpriced.note)")
         }
-        if let floor = savings.floorNote {
-            lines.append("        \(floor)")
-        }
-        // Under the floor note rather than among the rows: it is a share of the total above, not a fourth
-        // population beside the three, and a row would invite it to be added to them.
+        // Under the rows rather than among them: it is a share of the total above, not a population beside it,
+        // and a row would invite it to be added to them.
         if let subagents = savings.subagents {
             lines.append("  \(String(subagents.row.calls).leftPadded(4))  \(subagents.note)")
         }
         return lines
     }
 
-    /// Why the saving above is gross, with the in-place answers' part of it where the advice hook measured any, or `nil` where nothing was saved.
+    /// Why the saving above is gross, or `nil` where nothing was saved.
     ///
-    /// The log records what each answer and digest served and the source it stood in for, never what the context did next, so one whose file was then read whole anyway still counts here. Only the transcripts hold that, so this line says the figure is gross and points at `sift audit`, which counts those reads beside the same figure; no face subtracts them (Docs/Design.md).
-    private static func grossNote(_ entries: [UsageScan.Entry], savings: UsageScan.Savings) -> String? {
+    /// The log records what each answer served and what the read it stood in for asked for, and what the context did next only where the hook let a re-run or a whole read of the file through (a `readAnyway` line, which takes that answer back). A read the hook never judged is in the transcripts alone, so this line says the figure is gross and points at `sift audit`, which counts those reads beside the same figure (Docs/Design.md).
+    private static func grossNote(savings: UsageScan.Savings) -> String? {
         guard savings.savedText != nil else { return nil }
-        let gross = "a digest or answer whose file was then read whole anyway still counts, which this log cannot see; "
-            + "sift audit counts those reads"
-        let measured = entries.filter { $0.via == "hook" }.compactMap(\.answer).compactMap { answer in answer.source.map { $0 - answer.served } }
-        guard !measured.isEmpty else { return "        the figure above is gross: \(gross)" }
-        return "  \(String(measured.count).leftPadded(4))  answered in place by the advice hook: \(TokenEstimate.short(bytes: measured.reduce(0, +))) of that estimate — "
-            + "this and the figure above are gross: \(gross)"
+        return "        the figure above is gross: an answer whose file was then read whole anyway is taken back only by a re-run or whole read "
+            + "the hook let through; sift audit counts those reads"
+    }
+
+    /// The sessions the calls in scope came from, in `audit`'s words — `, from 1 session (+2 subagents)` — with the calls that named no session counted beside them, or nothing where no call named one.
+    ///
+    /// A subagent's call carries its parent's session, so the sessions are the parents and the subagents are the distinct callers a hook named, a floor for the reason ``callerSection(_:)`` gives.
+    private static func sessionClause(_ entries: [UsageScan.Entry]) -> String {
+        let named = entries.filter { $0.session != nil }
+        guard !named.isEmpty else { return "" }
+        let count = SessionCount(sessions: Set(named.compactMap(\.session)).count, subagents: Set(named.compactMap(\.agent)).count)
+        let unnamed = entries.count - named.count
+        return ", from \(count.spelled)" + (unnamed == 0 ? "" : " and \(unnamed) call\(unnamed == 1 ? "" : "s") naming no session")
     }
 
     /// Who made the calls in scope, or nothing at all where nothing names a caller.

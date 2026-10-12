@@ -109,19 +109,32 @@ struct TypeUsageWhereTests {
         }
     }
 
+    /// Asked where a type is, the store's answer counts its uses on the verdict line, names the query that lists them, and lists none.
+    @Test
+    func aPlainAnswerCountsTheUsesAndNamesTheQueryListingThem() async throws {
+        try await Self.usageFixture().withEngine { engine in
+            let output = try await engine.lookup(symbol: "Widget", freshness: engine.ensureFresh())
+
+            #expect(output.contains("used by Lib.Widget: 3 references in 2 files — 2 production · 1 test"), "\(output)")
+            #expect(output.contains(" — where --refs Widget lists them\n"), "\(output)")
+            #expect(!output.contains("Sources/Lib/Assembly.swift (2)"), "\(output)")
+            #expect(!output.contains(":6  | _ = Widget().spin()"), "\(output)")
+        }
+    }
+
     /// A type has no callers, so leaving its usage behind `--refs` left the default answer silent about the one thing a deletion turns on — and silence was read as "nothing uses this".
     @Test
     func aTypesUsageIsNamedWithoutAskingForRefs() async throws {
         try await Self.usageFixture().withEngine { engine in
             let freshness = try await engine.ensureFresh()
 
-            let output = try await engine.lookup(symbol: "Widget", freshness: freshness)
+            let output = try await engine.lookup(symbol: "Widget", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
             #expect(output.contains("used by Lib.Widget: 3 references in 2 files — 2 production · 1 test"))
             #expect(output.contains("Sources/Lib/Assembly.swift (2):\n    :1  | public func assemble() -> Widget {\n    :2  | Widget()"))
             #expect(output.contains("Tests/LibTests/WidgetTests.swift (1):\n    :6  | _ = Widget().spin()"))
-            // The deletion verdict is exactly where the two reference boundaries matter, so the default section carries them.
-            #expect(output.contains("references: code only (not comments or strings) and this repo's own build only"))
+            // The reference boundary holds of every such verdict, so the session hears it once and the answer does not repeat it.
+            #expect(!output.contains("references: code occurrences"))
         }
     }
 
@@ -153,7 +166,7 @@ struct TypeUsageWhereTests {
             // Widget.swift spells the name on the extension header, the return type and the construction inside it.
             #expect(!output.contains("  Sources/Lib/Widget.swift ("))
             // Dropped in the open, never in silence: a count that quietly excluded sites is the defect this section ends.
-            #expect(output.contains("3 more lines inside its own declaration or its extensions in this module, which is not use"))
+            #expect(output.contains("3 more lines inside its own declaration or its extensions in this module"))
         }
     }
 
@@ -166,7 +179,7 @@ struct TypeUsageWhereTests {
             let plain = try await engine.lookup(symbol: "Forgotten", freshness: freshness)
             let swept = try await engine.lookup(symbol: "Forgotten", freshness: freshness, options: WhereOptions(includeReferences: true))
 
-            #expect(plain.contains("no references to Lib.Forgotten recorded in the store — check comments and strings with grep"))
+            #expect(plain.contains("no references to Lib.Forgotten recorded in the store — where --refs lists comments, strings and Markdown under not code"))
             #expect(!plain.contains("used by Lib.Forgotten"))
             // One finding, said once: the sweep view must not repeat the emptiness the usage line already stated.
             #expect(swept.components(separatedBy: "no references to Lib.Forgotten recorded in the store").count == 2)
@@ -179,7 +192,7 @@ struct TypeUsageWhereTests {
         try await Self.usageFixture().withEngine { engine in
             let freshness = try await engine.ensureFresh()
 
-            let output = try await engine.lookup(symbol: "Host", freshness: freshness)
+            let output = try await engine.lookup(symbol: "Host", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
             // `Console.boot()` names `Host` on its return type and in its body, both in `Host`'s own file.
             #expect(output.contains("used by Lib.Host: 2 references in 1 file — 2 production · 0 tests"))
@@ -198,7 +211,7 @@ struct TypeUsageWhereTests {
             let swept = try await engine.lookup(symbol: "Lonely", freshness: freshness, options: WhereOptions(includeReferences: true))
 
             // `Lonely` is named on its extension's header, its return type and its construction, and nowhere else.
-            #expect(plain.contains("no uses of Lib.Lonely recorded in the store — every reference recorded falls inside its own declaration or its extensions in this module, which is the type spelling its own name; check comments and strings with grep"))
+            #expect(plain.contains("no uses of Lib.Lonely recorded in the store — every reference recorded falls inside its own declaration or its extensions in this module, which is the type spelling its own name; where --refs lists comments, strings and Markdown under not code"))
             #expect(!plain.contains("no references to Lib.Lonely"))
             // The sweep lists those very lines, so the verdict must own them rather than read as denying a list elsewhere.
             #expect(swept.contains("which is the type spelling its own name — the references listed above are those lines"))
@@ -218,7 +231,7 @@ struct TypeUsageWhereTests {
         try await Self.usageFixture().withEngine { engine in
             let freshness = try await engine.ensureFresh()
 
-            let output = try await engine.lookup(symbol: "Widget", freshness: freshness)
+            let output = try await engine.lookup(symbol: "Widget", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
             // A verdict promising more sites than the listing accounts for is a deletion made on a number nothing backs.
             let opening = "used by Lib.Widget: "
@@ -303,7 +316,7 @@ struct TypeUsageWhereTests {
         try await Self.aliasFixture().withEngine { engine in
             let freshness = try await engine.ensureFresh()
 
-            let output = try await engine.lookup(symbol: "Gizmo", freshness: freshness)
+            let output = try await engine.lookup(symbol: "Gizmo", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
             // The three test methods reach it through the two aliases; the alias declarations themselves are another name
             // for the type rather than use of it, so they are counted apart and never as production use.
@@ -323,7 +336,7 @@ struct TypeUsageWhereTests {
         try await Self.aliasFixture().withEngine { engine in
             let freshness = try await engine.ensureFresh()
 
-            let output = try await engine.lookup(symbol: "Gizmo", freshness: freshness)
+            let output = try await engine.lookup(symbol: "Gizmo", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
             // Line 14 is `let made: Box = Box()`, reachable only through the second alias.
             let lines = output.split(separator: "\n")

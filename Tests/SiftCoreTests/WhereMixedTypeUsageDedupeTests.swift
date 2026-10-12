@@ -89,16 +89,16 @@ struct WhereMixedTypeUsageDedupeTests {
         try Self.bumpMtime(of: "Sources/Beta/Item.swift", in: root)
         let freshness = try await engine.ensureFresh()
 
-        let options = WhereOptions(includeReferences: sweep, collapsesSeveralOwners: false)
+        let options = WhereOptions(includeReferences: sweep, collapsesSeveralOwners: false, standsInForSearch: !sweep)
         let output = try await engine.lookup(symbol: "Item", freshness: freshness, options: options)
 
         // The mixed state itself: one row answered by the store, the other refused into the name-matched stand-in.
         #expect(output.contains("semantic REFUSED for Beta.Item"), "\(output)")
         #expect(output.contains("used by Alpha.Item: 3 references in 1 file"), "\(output)")
         #expect(output.contains("Sources/Gamma/Use.swift (3):\n    :4  | public func pair(_ first: Alpha.Item, _ second: Beta.Item) {}\n    :6  | public func single(_ only: Alpha.Item) {}\n    :8  | public func make() -> Alpha.Item { Alpha.Item() }"), "\(output)")
-        let heading = try #require(output.range(of: NameMatchedSites.typeUseHeadingOpening), "\(output)")
-        let standIn = String(output[heading.upperBound...])
-        #expect(standIn.contains("\"Item\" used by 1 line in 1 file"), "\(standIn)")
+        let heading = try #require(output.range(of: "\"Item\" (1 use by written name in 1 file)"), "\(output)")
+        let standIn = String(output[heading.lowerBound...])
+        #expect(standIn.contains("\"Item\" (1 use by written name in 1 file)"), "\(standIn)")
         #expect(standIn.contains("2 more lines the index store resolved to another declaration of the name, listed above under it, so not use"), "\(standIn)")
         #expect(standIn.contains("(for Beta.Item):\n  Sources/Gamma/Use.swift (1):\n    :4  | public func pair(_ first: Alpha.Item, _ second: Beta.Item) {}"), "\(standIn)")
         #expect(!standIn.contains("6"), "\(standIn)")

@@ -53,7 +53,7 @@ struct CallSiteBaseNameOperatorTests {
 
         #expect(located.contains(":1  in widths(a:b:)"), "\(located)")
         #expect(
-            located.contains("\"..<\" (1 call site by name, any type's ..<, as an applied operator writes no receiver to tell Span's apart, in 1 file)"),
+            located.contains("\"..<\" (1 call site by written name, any type's ..<, as an applied operator writes no receiver to tell Span's apart, in 1 file)"),
             "\(located)"
         )
     }

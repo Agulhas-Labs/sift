@@ -28,7 +28,7 @@ struct SourcePassthroughTests {
     func aTypeCheaperToPrintThanToSummariseIsServedAsSource() throws {
         let output = try Self.render("Tiny", sources: [Self.tinyType])
 
-        #expect(output.contains("so the source itself follows"))
+        #expect(output.contains("follows)"))
         #expect(output.contains("struct Tiny {"))
         #expect(output.contains("let flag: Bool"))
         // The header stays, so the answer still says where the code lives.
@@ -48,7 +48,7 @@ struct SourcePassthroughTests {
     func aTypeWhoseDigestActuallyCompressesKeepsTheDigest() throws {
         let output = try Self.render("Substantial", sources: [Self.substantialType])
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("stored properties:"))
         #expect(output.contains("members:"))
         // The bodies are what the digest exists to leave out.
@@ -62,7 +62,7 @@ struct SourcePassthroughTests {
         let members = (0 ..< 260).map { "    let a\($0) = \($0)" }.joined(separator: "\n")
         let output = try Self.render("Sprawl", sources: [("Sources/Alpha/Sprawl.swift", "struct Sprawl {\n\(members)\n}")])
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("stored properties:"))
     }
 
@@ -70,14 +70,14 @@ struct SourcePassthroughTests {
     func pagingKeepsTheDigestBecauseACursorNeedsSomethingToPage() throws {
         let output = try Self.render("Tiny", sources: [Self.tinyType], options: DigestOptions(offset: 1))
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
     }
 
     @Test
     func signaturesOnlyKeepsTheDigestBecauseItAsksForLessNotMore() throws {
         let output = try Self.render("Tiny", sources: [Self.tinyType], options: DigestOptions(signaturesOnly: true))
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
     }
 
     @Test
@@ -94,7 +94,7 @@ struct SourcePassthroughTests {
 
         let output = try renderer.render(target: "Split", options: DigestOptions())
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("stored properties:"))
     }
 
@@ -102,7 +102,7 @@ struct SourcePassthroughTests {
     func aSmallFileIsServedAsSourceRatherThanSummarised() throws {
         let output = try Self.render("Sources/Alpha/Tiny.swift", sources: [Self.tinyType])
 
-        #expect(output.contains("so the source itself follows"))
+        #expect(output.contains("follows)"))
         #expect(output.contains("struct Tiny {"))
         #expect(output.contains("Sources/Alpha/Tiny.swift — module: Alpha"))
     }
@@ -136,8 +136,8 @@ struct SourcePassthroughTests {
         let rogueAnswer = try Self.render("Sources/Alpha/Rogue.swift", sources: [rogue, gizmo])
         let gizmoAnswer = try Self.render("Sources/Alpha/Gizmo.swift", sources: [rogue, gizmo])
         // Both served as source, and the look-alike line landed where it was meant to.
-        #expect(rogueAnswer.contains("so the source itself follows"))
-        #expect(gizmoAnswer.contains("so the source itself follows"))
+        #expect(rogueAnswer.contains("follows)"))
+        #expect(gizmoAnswer.contains("follows)"))
         #expect(rogueAnswer.contains("Sources/Alpha/Gizmo.swift — module: Alpha"))
         // The exact join every multi-answer path in `DigestRenderer` shares (`joinedAnswers`, private to that file): a blank
         // line, then the boundary mark `partMarker` on the next part's first character.
@@ -186,7 +186,7 @@ struct SourcePassthroughTests {
         let served = try Self.render("Tiny", sources: [Self.tinyType])
         let summarised = try Self.render("Substantial", sources: [Self.substantialType])
 
-        #expect(served.contains("so the source itself follows"))
+        #expect(served.contains("follows)"))
         #expect(SourcePassthrough.fileVerdict(in: served) == nil)
         #expect(SourcePassthrough.fileVerdict(in: summarised) == nil)
     }
@@ -198,7 +198,7 @@ struct SourcePassthroughTests {
     func aDigestOfTwoDeclarationsIsServedAsSourceHoweverWellItScores() throws {
         let output = try Self.render("Sources/Alpha/Degenerate.swift", sources: [Self.degenerateType])
 
-        #expect(output.contains("so the source itself follows"))
+        #expect(output.contains("follows)"))
         #expect(output.contains("let standardized = URL(fileURLWithPath: path).standardizedFileURL"))
         // The note says which comparison decided it: a reader checking the arithmetic against a ratio it
         // never used would find the tool's own number contradicting its explanation.
@@ -212,7 +212,7 @@ struct SourcePassthroughTests {
     func twoDeclarationsOverRealCodeKeepTheDigest() throws {
         let answer = try Self.measure("Worked", sources: [Self.workedType])
 
-        #expect(!answer.text.contains("so the source itself follows"))
+        #expect(!answer.text.contains("follows)"))
         #expect(answer.text.contains("members:"))
         // The bodies are what the digest exists to leave out, and here there are bodies to leave out.
         #expect(!answer.text.contains("merged[trimmed] = running + value"))
@@ -229,7 +229,7 @@ struct SourcePassthroughTests {
     func aDegenerateDeclarationPastTheCrossoverKeepsTheDigest() throws {
         let output = try Self.render("Sources/Alpha/DegenerateLong.swift", sources: [Self.degenerateLongType])
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(!output.contains("let standardized = URL(fileURLWithPath: path).standardizedFileURL"))
     }
 
@@ -240,7 +240,7 @@ struct SourcePassthroughTests {
     func aShortFileIsJudgedOnItsCodeRatherThanItsProse() throws {
         let output = try Self.render("Sources/Alpha/Documented.swift", sources: [Self.documentedType])
 
-        #expect(output.contains("so the source itself follows"))
+        #expect(output.contains("follows)"))
         #expect(output.contains("Documented(flag: flag || other.flag, count: count + other.count)"))
         #expect(output.contains("% of the code inside it"))
     }
@@ -265,7 +265,7 @@ struct SourcePassthroughTests {
         """
         let output = try Self.render("Choice", sources: [("Sources/Alpha/Choice.swift", source)])
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("cases (20):"))
     }
 
@@ -276,7 +276,7 @@ struct SourcePassthroughTests {
     func aLongDeclarationKeepsItsDigestHoweverMuchProseItCarries() throws {
         let output = try Self.render("Sources/Alpha/DocumentedLong.swift", sources: [Self.documentedLongType])
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("func evaluate0(input: String) -> Int"))
         #expect(!output.contains("let trimmed = input.trimmingCharacters"))
     }
@@ -296,8 +296,8 @@ struct SourcePassthroughTests {
         )
 
         #expect(atCeiling.contains("a digest of 2 declarations over 20 lines of code"))
-        #expect(atCeiling.contains("so the source itself follows"))
-        #expect(!overCeiling.contains("so the source itself follows"))
+        #expect(atCeiling.contains("follows)"))
+        #expect(!overCeiling.contains("follows)"))
         // The body is what the digest exists to leave out, and its absence is the verdict rather than a
         // section heading a one-member file digest never prints.
         #expect(!overCeiling.contains("total += input.count"))
@@ -317,7 +317,7 @@ struct SourcePassthroughTests {
 
         let output = try Self.render("Sources/Alpha/Ceiling.swift", sources: [(path, poisoned)])
 
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(!output.contains("total += input.count"))
     }
 
@@ -456,9 +456,9 @@ struct SourcePassthroughTests {
 
         // Judged against the primary declaration alone — three lines — this would serve source and answer
         // nothing. Counting the extension is what makes the digest the right call.
-        #expect(!output.contains("so the source itself follows"))
+        #expect(!output.contains("follows)"))
         #expect(output.contains("extension Spread"))
-        #expect(try Self.render("Spread", sources: [primary]).contains("so the source itself follows"))
+        #expect(try Self.render("Spread", sources: [primary]).contains("follows)"))
     }
 
     /// A digest that was kept still carries what it was weighed against.
@@ -481,7 +481,7 @@ struct SourcePassthroughTests {
         let answer = try Self.measure("Tiny", sources: [Self.tinyType])
         let bytes = try #require(answer.bytes)
 
-        #expect(answer.text.contains("so the source itself follows"))
+        #expect(answer.text.contains("follows)"))
         #expect(bytes.answer == answer.text.utf8.count)
         #expect(bytes.source > 0)
     }
@@ -495,7 +495,7 @@ struct SourcePassthroughTests {
         let answer = try Self.measure("Sprawl", sources: [("Sources/Alpha/Sprawl.swift", "struct Sprawl {\n\(members)\n}")])
         let bytes = try #require(answer.bytes)
 
-        #expect(!answer.text.contains("so the source itself follows"))
+        #expect(!answer.text.contains("follows)"))
         #expect(bytes.answer == answer.text.utf8.count)
     }
 

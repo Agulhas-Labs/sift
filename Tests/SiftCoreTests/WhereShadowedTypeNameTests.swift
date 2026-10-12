@@ -32,7 +32,7 @@ struct WhereShadowedTypeNameTests {
         return try await engine.lookup(symbol: symbol, freshness: freshness)
     }
 
-    /// A local variable spelled like the type shadows it: the base is the variable's value, not the type, so its member is never credited as `Holder.tick()`'s call site — only the genuine call remains.
+    /// A local variable spelled like the type shadows it: the base is the variable's value, not the type, so its member is never credited as `Holder.tick()`'s call site — only the genuine call is listed, and the read is shown among the lines writing the name with no call.
     @Test
     func aLocalVariableShadowingTheTypeNameIsNotCredited() async throws {
         let root = try TestSources.makeTempRepo()
@@ -52,10 +52,12 @@ struct WhereShadowedTypeNameTests {
         try TestSources.commitAll(in: root, message: "fixture")
 
         let output = try await Self.lookup("Holder.tick()", in: root)
+        let (listed, written) = SyntacticWhereUnappliedRefsTests.listedAndWrittenWithNoCall(output)
 
-        #expect(output.contains("\"tick\" (1 call site in 1 file"), "\(output)")
-        #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Shell.swift:9  in realCall()"), "\(output)")
-        #expect(!output.contains("Uses.swift"), "\(output)")
+        #expect(output.contains("\"tick\" (1 call site by written name in 1 file"), "\(output)")
+        #expect(listed.contains("Sources/App/Shell.swift:9  in realCall()"), "\(output)")
+        #expect(!listed.contains("Uses.swift"), "\(output)")
+        #expect(written.contains("Sources/App/Uses.swift:4  in Uses.run()"), "\(output)")
     }
 
     /// With nothing shadowing it, the base written `Holder.tick` is still credited as the type's own member handed on unapplied, beside the genuine call.
@@ -102,9 +104,10 @@ struct WhereShadowedTypeNameTests {
         try TestSources.commitAll(in: root, message: "fixture")
 
         let output = try await Self.lookup("Holder.tick()", in: root)
-        let sites = WhereAnswerRepetitionTests.sitesOnePerLine(output)
+        let (sites, written) = SyntacticWhereUnappliedRefsTests.listedAndWrittenWithNoCall(output)
 
         #expect(!sites.contains("Sources/App/Uses.swift:3  in Uses.run(_:)"), "\(output)")
+        #expect(written.contains("Sources/App/Uses.swift:3  in Uses.run(_:)"), "\(output)")
         #expect(sites.contains("Sources/App/Uses.swift:4  in Uses.run(_:)"), "\(output)")
     }
 
@@ -127,9 +130,11 @@ struct WhereShadowedTypeNameTests {
         try TestSources.commitAll(in: root, message: "fixture")
 
         let output = try await Self.lookup("Holder.tick()", in: root)
+        let (listed, written) = SyntacticWhereUnappliedRefsTests.listedAndWrittenWithNoCall(output)
 
-        #expect(output.contains("\"tick\" (1 call site in 1 file"), "\(output)")
-        #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Shell.swift:9  in realCall()"), "\(output)")
-        #expect(!output.contains("Uses.swift"), "\(output)")
+        #expect(output.contains("\"tick\" (1 call site by written name in 1 file"), "\(output)")
+        #expect(listed.contains("Sources/App/Shell.swift:9  in realCall()"), "\(output)")
+        #expect(!listed.contains("Uses.swift"), "\(output)")
+        #expect(written.contains("Sources/App/Uses.swift:3  in Uses.run(_:)"), "\(output)")
     }
 }

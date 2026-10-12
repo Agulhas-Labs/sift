@@ -334,7 +334,9 @@ struct InPlaceHookTests {
             var environment = ProcessInfo.processInfo.environment
             environment["CFFIXED_USER_HOME"] = home.path
             environment["SIFT_USAGE_LOG"] = nil
+            environment["SIFT_HOME"] = nil
             environment["SIFT_ADVICE_DIR"] = home.appendingPathComponent("advice").path
+            environment["CLAUDE_CONFIG_DIR"] = home.appendingPathComponent("claude").path
             environment["CLAUDE_CODE_SESSION_ID"] = nil
             process.environment = environment
             let input = Pipe()

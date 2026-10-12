@@ -53,9 +53,6 @@ struct AnswerThenReadTests {
 
         #expect(tally.answers == [.digest: 1])
         #expect(tally.misses == [.digest: 1])
-        #expect(tally.claimed > 0)
-        #expect(tally.withdrawn == tally.claimed)
-        #expect(tally.saved == 0)
     }
 
     /// A `cat` of the answered file, spelled relative to where it runs, is a whole read like any other.
@@ -66,7 +63,6 @@ struct AnswerThenReadTests {
         let tally = TranscriptFixture.tally(Self.answeredRead + [cat]).answerMisses
 
         #expect(tally.misses == [.digest: 1])
-        #expect(tally.saved == 0)
     }
 
     /// A whole read of another file inside the window leaves the answer's saving standing.
@@ -76,7 +72,6 @@ struct AnswerThenReadTests {
 
         #expect(tally.answers == [.digest: 1])
         #expect(tally.missCount == 0)
-        #expect(tally.saved == tally.claimed && tally.claimed > 0)
     }
 
     /// A whole read of the answered file on the sixth call after it is past the window, so the saving stands.
@@ -85,7 +80,6 @@ struct AnswerThenReadTests {
         let tally = TranscriptFixture.tally(Self.answeredRead + Self.unrelated(AnswerThenRead.window) + [Self.whole()]).answerMisses
 
         #expect(tally.missCount == 0)
-        #expect(tally.saved == tally.claimed && tally.claimed > 0)
     }
 
     /// A ranged read of the answered file is the loop working, never a miss.
@@ -96,7 +90,6 @@ struct AnswerThenReadTests {
         let tally = TranscriptFixture.tally(Self.answeredRead + [ranged]).answerMisses
 
         #expect(tally.missCount == 0)
-        #expect(tally.saved == tally.claimed && tally.claimed > 0)
     }
 
     /// An answer to a window is counted under its own shape, and a whole read after it is that shape's miss.
@@ -127,7 +120,6 @@ struct AnswerThenReadTests {
 
         #expect(tally.answers == [.window: 1])
         #expect(tally.misses == [.window: 1])
-        #expect(tally.saved == 0)
     }
 
     /// The identical re-run of an answered shell window is a miss, and a different window of the same file after it is not.
@@ -195,18 +187,9 @@ struct AnswerThenReadTests {
         #expect(tally.misses == [.digest: 1])
     }
 
-    /// The bytes a closing line weighs as spared are read back from its own figures.
+    /// `audit` prints the miss beside the answers by shape and no saving of its own: the one figure it prints is the usage log's.
     @Test
-    func theClaimedSavingIsReadOffTheClosingLine() {
-        let text = "sift answered this\n\nanswer\n\n6.9 kB of source → 1.9 kB served (72% smaller)."
-
-        #expect(AnswerThenRead.claimedSaving(inReason: text) == 5000)
-        #expect(AnswerThenRead.claimedSaving(inReason: "No saving: 2.0 kB served for 1.9 kB of source.") == 0)
-    }
-
-    /// `audit` prints the miss beside the answers by shape, and the saving that stands without it.
-    @Test
-    func theAuditPrintsTheMissRateBesideTheSaving() throws {
+    func theAuditPrintsTheMissRateAndNoSavingOfItsOwn() throws {
         let root = try TemporaryDirectory.make("answer-read").appendingPathComponent("audit")
         let directory = root.appendingPathComponent("-Users-someone-Developer-App")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -217,34 +200,28 @@ struct AnswerThenReadTests {
         let report = TranscriptAudit.render(projectsDirectory: root)
 
         #expect(report.contains("read anyway   1  of 1 answers to a read, the file then read whole or the call re-run within 5 calls — a miss, not a saving: digest 1 of 1 (100%)"))
-        #expect(report.contains("saving      ~0 tokens saved (est. vs whole-file reads), as those answers' closing lines priced it"))
+        #expect(!report.contains("closing lines stated it"))
     }
 
-    /// The scan withdraws an answer's claimed saving on its miss: an answer whose file was then read whole saved nothing, and one left alone keeps its saving.
+    /// The scan counts a miss for an answer whose file was then read whole, and none for one left alone.
     @Test(arguments: [true, false])
-    func aMissWithdrawsItsClaimedSaving(readAnyway: Bool) throws {
+    func aReadAnywayCountsAMiss(readAnyway: Bool) throws {
         let directory = try TemporaryDirectory.make("answer-read").appendingPathComponent("status")
         defer { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let transcript = directory.appendingPathComponent("session.jsonl")
         let lines = Self.answeredRead + (readAnyway ? [Self.whole()] : [])
         try Data(lines.flatMap { $0 + [0x0A] }).write(to: transcript)
-        let claimed = AnswerThenRead.claimedSaving(inReason: Self.answer())
-        let usageLog = directory.appendingPathComponent("usage.jsonl")
-        UsageLog(fileURL: usageLog).record(
-            tool: "digest", target: "Sources/App/Depot.swift", root: "/repo", milliseconds: 80, succeeded: true,
-            answer: AnswerBytes(served: 12000 - claimed, source: 12000), session: "session", via: "hook"
-        )
 
-        let withdrawn = TranscriptFixture.scored(transcript: transcript).answerMisses.withdrawn
+        let tally = TranscriptFixture.scored(transcript: transcript).answerMisses
 
-        #expect(claimed > 0)
-        #expect(withdrawn == (readAnyway ? claimed : 0))
+        #expect(tally.answerCount == 1)
+        #expect(tally.missCount == (readAnyway ? 1 : 0))
     }
 
-    /// One answer covering several files splits its claimed saving by each file's size, so a miss on the small file withdraws only the small file's part.
+    /// One answer covering several files counts an answer per file, so a miss on the small file is one miss.
     @Test
-    func aMissOnTheSmallerOfTwoAnsweredFilesWithdrawsItsShareBySize() throws {
+    func aMissOnTheSmallerOfTwoAnsweredFilesCountsOnce() throws {
         let directory = try TemporaryDirectory.make("answer-read").appendingPathComponent("split")
         defer { try? FileManager.default.removeItem(at: directory) }
         let sources = directory.appendingPathComponent("Sources/App")
@@ -268,6 +245,6 @@ struct AnswerThenReadTests {
 
         #expect(tally.answers == [.digest: 2])
         #expect(tally.misses == [.digest: 1])
-        #expect(tally.withdrawn == Int(Double(AnswerThenRead.claimedSaving(inReason: text)) * 1000 / 10000))
+        #expect(tally.missCount == 1)
     }
 }

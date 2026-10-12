@@ -383,8 +383,9 @@ struct MCPServerTests {
 
         #expect(liftedResult["isError"] as? Bool == false)
         #expect(liftedText.contains("Beta"))
-        // The echo shows the query as searched, with the term gone.
-        #expect(liftedText.contains("search name:beta\n"))
+        // The term is gone from the query searched, which is read as sent and so not echoed.
+        #expect(!liftedText.contains("root:\(other.path)"))
+        #expect(!liftedText.contains("search name:beta"))
 
         // An explicit root argument is deliberate, so it wins over the inline term.
         try session.send([

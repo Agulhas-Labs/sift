@@ -159,6 +159,7 @@ public struct SessionPrimer {
         - `digest <Type>` (or a file, or `.`): member line ranges, then a ranged Read; known `Type.member`s (several per call): their source; a cited line: `digest File.swift:120`
         - `where <Symbol>` instead of grepping: definition, callers, conformers, overrides
         - `search` for code by shape, `strings "<text>"` for UI text
+        - \(StandingCaveats.sentences)
         - `sift run -- swift test` (or a build) from Bash: the failures, the log in `.sift/runs/`
         """
     }

@@ -22,7 +22,7 @@ final class InTreeStoreSet: @unchecked Sendable {
         openers.count
     }
 
-    /// Whether the last walk hit its cap with directories still unvisited — a store beyond where it stopped may exist, and the `where` mode line says so rather than pointing at a build that already happened.
+    /// Whether the last walk hit its cap with directories still unvisited — a store beyond where it stopped may exist, and the `stores:` note says so rather than pointing at a build that already happened.
     var walkTruncated: Bool {
         walk?.truncated ?? false
     }
@@ -56,7 +56,7 @@ final class InTreeStoreSet: @unchecked Sendable {
             let opener = openers[key] ?? BudgetedOpen<SemanticStore>()
             openers[key] = opener
             let outcome = opener.open(key: BudgetedOpen<SemanticStore>.Key(path: key, anchor: anchor), budget: max(0, budget - Date().timeIntervalSince(started))) {
-                try SemanticStore(discovered: discovered, newestUnitDate: anchor, cache: cache)
+                try SemanticStore(discovered: discovered, repoRoot: repoRoot, newestUnitDate: anchor, cache: cache)
             }
             switch outcome {
             case let .opened(store):

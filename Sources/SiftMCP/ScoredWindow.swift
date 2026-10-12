@@ -27,6 +27,11 @@ public struct ScoredWindow: Sendable, Equatable, Codable {
     public let file: String?
     public let locator: LocatingCall?
 
+    /// Whether the window is a miss the tally counts in `cold`: plain cold, or one of the kinds it counts within it, a batched read or a lookup the hook stood aside from.
+    var isColdMiss: Bool {
+        classification == "cold" || classification == "batched" || classification.hasPrefix("stoodAside(")
+    }
+
     /// The key two builds' windows are joined on.
     var key: String {
         "\(session) \(call) \(part)"
@@ -67,6 +72,7 @@ public struct ScoredWindow: Sendable, Equatable, Codable {
         case let .withheldOnWorth(rule): "withheldOnWorth(\(rule.rawValue))"
         case .cold: "cold"
         case .batched: "batched"
+        case let .stoodAside(_, _, why): "stoodAside(\(why.rawValue))"
         }
     }
 }

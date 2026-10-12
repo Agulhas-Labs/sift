@@ -77,7 +77,7 @@ struct RunOutputTrimTests {
         #expect(answer == [
             "✔ swift test",
             "totals: ✔ passed · Swift Testing 29 tests in 4 suites",
-            "raw: .sift/runs/run-a.log (2 lines in, 3 out)",
+            "raw: .sift/runs/run-a.log (2 lines in, 3 out), kept for the next 4 runs",
         ])
     }
 

@@ -22,7 +22,7 @@ struct SyntacticWhereNoticeTests {
             options: WhereOptions(includeSemantic: false)
         )
 
-        #expect(output.contains("semantic disabled (--syntactic)"))
+        #expect(output.contains("--syntactic: callers, overrides or references not asked for"))
         #expect(!output.contains("NOT ANSWERED"))
     }
 
@@ -50,9 +50,9 @@ struct SyntacticWhereNoticeTests {
 
         let output = try await engine.lookup(symbol: "Base", freshness: freshness)
         let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let noticeIndex = try #require(lines.firstIndex { $0.hasPrefix("used by: NOT ANSWERED") || $0.hasPrefix("callers/overrides: NOT ANSWERED") })
+        let noticeIndex = try #require(lines.firstIndex { $0.hasPrefix("no store for uses") || $0.hasPrefix("no store for callers") })
 
-        #expect(lines[noticeIndex].hasPrefix("used by: NOT ANSWERED"))
+        #expect(lines[noticeIndex].hasPrefix("no store for uses; sites by written name, an empty list is not \"unused\""))
         // The notice is exactly one of the answer's lines: the blank banner slot, then the result, follow directly.
         #expect(lines[noticeIndex + 1].isEmpty)
         #expect(lines[noticeIndex + 2].hasPrefix("declarations ("))
@@ -68,12 +68,11 @@ struct SyntacticWhereNoticeTests {
 
         let output = try await engine.lookup(symbol: "helper()", freshness: freshness)
         let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let modeIndex = try #require(lines.firstIndex { $0.hasPrefix("mode:") })
-        let noticeIndex = try #require(lines.firstIndex { $0.hasPrefix("callers/overrides: NOT ANSWERED") })
+        let noticeIndex = try #require(lines.firstIndex { $0.hasPrefix("index store still loading") })
 
-        #expect(lines[modeIndex].contains("still warming"))
         #expect(!lines[noticeIndex].contains("no index store"))
-        #expect(noticeIndex == modeIndex + 1)
+        #expect(!output.contains("NOT ANSWERED"))
+        #expect(noticeIndex == 1, "the one note stands directly under the header")
     }
 
     /// A store that failed to open is a store that exists — the mode line says it was found and failed, so the stand-in notice below it must not claim there is none either.
@@ -92,11 +91,10 @@ struct SyntacticWhereNoticeTests {
 
         let output = try await engine.lookup(symbol: "helper()", freshness: freshness)
         let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let modeIndex = try #require(lines.firstIndex { $0.hasPrefix("mode:") })
-        let noticeIndex = try #require(lines.firstIndex { $0.hasPrefix("callers/overrides: NOT ANSWERED") })
+        let noticeIndex = try #require(lines.firstIndex { $0.hasPrefix("index store failed to open") })
 
-        #expect(lines[modeIndex].contains("failed to open"))
         #expect(!lines[noticeIndex].contains("no index store"))
-        #expect(noticeIndex == modeIndex + 1)
+        #expect(!output.contains("NOT ANSWERED"))
+        #expect(noticeIndex == 1, "the one note stands directly under the header")
     }
 }

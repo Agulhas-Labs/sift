@@ -27,7 +27,7 @@ struct RunGluedTestLine {
             from = found.upperBound
             if let opening = opening(at: found.lowerBound, in: line, started: started) {
                 // Asked only once a framework line is found behind other text, as nearly every line has none.
-                if RunDiagnostic.parse(line)?.isXCTestAssertion == true {
+                if let diagnostic = RunDiagnostic.parse(line), diagnostic.source == nil, diagnostic.isXCTestAssertion {
                     return nil
                 }
                 return (output: String(line[..<opening]), rest: String(line[opening...]))

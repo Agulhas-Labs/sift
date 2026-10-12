@@ -54,6 +54,6 @@ struct WhereFrameworkReceiverTests {
         let output = try await Self.answer()
         let line = try #require(output.split(separator: "\n").first { $0.hasPrefix("\"stock\" (") })
 
-        #expect(line.contains("2 uses by name, 1 on other types dropped, 1 kept, 1 on types outside the tree"))
+        #expect(line.contains("2 uses by written name, 1 on other types dropped, 1 kept, 1 on types outside the tree"))
     }
 }

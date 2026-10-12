@@ -68,7 +68,7 @@ public struct TestInventory: Sendable {
             }
         }
         // A generic case lends its methods to its subclasses and runs none of them itself.
-        let (inherited, descendants) = try inherited(by: cases, from: tests, skipping: genericSuites, reader: reader, files: files)
+        let (inherited, moduleDescendants) = try inherited(by: cases, from: tests, skipping: genericSuites, reader: reader, files: files)
         // An inherited method is compiled under its subclass only where both the method and the subclass are.
         let compiledUnderCase = inherited.map { test in
             var test = test
@@ -76,9 +76,23 @@ public struct TestInventory: Sendable {
             return test
         }
         tests = tests.filter { $0.style != .xcTest || !genericSuites.contains("\($0.target)/\($0.suite)") } + compiledUnderCase
+        // Everything above is keyed by module, which is how the index names a file's target; a plan, a scheme and the
+        // table name the target as its build file spells it, which is not the module where the name has a space or a
+        // hyphen in it.
+        let targetNames = ModuleResolver(repoRoot: repositoryRoot, config: SiftConfig()).targetNames
+        tests = tests.map { $0.named(targetNames[$0.target] ?? $0.target) }
+        let descendants = Dictionary(uniqueKeysWithValues: moduleDescendants.map { (renamed($0.key, targetNames), $0.value.map { renamed($0, targetNames) }) })
+        genericSuites = Set(genericSuites.map { renamed($0, targetNames) })
+        runtimeCaseNames = Dictionary(uniqueKeysWithValues: runtimeCaseNames.map { (renamed($0.key, targetNames), $0.value) })
         tests.sort { ($0.target, $0.suite, $0.function) < ($1.target, $1.suite, $1.function) }
         let guessed = Set(tests.filter(\.targetWasGuessed).map(\.target))
         return TestInventory(tests: tests, guessedTargets: guessed.sorted(), descendants: descendants, genericCases: genericSuites, runtimeCaseNames: runtimeCaseNames)
+    }
+
+    /// A `module/suite` key with its module replaced by the target's own name where `targetNames` has one.
+    private static func renamed(_ key: String, _ targetNames: [String: String]) -> String {
+        guard let slash = key.firstIndex(of: "/"), let target = targetNames[String(key[..<slash])] else { return key }
+        return target + key[slash...]
     }
 
     /// Every test that declares its own `@Test("…")` literal, grouped under the name a log prints it by, which is the only thing that can say whose an ending carrying one is.

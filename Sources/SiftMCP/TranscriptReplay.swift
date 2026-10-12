@@ -77,6 +77,7 @@ public struct TranscriptReplay {
         let enclosing = WorktreeOrigins.memoisedEnclosing()
         // The log the audit read, read the same way, so the audit's own share beside the replayed one is the audit's.
         let loggedLetThrough = suppressionLog.map { SuppressionLog.callsLetThrough(in: $0) } ?? [:]
+        let stoodAside = suppressionLog.map { SuppressionLog.callsStoodAside(in: $0) } ?? [:]
         let answeredCalls = suppressionLog.map { AnsweredLog.calls(in: AnsweredLog.fileURL(besideSuppressionLog: $0)) } ?? []
         var contexts: [ContextReplay] = []
         for (index, session) in sessions.enumerated() {
@@ -92,6 +93,7 @@ public struct TranscriptReplay {
                 memberExists: memberExists,
                 origins: origins,
                 loggedLetThrough: loggedLetThrough,
+                stoodAside: stoodAside,
                 answeredCalls: answeredCalls,
                 snapshot: snapshot
             )
@@ -367,7 +369,7 @@ public struct TranscriptReplay {
                 // The scan is left unseeded, so a window the log names is still scored against each hook's own
                 // verdict below; only the audit's own tally reads it as the audit does.
                 let retracting = resultIDs.first(where: { counted[$0]?.isEmpty == false })
-                let audited = Self.audited(event, call: lineCall?.id, retracting: retracting, logged: probes.loggedLetThrough)
+                let audited = Self.audited(event, call: lineCall?.id, retracting: retracting, logged: probes.loggedLetThrough, stoodAside: probes.stoodAside)
                 result.tally.fold(audited)
                 if let day {
                     result.byDay[day, default: TranscriptTally()].fold(audited)
@@ -481,13 +483,13 @@ extension TranscriptReplay {
 
     /// `event` as the audit scores it, where the hook's log records letting the call behind it run.
     ///
-    /// The audit reads such a call as not worth, under the rule the log names, or as a batched miss for a line run whole, rather than plain cold; the replay scores the same call against each hook's own verdict, so only the audit's own tally is read through the log.
-    static func audited(_ event: TranscriptEvent, call: String?, retracting: String?, logged: [String: InPlaceAnswerer.Withholding]) -> TranscriptEvent {
+    /// The audit reads such a call as not worth, under the rule the log names, or as a batched miss for a line run whole, rather than plain cold, and a call the hook stood aside from as a cold miss named for its cause; the replay scores the same call against each hook's own verdict, so only the audit's own tally is read through the log.
+    static func audited(_ event: TranscriptEvent, call: String?, retracting: String?, logged: [String: InPlaceAnswerer.Withholding], stoodAside: [String: StoodAside]) -> TranscriptEvent {
         switch event {
         case let .lookup(lookup):
-            call.flatMap { logged[$0] }.map { .lookup(lookup.scored(letThroughAs: $0)) } ?? event
+            call.map { .lookup(lookup.scored(byLog: $0, letThrough: logged, stoodAside: stoodAside)) } ?? event
         case let .lookupRetracted(lookup):
-            retracting.flatMap { logged[$0] }.map { .lookupRetracted(lookup.scored(letThroughAs: $0)) } ?? event
+            retracting.map { .lookupRetracted(lookup.scored(byLog: $0, letThrough: logged, stoodAside: stoodAside)) } ?? event
         default:
             event
         }

@@ -42,6 +42,55 @@ public struct SiftPaths {
         return namesAnInstalledBinaryUnquoted(command, subcommand: subcommand)
     }
 
+    /// Whether a registered shell `command` runs one of the subcommands this tool's hooks use: its program word is a path whose last component is ``binaryName``, or the package an `npx` or `bunx` runs, and the word after it is such a subcommand; a command ``runsThisTool(_:subcommand:)`` claims for one of them counts too, the unquoted path with a space in it an older install wrote among them.
+    ///
+    /// Wider than ``runsThisTool(_:subcommand:)`` on purpose, for a check that wants any trace: arguments after the subcommand and a wrapper such as `npx -y @scope/sift session-start` count. The program word is read after any environment assignments, `exec`, `env` and `command`, so a path that merely contains the name (`cd ~/sift && make`) and an argument that is the name (`foo --name sift`) do not.
+    public static func mentionsThisTool(_ command: String) -> Bool {
+        if HookRegistration.events.contains(where: { runsThisTool(command, subcommand: $0.subcommand) || hasTheUnquotedShape(command, subcommand: $0.subcommand) }) {
+            return true
+        }
+        var words: [String] = []
+        var rest = command
+        while let (word, remainder) = firstShellWord(of: rest.trimmingCharacters(in: .whitespaces)) {
+            words.append(word)
+            rest = remainder
+        }
+        let wrappers: Set = ["exec", "env", "command"]
+        guard let start = words.firstIndex(where: { !wrappers.contains($0) && !isEnvironmentAssignment($0) }) else { return false }
+        var subcommandIndex = start + 1
+        switch (words[start] as NSString).lastPathComponent {
+        case binaryName:
+            break
+        case "npx", "bunx":
+            while subcommandIndex < words.count, words[subcommandIndex].hasPrefix("-") {
+                subcommandIndex += 1
+            }
+            guard subcommandIndex < words.count else { return false }
+            let package = (words[subcommandIndex] as NSString).lastPathComponent
+            guard package == binaryName || package.hasPrefix(binaryName + "@") else { return false }
+            subcommandIndex += 1
+        default:
+            return false
+        }
+        guard subcommandIndex < words.count else { return false }
+        return HookRegistration.events.contains { $0.subcommand == words[subcommandIndex] }
+    }
+
+    private static func isEnvironmentAssignment(_ word: String) -> Bool {
+        guard let equals = word.firstIndex(of: "="), equals != word.startIndex else { return false }
+        let name = word[..<equals]
+        return !(name.first?.isNumber ?? true) && name.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+
+    /// Whether `command` has the unquoted shape an older `install-hook` wrote, whether or not its binary is still there.
+    ///
+    /// No quoting, an absolute path whose last component is ``binaryName``, then the subcommand: a hook whose binary was moved or deleted is the most broken trace of all, so a check for any trace must not need the file.
+    private static func hasTheUnquotedShape(_ command: String, subcommand: String) -> Bool {
+        guard command.hasSuffix(" " + subcommand), !command.contains(where: { "'\"\\".contains($0) }) else { return false }
+        let path = command.dropLast(subcommand.count + 1).trimmingCharacters(in: .whitespaces)
+        return path.hasPrefix("/") && (path as NSString).lastPathComponent == binaryName
+    }
+
     /// The shape an older `install-hook` wrote for a binary under a directory with a space in it.
     ///
     /// It had no quoting, so the first word is only part of the path. Claimed only when everything before the subcommand is an absolute path to an existing regular file named ``binaryName``, which `/opt/wrap /x/sift` is not.

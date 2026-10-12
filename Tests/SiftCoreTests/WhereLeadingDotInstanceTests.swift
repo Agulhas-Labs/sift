@@ -59,7 +59,7 @@ struct WhereLeadingDotInstanceTests {
         #expect(!output.contains("in Calls.alone()"))
         #expect(output.contains("in Calls.held(_:)"))
         let line = try Self.nameLine(output, "load")
-        #expect(line.contains("4 call sites by name, 1 on other types dropped, 3 kept"))
+        #expect(line.contains("4 call sites by written name, 1 on other types dropped, 3 kept"))
     }
 
     /// A leading-dot call something is applied after — `.load(depot)(3)`, `.load(4).tend()` — may end in the contextual type through the member, so it stays listed.

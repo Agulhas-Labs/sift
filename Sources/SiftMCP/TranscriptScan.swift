@@ -23,6 +23,8 @@ public struct TranscriptScan {
     ///
     /// `loggedLetThrough` is the rule the hook's suppression log records letting each of its `tool_use_id`s run under — `notSmaller`, `linesNotShown`, `notWorthTheTurn` or `otherStatementsRun`: a cold lookup made by one of them is scored not worth under the first three rather than cold, and a batched miss under the fourth, wherever the caller has read the log.
     ///
+    /// `stoodAside` is the cause the log records for each `tool_use_id` the hook let run while backing off, or after its answer ran out of time: a cold lookup made by one stays cold, scored as `stoodAside` once its result arrives, so the miss count never moves.
+    ///
     /// `answeredCalls` is the `tool_use_id`s the hook's answered log records answering in place (``AnsweredLog``). A result for one of them takes the path an error-delivered answer takes whatever its error flag says, because the log is the proof it was sift's answer: a transport that hands the answer over as an ordinary result is scored exactly as the hook error it replaced, and the result's text is never read to decide.
     public static func events(
         line: Data,
@@ -32,7 +34,7 @@ public struct TranscriptScan {
         belowFloor: (String) -> Bool = DigestFloor.wouldServeSource,
         couldAnswer: @escaping (String, String?) -> Bool = { AdvisableName.couldAnswer($0, from: $1) },
         memberExists: @escaping (String, String, String?) -> Bool = { AdvisableName.couldAnswer(member: $0, of: $1, from: $2) },
-        loggedLetThrough: [String: InPlaceAnswerer.Withholding] = [:], answeredCalls: Set<String> = []
+        loggedLetThrough: [String: InPlaceAnswerer.Withholding] = [:], stoodAside: [String: StoodAside] = [:], answeredCalls: Set<String> = []
     ) -> [TranscriptEvent] {
         // A byte-level pre-filter before any JSON parse: transcripts reach 60 MB and the overwhelming
         // majority of lines are prose that can never contribute to a count.
@@ -191,9 +193,10 @@ public struct TranscriptScan {
                 events += LetThroughFallback.settle(&pending, in: state)
                 // The hook logs its verdict while it judges the call, so a scan that read the call's line first — a
                 // scan run in between — scored it cold; the result is written after the verdict, and
-                // scores it again as what the log says it was.
-                if !failed, pending.counted, case .cold = pending.lookup, let why = loggedLetThrough[id], pending.lookup.scored(letThroughAs: why) != pending.lookup {
-                    events += [.lookupRetracted(pending.lookup), .lookup(pending.lookup.scored(letThroughAs: why))]
+                // scores it again as what the log says it was. A call the hook stood aside from stays a miss,
+                // so it is scored again here alone, when its result arrives, and named for the cause.
+                if !failed, pending.counted, case .cold = pending.lookup, case let scored = pending.lookup.scored(byLog: id, letThrough: loggedLetThrough, stoodAside: stoodAside), scored != pending.lookup {
+                    events += [.lookupRetracted(pending.lookup), .lookup(scored)]
                 }
                 if failed {
                     if pending.openedPath, pending.shellWindow {
@@ -251,9 +254,6 @@ public struct TranscriptScan {
                                 events.append(.partialAnswer(uncovered: uncovered))
                             }
                         }
-                        continue
-                    }
-                    if RefusalMemory.heldBack(reason, pending: pending, events: &events, in: &state) {
                         continue
                     }
                     // Recognised by the offer line rather than by the flag alone: a permission denial, a
@@ -549,7 +549,9 @@ public struct TranscriptScan {
             // themselves (indexed + cold + read whole after a digest), a far smaller population. Which is not why they are
             // counted anyway. They are counted because a denominator that quietly drops the awkward cases is
             // not a floor.
-            guard ShellInspection.isSwiftLookup(command, holdsSource: holdsSource) else { return taken }
+            // Read as the hook reads it, with a `tee` ending a lookup's pipeline taken out: the lines still reach
+            // the context, so the lookup is one the index lost like any other.
+            guard let lookupLine = ShellInspection.lookupLine(command, holdsSource: holdsSource) else { return taken }
             // A windowed read of one named file is the shell spelling of a ranged Read, and is scored the
             // same way: a re-read when the file is already open in this context, guided when an index call
             // located it, cold when nothing did — and it opens the file for the windows and ranged reads that
@@ -558,7 +560,7 @@ public struct TranscriptScan {
             // search, which names no file to have been guided to and so is never guided — and the escape
             // hatch needs no branch here: a window the hook answered in place leaves its file located by that
             // answer's digest, so the identical re-run is scored guided.
-            if let path = ShellInspection.windowedReadPath(command, holdsSource: holdsSource) {
+            if let path = ShellInspection.windowedReadPath(lookupLine, holdsSource: holdsSource) {
                 // A token still holding a shell expansion — `sed -n '1,30p' $f.swift` inside a loop — reads
                 // real files, but the text carries only the variable, so naming `$f.swift` in the report
                 // invents a file no tree contains. The lookup still counts; it cannot be named, and it
@@ -571,7 +573,7 @@ public struct TranscriptScan {
                         counted: consultFilesystem,
                         turn: turn,
                         directory: workingDirectory,
-                        shape: refusedCallShape(bash: command, cwd: directory),
+                        shape: refusedCallShape(bash: lookupLine, cwd: directory),
                         loggedLetThrough: probes.loggedLetThrough,
                         in: &state
                     )]
@@ -583,8 +585,8 @@ public struct TranscriptScan {
                 // as the hook places it (`ShellAdvice.lookupDirectories`); behind a move that cannot be followed
                 // it is scored as it always was: judged no re-read and opening nothing, since guessing the file
                 // would excuse a lookup on the strength of a different file being open.
-                let file = !path.hasPrefix("/") && changesDirectory(command)
-                    ? ShellAdvice.lookupDirectories(of: command, holdsSource: holdsSource, cwd: workingDirectory, requiringDirectories: false)?.first
+                let file = !path.hasPrefix("/") && changesDirectory(lookupLine)
+                    ? ShellAdvice.lookupDirectories(of: lookupLine, holdsSource: holdsSource, cwd: workingDirectory, requiringDirectories: false)?.first
                     .flatMap { InPlaceShape.resolve(path, against: $0) }
                     : absolute(path, in: workingDirectory)
                 let alreadyOpen = file.map { state.opened.contains($0) || state.windowed.contains($0) } ?? false
@@ -599,7 +601,7 @@ public struct TranscriptScan {
                           isBelowFloor(spelledOut, state: &state, belowFloor: belowFloor, consultFilesystem: consultFilesystem)
                 {
                     .belowFloor(file: path)
-                } else if state.guides(file ?? path, in: file.map { locatingRoot(ofFile: $0, in: directory) } ?? locatingRoot(directory), wide: consultFilesystem && spelledOut.map { ListedWindow.isWide(readBy: command, ofFileAt: $0, holdsSource: holdsSource) } == true) {
+                } else if state.guides(file ?? path, in: file.map { locatingRoot(ofFile: $0, in: directory) } ?? locatingRoot(directory), wide: consultFilesystem && spelledOut.map { ListedWindow.isWide(readBy: lookupLine, ofFileAt: $0, holdsSource: holdsSource) } == true) {
                     .guided(file: path)
                 } else {
                     .cold(file: path, missed: nil)
@@ -617,7 +619,7 @@ public struct TranscriptScan {
                     counted: consultFilesystem,
                     turn: turn,
                     directory: workingDirectory,
-                    shape: refusedCallShape(bash: command, cwd: directory),
+                    shape: refusedCallShape(bash: lookupLine, cwd: directory),
                     loggedLetThrough: probes.loggedLetThrough,
                     in: &state
                 )]
@@ -633,11 +635,11 @@ public struct TranscriptScan {
             // scored a second time where one of those earlier calls decides which lookup it is about, as it
             // reads if the hook let that call through, and the earlier call's result says which was right.
             let ahead = LetThroughFallback.answeredAhead(of: turn, in: state)
-            let keys = ShellAdvice.lookupKeys(for: command, holdsSource: holdsSource)
+            let keys = ShellAdvice.lookupKeys(for: lookupLine, holdsSource: holdsSource)
             // A whole read of a digested file is that miss whichever tool made it (`ShellReadAfterDigest`).
             let readAgain = ShellReadAfterDigest.file(readBy: block, cwd: workingDirectory, directory: directory, state: &state, belowFloor: belowFloor, consultFilesystem: consultFilesystem)
             let scored = { (denied: Set<String>) in
-                ShellReadAfterDigest.rescoring(shellReading(of: command, denied: denied, holdsSource: holdsSource, in: workingDirectory, probes: probes, consultFilesystem: consultFilesystem), readingWhole: readAgain)
+                ShellReadAfterDigest.rescoring(shellReading(of: lookupLine, denied: denied, holdsSource: holdsSource, in: workingDirectory, probes: probes, consultFilesystem: consultFilesystem), readingWhole: readAgain)
             }
             let judged = scored(state.hookDenied.union(ahead.values))
             let (lookup, key, readings) = (judged.lookup, judged.key, judged.readings)
@@ -654,7 +656,7 @@ public struct TranscriptScan {
                 fallback: fallback,
                 turn: turn,
                 directory: workingDirectory,
-                shape: refusedCallShape(bash: command, cwd: directory),
+                shape: refusedCallShape(bash: lookupLine, cwd: directory),
                 loggedLetThrough: probes.loggedLetThrough,
                 in: &state
             )] + (sweep.map { [$0] } ?? [])

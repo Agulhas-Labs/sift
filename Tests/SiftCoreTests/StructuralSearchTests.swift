@@ -343,16 +343,16 @@ struct StructuralSearchTests {
         #expect(rendered.contains("no declarations match — scanned 431 file(s)"))
     }
 
-    /// The name-vs-symbol caveat appears exactly when a term depends on it, so it stays informative rather than becoming boilerplate.
+    /// Neither half of the old caveat is on the answer: the scan's freshness and the written-name matching hold of every `search`, and are said once per session (Docs/Design.md §2, *standing caveats*).
     @Test
-    func theNameMatchingCaveatAppearsOnlyForNameMatchedTerms() throws {
+    func theStandingCaveatsAreNotOnTheAnswer() throws {
         let match = StructuralMatch(path: "a.swift", line: 1, endLine: 2, kind: "func", qualifiedName: "S.f()", signature: "func f()")
         let withCalls = try SearchRenderer.render(result: StructuralSearch.Result(matches: [match], filesScanned: 1), query: StructuralQuery("calls:save"))
         let withoutCalls = try SearchRenderer.render(result: StructuralSearch.Result(matches: [match], filesScanned: 1), query: StructuralQuery("kind:func"))
 
-        #expect(withCalls.contains("match written names, not resolved symbols"))
-        #expect(!withoutCalls.contains("match written names"))
-        #expect(withoutCalls.contains("never stale"))
+        #expect(!withCalls.contains("match written names"))
+        #expect(!withoutCalls.contains("never stale"))
+        #expect(!withCalls.contains("never stale"))
     }
 
     /// `--count`'s whole point: the summary line survives, the per-match listing does not.
@@ -448,13 +448,38 @@ struct StructuralSearchTests {
         #expect(healed.readingNote == "read calls:save(to:) as calls:save — labels are not indexed, so this matches every call named save, whatever its labels.")
     }
 
-    /// A qualified callee (`Foo.bar()`) is never indexed — only base names are — so the refusal says that and suggests the base name instead of the vaguer "does not spell one".
-    @Test
-    func aQualifiedCalleeRefusesNamingTheBaseNameToTry() {
-        let message = describeFailure("calls:Foo.bar()")
+    /// A qualified callee (`Foo.bar`) is never indexed — only base names are — so it is read as the base name and the note says the qualifier was dropped, rather than answering a confident zero for a name no declaration holds.
+    @Test(arguments: ["Foo.bar", ".bar", "Foo.bar()", "Foo.bar(x:)", "A.Foo.bar(_:)"])
+    func aQualifiedCalleeIsReadAsItsBaseNameWithANote(spelling: String) throws {
+        for field in ["calls", "uses"] {
+            let healed = try StructuralQuery("\(field):\(spelling)")
 
-        #expect(message.contains("a qualified callee isn't indexed"))
-        #expect(message.contains("try calls:bar"))
+            #expect(healed.source == "\(field):bar")
+            #expect(healed.readingNote == "read \(field):\(spelling) as \(field):bar — callees are indexed by base name, so a qualifier is dropped and this matches every \(field == "calls" ? "call" : "use") named bar, whatever its type or labels.")
+        }
+    }
+
+    /// A qualified alternative among plain ones is read alone; a negated one keeps its `!`; an operator is not a qualified name.
+    @Test
+    func aQualifiedCalleeKeepsItsNeighboursAndNegation() throws {
+        #expect(try StructuralQuery("calls:Foo.bar|baz").source == "calls:bar|baz")
+        #expect(try StructuralQuery("!calls:Foo.bar").source == "!calls:bar")
+        #expect(try StructuralQuery("calls:...").source == "calls:...")
+    }
+
+    /// The qualified spelling finds the same declarations the base name does.
+    @Test
+    func aQualifiedCalleeMatchesTheBaseNameCalls() throws {
+        let source = "func run() { Parser.parse(source: text) }\nfunc idle() {}\n"
+        let found = try Self.matches("calls:Parser.parse", in: source)
+
+        #expect(found.map(\.qualifiedName) == ["run()"])
+    }
+
+    /// An unbalanced parenthesis after a qualified callee is still refused.
+    @Test
+    func aQualifiedCalleeWithUnbalancedParenthesesRefuses() {
+        #expect(describeFailure("calls:Foo.bar(x:").contains("does not spell one"))
     }
 
     /// `name:` values are healed by the same base-name reading `calls:`/`uses:` gets — `name:save()` is read as `name:save` rather than answering a confident zero.

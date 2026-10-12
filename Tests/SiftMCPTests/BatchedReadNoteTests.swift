@@ -12,7 +12,7 @@ import Testing
 @Suite(.temporaryDirectories)
 struct BatchedReadNoteTests {
     /// The hook's decision on `command` run from `root`, answered by the real answerer, with the withholdings its suppression log recorded against the call.
-    static func decide(_ command: String, in root: URL) async throws -> BatchedLineDecision {
+    static func decide(_ command: String, in root: URL, timeBudget: TimeInterval = InPlaceAnswer.timeBudget) async throws -> BatchedLineDecision {
         let backoff = try InPlaceAnswerTests.backoff()
         let advice = try TemporaryDirectory.make("advice")
         let usage = try TemporaryDirectory.make("usage").appendingPathComponent("usage.jsonl")
@@ -37,6 +37,7 @@ struct BatchedReadNoteTests {
                 ledger: AdviceLedger(directory: advice),
                 usage: UsageLog(fileURL: usage),
                 suppressions: SuppressionLog(fileURL: log),
+                timeBudget: timeBudget,
                 answerer: { match, gone, _ in InPlaceAnswerer.answer(match, serverGone: gone, timeBudget: InPlaceAnswerTests.roomy, backoff: backoff) },
                 serverPresence: { _, _ in false }
             )

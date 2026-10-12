@@ -60,7 +60,7 @@ struct WhereExtensionGenericArgumentTests {
 
         #expect(!output.contains("no exact match"), "\(output)")
         #expect(output.contains("declarations (1):\n  Lib.\(written) — extension — extension \(written) — Sources/Lib/Ext.swift\(line)-"), "\(output)")
-        #expect(output.contains("\"\(query)\" used by 1 line in 1 file"), "\(output)")
+        #expect(output.contains("\"\(query)\" (1 use by written name in 1 file)"), "\(output)")
         #expect(output.contains("\(line)  | extension \(written) {"), "\(output)")
     }
 

@@ -26,7 +26,8 @@ struct ReportPageTests {
         error: String? = nil,
         timestamp: String = "2026-08-14T10:00:00Z",
         bytes: (out: Int, source: Int)? = nil,
-        agent: String? = nil
+        agent: String? = nil,
+        intercepted: String? = nil
     ) -> String {
         var object: [String: Any] = ["tool": tool, "root": root, "ms": 10, "ok": succeeded, "ts": timestamp]
         if let target {
@@ -41,6 +42,11 @@ struct ReportPageTests {
         if let bytes {
             object["outBytes"] = bytes.out
             object["srcBytes"] = bytes.source
+        }
+        // An intercepted read is the hook's: the only line the log prices.
+        if let intercepted {
+            object["via"] = "hook"
+            object["intercepted"] = intercepted
         }
         let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return String(data: data ?? Data(), encoding: .utf8) ?? ""
@@ -170,23 +176,23 @@ struct ReportPageTests {
     func savingsMatchTheUsageSummaryForTheSameLog() throws {
         let directory = try TemporaryDirectory.make("report")
         let log = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Widget", bytes: (out: 900, source: 9000)),
-            Self.entry(tool: "digest", target: "Engine", bytes: (out: 100, source: 1000)),
+            Self.entry(tool: "digest", target: "Widget", bytes: (out: 900, source: 9000), intercepted: "window"),
+            Self.entry(tool: "digest", target: "Engine", bytes: (out: 100, source: 1000), intercepted: "window"),
         ], in: directory)
 
         let data = Self.assemble(log: log, projects: directory)
 
         #expect(data.savings?.percent == 10)
         #expect(UsageReport.render(fileURL: log).contains(data.savings?.sentence ?? "no sentence"))
-        #expect(ReportPage.render(data).contains("measured over 2 of 2 calls"))
+        #expect(ReportPage.render(data).contains("on 2 intercepted reads (file or window asked for − answer served)"))
     }
 
-    /// Unmeasured calls stay in the denominator and out of the ratio: a partial aggregate is never printed as a total.
+    /// Unpriced calls stay out of the ratio and are counted beside it: a partial aggregate is never printed as a total.
     @Test
-    func aMixedLogStatesHowManyCallsItMeasured() throws {
+    func aMixedLogStatesHowManyCallsItPriced() throws {
         let directory = try TemporaryDirectory.make("report")
         let log = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Widget", bytes: (out: 500, source: 1000)),
+            Self.entry(tool: "digest", target: "Widget", bytes: (out: 500, source: 1000), intercepted: "window"),
             Self.entry(tool: "where", target: "Widget"),
             Self.entry(tool: "search", target: "kind:func"),
         ], in: directory)
@@ -196,19 +202,19 @@ struct ReportPageTests {
         #expect(data.savings?.percent == 50)
         #expect(data.savings?.measured == 1)
         #expect(data.savings?.calls == 3)
-        #expect(ReportPage.render(data).contains("measured over 1 of 3 calls"))
+        #expect(ReportPage.render(data).contains("on 1 intercepted read (file or window asked for − answer served); 2 other calls unpriced"))
     }
 
-    /// A log where nothing measured itself says so rather than rendering a zero, which would read as "saved nothing".
+    /// A log where nothing was priced says so rather than rendering a zero, which would read as "saved nothing".
     @Test
-    func anUnmeasuredLogSaysSoRatherThanShowingZero() throws {
+    func anUnpricedLogSaysSoRatherThanShowingZero() throws {
         let directory = try TemporaryDirectory.make("report")
         let log = try Self.writeLog([Self.entry(tool: "where", target: "Widget")], in: directory)
 
         let data = Self.assemble(log: log, projects: directory)
 
         #expect(data.savings == nil)
-        #expect(ReportPage.render(data).contains("No call in this window measured itself"))
+        #expect(ReportPage.render(data).contains("No saving is priced in this window"))
     }
 
     // MARK: Wrapped runs
@@ -219,7 +225,7 @@ struct ReportPageTests {
     @Test
     func wrappedRunsGetTheirOwnLineWithoutMovingTheSavingsFigure() throws {
         let directory = try TemporaryDirectory.make("report")
-        let log = try Self.writeLog([Self.entry(tool: "digest", target: "Widget", bytes: (out: 900, source: 9000))], in: directory)
+        let log = try Self.writeLog([Self.entry(tool: "digest", target: "Widget", bytes: (out: 900, source: 9000), intercepted: "window")], in: directory)
         let runLog = try Self.writeRunLog([
             Self.runEntry(kind: "swift test", shown: 10, total: 500),
             Self.runEntry(kind: "xcodebuild", exit: 65, shown: 20, total: 1500),

@@ -36,7 +36,7 @@ struct WhereSiteTextTests {
     /// The answer `where` gives for `symbol` in `directory`, with no index store.
     private static func answer(_ symbol: String, in directory: URL) async throws -> String {
         let engine = try SiftEngine(directory: directory)
-        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh())
+        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
     }
 
     /// A call site's row ends with its line trimmed, whitespace runs collapsed, and two calls on one line fold onto one row with their count.

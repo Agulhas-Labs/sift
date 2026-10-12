@@ -19,11 +19,11 @@ struct ReportAttributionTests {
         let manyDirectory = try TemporaryDirectory.make("report")
         let oneDirectory = try TemporaryDirectory.make("report")
         let two = try ReportPageTests.writeLog([
-            ReportPageTests.entry(tool: "digest", target: "Widget", bytes: (out: 100, source: 1000), agent: "aaa"),
-            ReportPageTests.entry(tool: "digest", target: "Engine", bytes: (out: 100, source: 1000), agent: "bbb"),
+            ReportPageTests.entry(tool: "digest", target: "Widget", bytes: (out: 100, source: 1000), agent: "aaa", intercepted: "window"),
+            ReportPageTests.entry(tool: "digest", target: "Engine", bytes: (out: 100, source: 1000), agent: "bbb", intercepted: "window"),
         ], in: manyDirectory)
         let one = try ReportPageTests.writeLog([
-            ReportPageTests.entry(tool: "digest", target: "Widget", bytes: (out: 100, source: 1000), agent: "aaa"),
+            ReportPageTests.entry(tool: "digest", target: "Widget", bytes: (out: 100, source: 1000), agent: "aaa", intercepted: "window"),
         ], in: oneDirectory)
 
         let plural = ReportPage.render(ReportPageTests.assemble(log: two, projects: manyDirectory))

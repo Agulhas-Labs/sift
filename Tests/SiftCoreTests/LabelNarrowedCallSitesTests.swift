@@ -47,7 +47,7 @@ struct LabelNarrowedCallSitesTests {
             """
         )
 
-        #expect(output.contains("\"run\" (4 call sites by name, 2 with the labels (in:limit:), in 1 file"))
+        #expect(output.contains("\"run\" (4 call sites by written name, 2 with the labels (in:limit:), in 1 file"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Calls.swift:4  in Calls.one()"))
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Calls.swift:5  in Calls.two()"))
         #expect(!output.contains("in Calls.three()"))
@@ -80,7 +80,7 @@ struct LabelNarrowedCallSitesTests {
             """
         )
 
-        #expect(output.contains("\"run\" (5 call sites by name, 4 with the labels (in:limit:then:), in 1 file"))
+        #expect(output.contains("\"run\" (5 call sites by written name, 4 with the labels (in:limit:then:), in 1 file"))
         for caller in ["one", "two", "three", "four"] {
             #expect(output.contains("in Calls.\(caller)()"))
         }
@@ -110,7 +110,7 @@ struct LabelNarrowedCallSitesTests {
             """
         )
 
-        #expect(output.contains("\"run\" (3 call sites by name, 2 with the labels (in:) or (from:), in 1 file — for "))
+        #expect(output.contains("\"run\" (3 call sites by written name, 2 with the labels (in:) or (from:), in 1 file; labels narrowed — for "))
         #expect(!output.contains("in Calls.three()"))
     }
 
@@ -175,7 +175,7 @@ struct LabelNarrowedCallSitesTests {
         )
 
         #expect(overloads.count > WhereRenderer.semanticDeclCap)
-        #expect(output.contains("\"stack\" (8 call sites by name, 7 with the labels "))
+        #expect(output.contains("\"stack\" (8 call sites by written name, 7 with the labels "))
         for index in overloads {
             #expect(output.contains("in Calls.call\(index)()"))
         }
@@ -204,7 +204,7 @@ struct LabelNarrowedCallSitesTests {
             """
         )
 
-        #expect(output.contains("\"run\" (6 call sites by name, 4 with the labels (in:), in 2 files"))
+        #expect(output.contains("\"run\" (6 call sites by written name, 4 with the labels (in:), in 2 files"))
         #expect(output.contains("in Calls.one("))
         #expect(output.contains("in Calls.two()"))
         #expect(output.contains("in Depot.curried("))
@@ -273,7 +273,7 @@ struct LabelNarrowedCallSitesTests {
             """
         )
 
-        #expect(output.contains("\"run\" (2 call sites by name, 1 with the labels (in:), in 1 file"))
+        #expect(output.contains("\"run\" (2 call sites by written name, 1 with the labels (in:), in 1 file"))
         #expect(output.contains("in Depot<Int>.partial("))
     }
 

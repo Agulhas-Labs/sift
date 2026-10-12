@@ -198,19 +198,28 @@ public extension RunCommandKind {
 
     /// Where a run of `arguments` from `directory` reads its project: `directory` itself, or the one a `swift` `--package-path`, `-C` or `--chdir`, or an `xcodebuild` `-project` or `-workspace`, names instead (the directory holding it) — `nil` where that is spelled through a variable.
     ///
-    /// **One reading for the run and for the stop gate.** `sift run` files a green build under the checkout this names, and the gate's transcript reader clears edits in the checkout this names, so the two never disagree about which repository a run built. `directory` is absolute; a relative flag is read against it.
+    /// **One reading for the run and for the stop gate.** `sift run` files a green build under the checkout this names, and the gate's transcript reader clears edits in the checkout this names, so the two never disagree about which repository a run built. `directory` is absolute; a relative flag is read against it. Of several `swift` flags, `--package-path` wins over `-C` and `--chdir` in any order, as SwiftPM reads them, and otherwise the last one does.
     static func builtDirectory(of arguments: [String], from directory: String) -> String? {
         let xcodebuild = recognize(arguments) == .xcodebuild
         let flags: Set<String> = xcodebuild ? ["-project", "-workspace"] : ["--package-path", "-C", "--chdir"]
         var named: String?
+        var packagePath: String?
         for (offset, argument) in arguments.enumerated() {
+            var flag: String?
+            var value: String?
             if flags.contains(argument), offset + 1 < arguments.count {
-                named = arguments[offset + 1]
+                (flag, value) = (argument, arguments[offset + 1])
             } else if let equals = argument.firstIndex(of: "="), flags.contains(String(argument[..<equals])) {
-                named = String(argument[argument.index(after: equals)...])
+                (flag, value) = (String(argument[..<equals]), String(argument[argument.index(after: equals)...]))
+            }
+            guard let value else { continue }
+            named = value
+            if flag == "--package-path" {
+                packagePath = value
             }
         }
-        guard let named else { return directory }
+        // SwiftPM gives `--package-path` precedence over `-C` and `--chdir`, whichever is written last.
+        guard let named = packagePath ?? named else { return directory }
         guard !named.contains("$") else { return nil }
         let base = URL(fileURLWithPath: directory, isDirectory: true)
         let resolved = URL(fileURLWithPath: (named as NSString).expandingTildeInPath, relativeTo: base).standardizedFileURL.path

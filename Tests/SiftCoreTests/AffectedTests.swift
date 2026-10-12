@@ -123,11 +123,11 @@ struct AffectedTests {
         #expect(output.contains("LibTests.IndirectTests/reachesWidgetThroughTheHelper() — 2 hops"))
         #expect(output.contains("-only-testing:LibTests/DirectTests/usesWidgetDirectly()"))
         #expect(output.contains("-only-testing:LibTests/IndirectTests/reachesWidgetThroughTheHelper()"))
-        #expect(output.contains(#"swift test --filter 'LibTests\.DirectTests/usesWidgetDirectly\(\)'"#))
+        #expect(output.contains(#"swift test --filter '^LibTests\.DirectTests/usesWidgetDirectly\(\)'"#))
         // The limits ride the strongest answer this command can produce, which is where over-trust starts.
         #expect(output.contains(AffectedBlindSpots.heading))
         #expect(output.contains("it reports, it does not run, and it never decides what to leave out"))
-        #expect(!output.contains("xcodebuild test"))
+        #expect(!output.contains("xcodebuild test -scheme"))
 
         // A bounded walk is bounded, and the bound is visible in the answer rather than only in the depth this run happened to use.
         #expect(shallow.contains("depth: 1 reference hop from the changed declarations"))
@@ -143,13 +143,11 @@ struct AffectedTests {
     func everyAnswerStatesItsOwnIncompletenessBeforeItListsAnything() async throws {
         let output = try await Self.affected(Self.makeRepo())
 
-        #expect(output.contains("what this cannot see — read before trusting the list below:"))
-        #expect(output.contains("#selector"))
-        #expect(output.contains("macro-generated code is invisible to the parser"))
-        #expect(output.contains("resources, fixtures and golden files loaded by name"))
-        #expect(output.contains("comments and string literals are not indexed"))
+        #expect(output.contains("what this cannot see — read before trusting the list below: answered by a name match."))
         #expect(output.contains("this is a lower bound, not a safe-to-skip set"))
-        #expect(output.contains("A green run of only these tests is not a green suite."))
+        #expect(output.contains("`sift help affected-limits`"))
+        // The standing list is in the help topic, not repeated in every answer.
+        #expect(!output.contains("macro-generated code is invisible to the parser"))
 
         let limits = try #require(output.range(of: "what this cannot see"))
         let list = try #require(output.range(of: "affected tests ("))
@@ -169,7 +167,7 @@ struct AffectedTests {
 
         #expect(output.contains("semantic REFUSED"))
         #expect(output.contains("was changed since the last build; rebuild with `sift run -- swift build`, then retry"))
-        #expect(output.contains("semantic: stale (1 file changed since last build)"))
+        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Lib/Core.swift)"))
         #expect(!output.contains("semantic: fresh"))
         // What it offers instead is spelled as a different kind of claim, never as a weaker version of the same one.
         #expect(output.contains("**A name is not a symbol**"))
@@ -183,7 +181,7 @@ struct AffectedTests {
 
         #expect(output.contains("resolved references: UNAVAILABLE"))
         #expect(output.contains("NAME MATCH ONLY"))
-        #expect(output.contains("semantic: none (no index store — see note)"))
+        #expect(output.contains("semantic: none (no index store for this tree yet)"))
         #expect(output.contains("no index store for this tree yet — build one:"))
         // The where-worded tail ("declarations still answer... callers, overrides... do not") is off-topic
         // for affected, which answers with tests, not declarations — "resolved references: UNAVAILABLE"
@@ -206,10 +204,9 @@ struct AffectedTests {
             changing: ["Sources/Legacy/Old.swift"]
         ))
 
-        let bullets = output.split(separator: "\n").count { $0.hasPrefix("  · ") }
-        // Six permanent, the depth clause, and the configuration narrowing this fixture triggers.
-        #expect(bullets == 8)
-        #expect(output.contains("the limits above list \(bullets) ways of being wrong about"))
+        // Six permanent, the depth clause, and the configuration narrowing this fixture triggers; the answer prints the two it owns on one line.
+        #expect(output.split(separator: "\n").count { $0.hasPrefix("  · ") } == 1)
+        #expect(output.contains("count 8 ways of being wrong about"))
     }
 
     /// The name-match count covers every test the arguments select, including the ones a coarsened target never printed.
@@ -225,13 +222,15 @@ struct AffectedTests {
             to: "Tests/LibTests/ManyTests.swift",
             in: root
         )
+        // Suites the change does not reach keep the target from being wholly affected (named by one line of its own) and under half reached (named by two).
+        let idle = (0 ..< 40).map { "    @Test func idle\($0)() {}" }.joined(separator: "\n")
+        try TestSources.write("import Testing\n\nstruct Orchard {\n\(idle)\n}\n", to: "Tests/LibTests/Orchard.swift", in: root)
         try TestSources.commitAll(in: root, message: "fixture")
         try TestSources.write("public struct Widget {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
 
         let output = try await Self.affected(root)
 
-        #expect(output.contains("30 tests affected — more than this list prints"))
-        #expect(output.contains("30 of the tests these select rest on a name match rather than a resolved reference"))
+        #expect(output.contains("30 tests affected — the commands below run exactly the affected suites; 30 of them rest on a name match rather than a resolved reference"))
     }
 
     /// A change whose first hop widens past the name frontier: one changed type, mentioned once inside each of `count` differently-named functions.
@@ -279,9 +278,7 @@ struct AffectedTests {
         // The walk still ran — this is a hop that completed, not one that never started.
         #expect(output.contains("name-matched fallback: 3 written names were scanned"))
         // Six permanent limits and the depth clause: a false cap bullet would make it eight.
-        let bullets = output.split(separator: "\n").count { $0.hasPrefix("  · ") }
-        #expect(bullets == 7)
-        #expect(output.contains("the limits above list 7 ways of being wrong about"))
+        #expect(output.contains("count 7 ways of being wrong about"))
     }
 
     /// The fallback counts the names it actually scanned, not the ones it started with.
@@ -439,7 +436,7 @@ struct AffectedTests {
 
         #expect(listing.contains("-only-testing:"))
         #expect(listing.contains("PRODUCT_MODULE_NAME"))
-        #expect(listing.contains("it fails the whole invocation rather than skipping that selection"))
+        #expect(listing.contains("fail the whole invocation rather than skipping that selection"))
         // Answer-scoped, like every other conditional caveat here: an answer selecting nothing has no
         // identifier to be wrong about, and a block padded with inapplicable warnings stops being read.
         #expect(!nothing.contains("-only-testing:"))

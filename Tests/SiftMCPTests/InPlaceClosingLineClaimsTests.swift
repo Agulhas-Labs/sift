@@ -45,9 +45,6 @@ struct InPlaceClosingLineClaimsTests {
         #expect(try Self.closing(of: answered, "whole read") == Self.smaller(source: size, served: served))
         #expect(answered.calls.map(\.bytes.source) == [size])
         #expect(answered.calls.reduce(0) { $0 + $1.bytes.served } == served)
-        // The audit reads the same two sizes back off the line, to the rounding the line prints them at.
-        let spared = AnswerThenRead.claimedSaving(inReason: answered.reason)
-        #expect(abs(spared - (size - served)) <= 100, "\(spared) read back for \(size - served)")
     }
 
     /// A window answered with the members it overlaps closes on the window's own lines' size, not the file's.
@@ -86,8 +83,10 @@ struct InPlaceClosingLineClaimsTests {
     @Test
     func aSweepClosesFreeOfBothClaims() async throws {
         let root = try MCPTestRepo.make(declaring: "Alpha")
+        let pallets = (1 ... 26).map { "func pallet\($0)(first: Gadget = Gadget(), second: Gadget = Gadget()) {}" }.joined(separator: "\n")
         try MCPTestRepo.add([
             "Package.swift": "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"App\", targets: [.target(name: \"App\")])\n",
+            "Sources/App/Stock/Aisles/Bays/Racks/Shelves/Pallets.swift": "\(pallets)\n",
             "Sources/App/Gadget.swift": "public struct Gadget {\n    public init() {}\n}\n",
             "Sources/App/Uses.swift": "struct Holder {\n    var gadget: Gadget\n    func make() -> Gadget { Gadget() }\n}\n",
         ], to: root)

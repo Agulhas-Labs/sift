@@ -164,16 +164,6 @@ struct SyntacticCallerFallback {
             else { return }
             kept[entry.key] = narrowed
         }
-        if !askedByBase.isEmpty {
-            // "over the working tree" is a substitution point: a lookup at a past revision replaces it with
-            // the files parsed there, since that scan never ran over the working tree at all.
-            var header = "\(NameMatchedSites.headingOpening) over the working tree, never stale"
-            if kept.values.contains(where: \.droppedAnySite) {
-                header += "; labels narrowed"
-            }
-            header += " — see sift help answers (call sites)"
-            lines = ["", header]
-        }
         /// The count beside the list of the sites of `base` it does not list, narrowed by the labels of its declarations.
         func unlistedLines(of base: String) -> [String] {
             let owners = functionOwnersByBase[base] ?? []
@@ -293,13 +283,16 @@ struct SyntacticCallerFallback {
                 continue
             }
             let fileCount = Set(listing.map(\.path)).count
-            let files = "\(fileCount) file\(fileCount == 1 ? "" : "s")"
+            // Said on the count line of the name it narrowed, after the opener a reader finds the block by.
+            let files = "\(fileCount) file\(fileCount == 1 ? "" : "s")" + (kept[base]?.droppedAnySite == true ? "; labels narrowed" : "")
             let forOwners = owners.map { " — for \($0)" } ?? ""
             lines.append("")
-            if let counted {
-                lines.append("\"\(base)\" (\(counted), in \(files)\(forOwners)):")
+            // Opened by a number even where none was found by name, so the line always reads as the block's count line.
+            if counts.isEmpty {
+                lines.append("\"\(base)\" (\(listing.count) \(listing.count == 1 ? word.one : word.many) by written name in \(files)\(forOwners)):")
             } else {
-                lines.append("\"\(base)\" (\(listing.count) \(listing.count == 1 ? word.one : word.many) in \(files)\(forOwners)):")
+                let byWrittenName = "\(total) \(total == 1 ? word.one : word.many) by written name"
+                lines.append("\"\(base)\" (\(byWrittenName), \(counts.joined(separator: ", ")), in \(files)\(forOwners)):")
             }
             if let paging {
                 lines += paging.rows(of: listing, detail: detail)
@@ -311,11 +304,10 @@ struct SyntacticCallerFallback {
                 }
             }
             lines += reachingOthers
-            // An initializer's `.init call` of a type the scan cannot tell is counted beside a list too, where a
-            // function's bare name is not: the one may be a call the list misses, the other is mostly a same-named read.
-            if scannedAs[base] != nil {
-                lines += unlistedLines(of: base)
-            }
+            // Shown beside a list as beside none: a bare `f` or `x.f`, mostly a same-named read, may be the function
+            // handed on unapplied, and an initializer's `.init call` of a type the scan cannot tell may be a call the
+            // list misses, so no line writing the name is left out of the answer.
+            lines += unlistedLines(of: base)
         }
         for owner in unnameable.map(names.name(of:)).sorted() {
             lines.append("")
@@ -324,7 +316,7 @@ struct SyntacticCallerFallback {
         return lines
     }
 
-    /// The places a function with no listed site is still written by name with no call, so "no call" is never read as "unused" where one may be handed on unapplied.
+    /// The places a function is still written by name with no call, so neither "no call" nor a list of calls is read as every use where one may be handed on unapplied.
     ///
     /// Counted beside the list rather than in it: `f`, `x.f` and another type's `T.f` are spelled exactly as a same-named local, property or case is read, which over a common name would bury the calls in unrelated reads. One row per line, as the name written twice on one — `self.size = size` — is one place to look.
     ///
@@ -374,7 +366,9 @@ extension SyntacticCallerFallback {
         return (Set(rows.map(\.path)), level)
     }
 
-    /// Whether an attribute site spells the type at the module-qualified `path`: one written bare does, and a qualified `@M.T` does where `M` is the declaring module or a type `T` is nested in. A site that does not is only noted, never dropped: Swift reads `@Wrap.State` through a typealias of the owner as `Outer.State`.
+    /// Whether an attribute site spells the type at the module-qualified `path`: one written bare does, and a qualified `@M.T` does where `M` is the declaring module or a type `T` is nested in.
+    ///
+    /// A site that does not is only noted, never dropped: Swift reads `@Wrap.State` through a typealias of the owner as `Outer.State`.
     static func attribute(_ site: SyntacticCallSite, mayNamePath path: String) -> Bool {
         guard let qualifier = site.qualifier else { return true }
         return ("." + path).hasSuffix("." + qualifier + "." + DeclaredTypeName.last(ofPath: path))
@@ -385,7 +379,7 @@ extension SyntacticCallerFallback {
         let sites: [SyntacticCallSite]
         /// The labels the list was narrowed by, each overload's once — `(in:limit:) or ()`.
         let labels: String
-        /// Whether any site of this name was actually dropped — the heading's "labels narrowed" is said only then, never for a site flagged but kept.
+        /// Whether any site of this name was actually dropped — the count line's "labels narrowed" is said only then, never for a site flagged but kept.
         let droppedAnySite: Bool
         /// Why a kept site's labels did not themselves reach a declaration, kept beside the site itself — never its `path:line`, which two sites on one line share — so the printed row can say so instead of the heading.
         private let keptWithoutMatch: [(site: SyntacticCallSite, flag: String)]

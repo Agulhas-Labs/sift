@@ -81,8 +81,8 @@ extension GitConfigHardeningTests {
             gitHookMarker = home.appendingPathComponent("git-hook-ran")
             file = repo.appendingPathComponent("Sources/App/Depot.swift")
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            // Long enough that a whole-file Read is answered from the index, which is what asks git about the tree.
-            let members = (1 ... 150).map { "    func member\($0)() -> Int {\n        let value = \($0)\n        return value + label.count\n    }\n" }
+            // Long enough that a whole-file Read is answered from the index, which is what asks git about the tree: the whole digest, not a page of it, has to save the floor.
+            let members = (1 ... 150).map { "    func member\($0)() -> Int {\n        // The body is padded so that the source is far larger than its digest.\n        let value = \($0)\n        return value + label.count\n    }\n" }
             try ("struct Depot {\n    let label = \"Hardening probe label\"\n" + members.joined(separator: "\n") + "}\n").write(to: file, atomically: true, encoding: .utf8)
             _ = try git(["init", "-q"])
             _ = try git(["add", "."])

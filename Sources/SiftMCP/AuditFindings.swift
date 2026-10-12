@@ -17,10 +17,14 @@ struct AuditFindings {
     let totals: TranscriptTally
     let sessions: Int
 
+    /// The subagent contexts among the scans, so the header names them beside their sessions as `usage` does.
+    let subagents: Int
+
     init(scans: [TranscriptAudit.Scan]) {
         self.scans = scans
         reached = scans.filter { !$0.tally.couldNotReachTheIndex }
         totals = TranscriptTally.pooled(scans.map(\.tally))
         sessions = Set(scans.map(\.session)).count
+        subagents = scans.count(where: \.isSubagent)
     }
 }

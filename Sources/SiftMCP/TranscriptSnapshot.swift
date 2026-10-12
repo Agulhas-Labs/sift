@@ -46,16 +46,27 @@ public struct TranscriptSnapshot: Sendable {
         return TranscriptSnapshot(sessions: sessions, agents: agents, sizes: sizes, modified: modified, indexes: indexes)
     }
 
+    /// The snapshot without the transcripts recorded in a scratch root, sessions and subagents each judged by their own recorded working directory as the audit's sweep judges them, so a replay over it counts the transcripts the audit beside it counted.
+    ///
+    /// A subagent kept under a session left out is promoted as ``scoped(to:)`` promotes it.
+    public func withoutScratch() -> TranscriptSnapshot {
+        narrowed(root: nil, excludingScratch: true)
+    }
+
     /// The snapshot narrowed to the transcripts the audit's `--root` keeps, each judged by its own recorded working directory as the sweep judges it.
     ///
     /// A subagent in scope under a session out of scope is promoted to a session of its own, which the scan reads as that agent of its parent, so every kept window keeps the session and call it has in the full snapshot.
     public func scoped(to root: String) -> TranscriptSnapshot {
+        narrowed(root: root, excludingScratch: false)
+    }
+
+    private func narrowed(root: String?, excludingScratch: Bool) -> TranscriptSnapshot {
         var kept: [URL] = []
         var keptAgentsByPath: [String: [URL]] = [:]
         var promoted: [String: String] = [:]
         for session in sessions {
-            let keptAgents = subagents(of: session).filter { TranscriptAudit.inScope($0, root: root) }
-            if TranscriptAudit.inScope(session, root: root) {
+            let keptAgents = subagents(of: session).filter { TranscriptAudit.inScope($0, root: root, excludingScratch: excludingScratch) }
+            if TranscriptAudit.inScope(session, root: root, excludingScratch: excludingScratch) {
                 kept.append(session)
                 keptAgentsByPath[session.path] = keptAgents
             } else {
@@ -92,6 +103,11 @@ public struct TranscriptSnapshot: Sendable {
     /// The subagent transcripts `session` had when the snapshot was taken.
     func subagents(of session: URL) -> [URL] {
         agents[session.path] ?? []
+    }
+
+    /// The lines of the transcript at `url` as it stood when the snapshot was taken — its bytes up to the size recorded then — read as they are asked for, or nil where it cannot be opened.
+    func lines(of url: URL) -> TranscriptLines? {
+        TranscriptLines(url: url, limit: sizes[url.path])
     }
 
     /// The transcript at `url` as it stood when the snapshot was taken — its bytes up to the size recorded then — or nil where it cannot be read.

@@ -18,6 +18,13 @@ struct WrapperAttributeSites {
     private(set) var types: [Int64: String] = [:]
     /// The repo-relative files whose store facts decided a site's listing, by the wrapper type's module-qualified path: each site's own file and each file declaring a parameter a `$label:` call may be passed to.
     private(set) var reliedOn: [String: Set<String>] = [:]
+    /// The sites the stores set aside, among the references the listing judged its sites against, as recorded only by a build older than their file's last edit, by the wrapper type's module-qualified path.
+    private(set) var setAsideByType: [String: SetAsideSites] = [:]
+
+    /// Every wrapper type's set-aside sites together, for an answer that lists them all.
+    var setAside: SetAsideSites {
+        setAsideByType.keys.sorted().reduce(into: SetAsideSites()) { $0.merge(setAsideByType[$1] ?? SetAsideSites()) }
+    }
 
     /// Whether a site is listed that could be a call of `row`, which is then never answered "no callers".
     func hasSites(for row: SymbolRow) -> Bool {
@@ -51,26 +58,32 @@ struct WrapperAttributeSites {
         "\(type), no one initializer by its labels"
     }
 
-    /// The unrecorded attribute sites of the property-wrapper types `rows`' initializers belong to, as `find(for:in:callSites:recorded:modifiedSinceBuild:)` gives them, judged by `context`'s stores.
+    /// The unrecorded attribute sites of the property-wrapper types `rows`' initializers belong to, as `find(for:in:callSites:recorded:modifiedSinceBuild:)` gives them, judged by `context`'s stores, each file against its own build (``OccurrenceFreshness``, reading `projectDirectories`).
     static func find(
         for rows: some Sequence<SymbolRow>,
         in store: IndexStore,
         callSites: (([String: CallSiteScanner.SiteShape]) async -> [String: [SyntacticCallSite]])?,
-        context: SemanticContext
+        context: SemanticContext,
+        projectDirectories: [String]
     ) async throws -> WrapperAttributeSites {
-        try await find(for: rows, in: store, callSites: callSites) { row in
+        let judge = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories)
+        return try await find(for: rows, in: store, callSites: callSites) { row in
             context.owner(of: row).map { owned in Set(owned.context.store.callers(ofUSR: owned.usr).map { "\(owned.context.relativePath($0.path)):\($0.line):\($0.column)" }) }
+        } setAside: { row in
+            guard let owned = context.owner(of: row) else { return [] }
+            return Set(owned.context.store.setAsideReferences(ofUSR: owned.usr).flatMap { path, lines in lines.keys.map { "\(owned.context.relativePath(path)):\($0)" } })
         } modifiedSinceBuild: { path in
-            ((try? store.fileRow(path: path))?.mtime ?? 0) > context.buildAnchor
+            judge.writtenSinceBuild(file: path)
         }
     }
 
-    /// The unrecorded attribute sites of the property-wrapper types `rows`' initializers belong to, from one scan over the working tree, where `recorded` gives the `path:line:column` of every reference the store records to a symbol, or `nil` where no store resolves it, and `modifiedSinceBuild` says whether a repo-relative file was written since the build.
+    /// The unrecorded attribute sites of the property-wrapper types `rows`' initializers belong to, from one scan over the working tree, where `recorded` gives the `path:line:column` of every reference the store records to a symbol, or `nil` where no store resolves it, `setAside` gives the `path:line` of every reference only a build older than its file's last edit records, at that build's lines, against which each file's attributes no store records are counted (an initializer's line standing for a site moved since, the type's only for a site still on it), and `modifiedSinceBuild` says whether a repo-relative file was written since the build.
     static func find(
         for rows: some Sequence<SymbolRow>,
         in store: IndexStore,
         callSites: (([String: CallSiteScanner.SiteShape]) async -> [String: [SyntacticCallSite]])?,
         recorded: (SymbolRow) -> Set<String>?,
+        setAside: (SymbolRow) -> Set<String> = { _ in [] },
         modifiedSinceBuild: (String) -> Bool
     ) async throws -> WrapperAttributeSites {
         var answer = WrapperAttributeSites()
@@ -95,6 +108,8 @@ struct WrapperAttributeSites {
             let calls = Dictionary(uniqueKeysWithValues: initializers.map { ($0.id, Set((recorded($0) ?? []).map(Self.line(of:)))) })
             let called = calls.values.reduce(into: Set<String>()) { $0.formUnion($1) }
             let referenced = Set((recorded(declaration) ?? []).map(Self.line(of:)))
+            let setAsideLines = ([declaration] + initializers).reduce(into: Set<String>()) { $0.formUnion(setAside($1)) }
+            var unexplained: [String: Set<Int>] = [:]
             for candidate in candidates {
                 let location = "\(candidate.path):\(candidate.line)"
                 let reached = initializers.filter { !SyntacticCallerFallback.LabelNarrowed.reaching([candidate], by: [$0]).isEmpty }
@@ -113,7 +128,14 @@ struct WrapperAttributeSites {
                     // dropping it could hide one.
                     site = candidate
                 } else {
-                    guard referenced.contains(location), !called.contains(location) else { continue }
+                    guard referenced.contains(location), !called.contains(location) else {
+                        // Left out of the listing with no store recording the type there: counted against the lines only a build
+                        // older than the file's last edit records, which that build's edits may have moved.
+                        if !referenced.contains(location) {
+                            unexplained[candidate.path, default: []].insert(candidate.line)
+                        }
+                        continue
+                    }
                     site = candidate
                 }
                 if reached.count == 1, let initializer = reached.first {
@@ -123,6 +145,16 @@ struct WrapperAttributeSites {
                 } else {
                     answer.unassigned[first.id, default: []].append(site)
                 }
+            }
+            let calledAside = initializers.reduce(into: Set<String>()) { $0.formUnion(setAside($1)) }
+            for (file, lines) in unexplained {
+                // A set-aside line stands for a moved site only where the stale build recorded an initializer call there: one
+                // recording only the type may be any other use of it. A site still on its own line counts either way.
+                let recordedOnly = Set(setAsideLines.compactMap { entry -> Int? in
+                    guard entry.hasPrefix(file + ":"), let line = Int(entry.dropFirst(file.count + 1)) else { return nil }
+                    return lines.contains(line) || calledAside.contains(entry) ? line : nil
+                })
+                answer.setAsideByType[path, default: SetAsideSites()].noteWrapperSites(path: file, unexplained: lines, setAside: recordedOnly)
             }
         }
         return answer
@@ -148,7 +180,7 @@ struct WrapperAttributeSites {
         var lines = [
             "",
             heading,
-            "\"@\(type)\" (\(count) in \(fileCount) file\(fileCount == 1 ? "" : "s") — for \(owner)):",
+            "\"@\(type)\" (\(count)\(grouped ? " by written name" : "") in \(fileCount) file\(fileCount == 1 ? "" : "s") — for \(owner)):",
         ]
         if grouped {
             lines += NameMatchedSites.rows(sites.prefix(cap)) { "in \($0.enclosing)\($0.projection?.flag ?? "")\(marker($0))" }

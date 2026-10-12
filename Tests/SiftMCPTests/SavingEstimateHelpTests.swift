@@ -9,10 +9,10 @@ struct SavingEstimateHelpTests {
     }
 
     @Test
-    func reportHelpStatesTheSavingIsAnEstimateAndItsBaseline() {
+    func reportHelpStatesTheSavingIsAnEstimateAndWhatItIsPricedOn() {
         let discussion = Self.words(ReportCommand.configuration.discussion)
 
-        #expect(discussion.contains("The saving is priced against the whole file as its baseline (a located range counts against the file it was cut from), so it leans high."))
+        #expect(discussion.contains("A saving is priced only where its counterfactual was observed: a read the advice hook intercepted and answered in place, the file or window asked for less the answer served."))
         #expect(discussion.contains(TokenEstimate.notMeasured))
     }
 

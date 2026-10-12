@@ -18,6 +18,23 @@ struct DoctorCodex {
         .codex
     }
 
+    /// Whether nothing of sift's is in Codex: a Codex home that does not exist, or no hook registered and `codex` itself finds no server named sift, read the way ``checks()`` reads them; a file or an answer that cannot be had is not nothing.
+    ///
+    /// A missing home is nothing without asking `codex`, which can only fail there.
+    var hasNothingOfSift: Bool {
+        guard FileManager.default.fileExists(atPath: home.directory.path) else {
+            return true
+        }
+        let data: Data?
+        do {
+            data = try CursorInstall.read(home.directory.appendingPathComponent(CodexHooksFile.fileName), agent: "codex", flag: "--codex-dir")
+        } catch {
+            return false
+        }
+        guard DoctorTraces.hooksHoldNothing(data), case .absent? = try? CodexMcpServer.find(runner: runner, home: home.directory) else { return false }
+        return true
+    }
+
     /// Every check, in the order the answer lists them.
     func checks() -> [DoctorCheck] {
         let file = home.directory.appendingPathComponent(CodexHooksFile.fileName)

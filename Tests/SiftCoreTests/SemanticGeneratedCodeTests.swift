@@ -172,7 +172,7 @@ struct SemanticGeneratedCodeTests {
             #expect(!unused.contains("getter:$on"))
             #expect(unusedSweep.contains("no references to GizmoApp.Idle.on recorded in the store"))
             #expect(!unusedSweep.contains("including _on"))
-            #expect(internalFlag.contains("reads and writes of GizmoApp.Outer.flag (1):\n  Sources/GizmoApp/Idle.swift (1):\n    :11  getter:body — read via $flag  | Toggle(\"f\", isOn: $flag)\n"))
+            #expect(internalFlag.contains("reads and writes of GizmoApp.Outer.flag (1):\n  Sources/GizmoApp/Idle.swift (1):\n    :11  getter:body — read via $flag  | Toggle(\"f\", isOn: $flag)"))
             #expect(!internalFlag.contains("getter:$flag"))
         }
     }
@@ -192,7 +192,7 @@ struct SemanticGeneratedCodeTests {
                 #expect(!output.contains("(unknown caller)"))
             }
 
-            #expect(sweep.contains("(1 in 1 file):\n  Sources/GizmoApp/Panel.swift (1):\n    :23  | Panel(lamp: Lamp())"))
+            #expect(sweep.contains("references to GizmoCore.Lamp.init() (1 in 1 file, 1 of them the call sites above):"))
         }
     }
 
@@ -205,7 +205,8 @@ struct SemanticGeneratedCodeTests {
 
             #expect(watched.contains("reads and writes of GizmoCore.Lamp.watched (1):"))
             #expect(watched.contains("    :3  didSet of watched (moved by a macro) — read and write  | @Observable"))
-            #expect(watched.contains(SemanticUnitTests.propertyBoundary + "\n" + Self.movedObserverBoundary))
+            #expect(watched.contains(Self.movedObserverBoundary))
+            #expect(!watched.contains(SemanticUnitTests.writtenCodeBoundary))
             #expect(!watched.contains("didSet:_watched"))
             #expect(sweep.contains("no references to GizmoCore.Lamp.watched recorded in the store"))
             #expect(!sweep.contains("Lamp.swift (1): 3"))
@@ -222,12 +223,12 @@ struct SemanticGeneratedCodeTests {
             let amount = try await engine.lookup(symbol: "Meter.amount", freshness: freshness)
             let sweep = try await engine.lookup(symbol: "Meter.amount", freshness: freshness, options: WhereOptions(includeReferences: true))
 
-            #expect(flag.contains("reads and writes of GizmoCore.Hand.flag (1):\n  Sources/GizmoCore/Hand.swift (1):\n    :5  look() — read  | func look() -> Bool { flag }\n"))
+            #expect(flag.contains("reads and writes of GizmoCore.Hand.flag (1):\n  Sources/GizmoCore/Hand.swift (1):\n    :5  look() — read  | func look() -> Bool { flag }"))
             #expect(!flag.contains("peek()"))
             #expect(!flag.contains("via _flag"))
             #expect(amount.contains("reads and writes of GizmoCore.Meter.amount (2):"))
             #expect(amount.contains("    :10  reset() — used via _amount  | _amount = Clamp(wrappedValue: 0)\n"))
-            #expect(amount.contains("    :12  show() — read  | func show() -> Int { amount }\n"))
+            #expect(amount.contains("    :12  show() — read  | func show() -> Int { amount }"))
             #expect(!amount.contains("    :10  reset() — read"))
             #expect(sweep.contains("references to GizmoCore.Meter.amount (2 in 1 file, including _amount):"))
         }

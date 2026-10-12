@@ -34,13 +34,9 @@ struct StatusNoStoreRemedyTests {
         #expect(status.contains("-destination 'generic/platform=iOS Simulator' ARCHS=\(hostArchitecture)"))
         // The key names where to point, not just its own name — a build root is not a store.
         #expect(status.contains("pointing at the store directory itself"))
-        // The key resolves against the repo root, so a nested package's example carries its own directory; the
-        // root package's `.build/out` or `.build/debug/index/store` is exactly the plausible wrong value. Both
-        // layouts are named, the default build system's first, and a build root is named as what not to use.
-        // Said only of a SwiftPM build of that package — an Xcode build of it needs nothing set.
-        #expect(status.contains("A SwiftPM build of a package nested below the repo root"))
-        #expect(status.contains("<Pkg>/.build/out for a package in <Pkg> (<Pkg>/.build/debug/index/store under --build-system native)"))
-        #expect(status.contains("not <Pkg>/.build itself"))
+        // A SwiftPM build of a nested package is searched, so it is named among the places and needs no key.
+        #expect(status.contains("the .build of each package nested below it (a directory holding a Package.swift)"))
+        #expect(!status.contains("a SwiftPM build of a package nested below the repo root"))
         #expect(!status.contains("such as .build/debug/index/store"))
         // A custom -derivedDataPath gets its own store-location example, symmetrical with the SwiftPM one.
         #expect(status.contains("<path>/Index.noindex/DataStore for a custom -derivedDataPath"))
@@ -61,7 +57,7 @@ struct StatusNoStoreRemedyTests {
         let rejection = "indexStorePath '.build/debug/index/store' in .sift.json is not an index store (no v<N>/units under it)"
 
         #expect(status.contains("index store: none found — \(rejection); build one:"), "\(status)")
-        #expect(answer.contains("no index store for this tree yet — \(rejection); how to build one:"), "\(answer)")
+        #expect(answer.contains("how to build one: sift help answers, section (index store); passed over: \(rejection)"), "\(answer)")
     }
 
     /// Where another probe found a store, the rejected setting is still named beside it: the store in use is not the one the key asked for.

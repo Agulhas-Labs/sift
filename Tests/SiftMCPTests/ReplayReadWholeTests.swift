@@ -12,8 +12,8 @@ import Testing
     /// A whole `Read` of a file a recovered window located with the file's own digest is read whole after that digest — counted on the `read whole` row and in the replayed share's denominator, never recovered.
     @Test func aWholeReadOfAFileARecoveredDigestLocatedIsReadWhole() async throws {
         let root = try MCPTestRepo.make(declaring: "Alpha")
-        // Bodies long enough that the file's digest is smaller than a window of all of it; the members a window of every line overlaps are the whole file, so they are no smaller than its digest.
-        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0)\n        let doubled = count * 2\n        let tripled = count * 3\n        return doubled + tripled\n    }" }
+        // Bodies long enough that the file's digest is smaller than a window of all of it, and padded so that window is worth the turn it costs; the members a window of every line overlaps are the whole file, so they are no smaller than its digest.
+        let members = (1 ... 40).map { "    func part\($0)() -> Int {\n        let count = \($0)\(WorthAnsweringFixture.comment)\n        let doubled = count * 2\n        let tripled = count * 3\n        return doubled + tripled\n    }" }
         try MCPTestRepo.add([
             "Package.swift": "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"App\", targets: [.target(name: \"App\")])\n",
             "Sources/App/Gizmo.swift": "/// A gizmo.\nstruct Gizmo {\n" + members.joined(separator: "\n") + "\n}\n",

@@ -57,7 +57,7 @@ struct WhereGenericAliasFoldTests {
         }
         try TestSources.commitAll(in: root, message: "built alias fixture, unbuilt")
         let engine = try SiftEngine(directory: root)
-        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh())
+        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
     }
 
     /// A use of an alias built from the type breaks with it, so it is folded in, while the alias's own line stays a use rather than another name for the type.
@@ -65,7 +65,7 @@ struct WhereGenericAliasFoldTests {
     func usesOfAnAliasBuiltFromTheTypeAreFoldedIn() async throws {
         let output = try await Self.answer("Net.URL", files: ["Package.swift": Self.manifest, "Sources/Lib/Net.swift": Self.netFile, "Sources/Lib/Shelf.swift": Self.shelfFile])
 
-        #expect(output.contains("\"URL\" used by 6 lines in 1 file — "), "\(output)")
+        #expect(output.contains("\"URL\" (6 uses by written name in 1 file) — "), "\(output)")
         #expect(output.contains("3 written as Lib.Book, Lib.Shelf and Lib.Spare, typealiases naming it, folded in here"), "\(output)")
         #expect(output.contains("\n    :1  | typealias Book = Dictionary<String, Net.URL>\n"), "\(output)")
         #expect(output.contains("\n    :6  | let book: Book = [:]\n"), "\(output)")
@@ -79,7 +79,7 @@ struct WhereGenericAliasFoldTests {
     func usesOfAnAliasBuiltOnTheGenericTypeAreFoldedIn() async throws {
         let output = try await Self.answer("Array", files: ["Package.swift": Self.manifest, "Sources/Lib/Net.swift": Self.netFile, "Sources/Lib/Shelf.swift": Self.shelfFile])
 
-        #expect(output.contains("\"Array\" used by 3 lines in 2 files — "), "\(output)")
+        #expect(output.contains("\"Array\" (3 uses by written name in 2 files) — "), "\(output)")
         #expect(output.contains("1 written as Lib.Shelf, a typealias naming it, folded in here"), "\(output)")
         #expect(output.contains("\n    :2  | typealias Shelf = Array<Net.URL>\n"), "\(output)")
         #expect(output.contains("\n    :7  | let shelf: Shelf = []"), "\(output)")

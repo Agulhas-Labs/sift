@@ -33,6 +33,12 @@ struct InstallCommand: ParsableCommand {
     @Flag(name: .customLong("dry-run"), help: "Say what was found and what an install would write; write nothing and run nothing.")
     var dryRun = false
 
+    @Flag(name: .customLong("allow-run"), help: "For Claude Code, add both blocks of allow rules, the lookups and the builds the hook wraps in `sift run`, without asking.")
+    var allowRun = false
+
+    @Flag(name: .customLong("allow-lookups"), help: "For Claude Code, add only the allow rules for `sift digest`, `where`, `search` and `strings`, without asking.")
+    var allowLookups = false
+
     /// Where the answer goes, injected so a test can read what the install printed.
     var output: CommandOutput = .standard
 
@@ -81,6 +87,10 @@ struct InstallCommand: ParsableCommand {
                 output.emit(line)
             }
         case let .install(picks):
+            if allowRun || allowLookups, !picks.contains(where: { $0.agent == .claude }) {
+                let flags = [allowRun ? "--allow-run" : nil, allowLookups ? "--allow-lookups" : nil].compactMap(\.self)
+                output.emit("note: \(flags.joined(separator: " and ")) \(flags.count > 1 ? "apply" : "applies") only to Claude Code's permission rules, and Claude Code is not being installed, so \(flags.count > 1 ? "they were" : "it was") ignored")
+            }
             try install(picks, binary: binary)
         }
     }
@@ -119,7 +129,9 @@ struct InstallCommand: ParsableCommand {
                     arguments: arguments,
                     executable: executable,
                     runner: claude ?? ClaudeCLI(environment: environment),
-                    prompt: prompt
+                    prompt: prompt,
+                    allowRun: allowRun,
+                    allowLookups: allowLookups
                 ).run(output: capture.output)
             case .cursor:
                 try CursorInstallStep.run(binary: binary, environment: environment, output: capture.output)
@@ -137,5 +149,7 @@ extension InstallCommand {
         case all
         case yes
         case dryRun
+        case allowRun
+        case allowLookups
     }
 }

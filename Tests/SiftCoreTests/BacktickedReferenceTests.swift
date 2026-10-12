@@ -34,7 +34,7 @@ struct BacktickedReferenceTests {
 
         for (query, line) in [("Tick.class", 5), ("Tick.`class`", 5), ("default", 6), ("Tick.`default`()", 6)] {
             let output = try await engine.lookup(symbol: query, freshness: freshness)
-            #expect(output.contains("syntactic call sites"), "where \(query):\n\(output)")
+            #expect(output.contains("sites by written name"), "where \(query):\n\(output)")
             #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/Lib/Lib.swift:\(line)  in Tick.plain()"), "where \(query):\n\(output)")
         }
     }

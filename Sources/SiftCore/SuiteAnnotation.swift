@@ -146,17 +146,20 @@ final class SuiteAnnotation {
     /// `lines` is wrapped in a throwaway one-member host type before parsing, so a function, an initializer, a subscript and a computed property all parse the same way regardless of what is legal at file scope; the braces' byte positions are in the wrapped text, which is what is sliced.
     private static func bodyText(of lines: [String]) -> String? {
         let wrapped = "struct Scratchpad {\n" + lines.joined(separator: "\n") + "\n}\n"
-        let tree = Parser.parse(source: wrapped)
-        guard let first = tree.statements.first,
-              case let .decl(hostDecl) = first.item,
-              let host = hostDecl.as(StructDeclSyntax.self),
-              let member = host.memberBlock.members.first?.decl,
-              let (leftBrace, rightBrace) = braces(of: member),
-              leftBrace.presence == .present, rightBrace.presence == .present
-        else { return nil }
+        let offsets = NestingGate.parse(wrapped) { tree -> (start: Int, end: Int)? in
+            guard let first = tree.statements.first,
+                  case let .decl(hostDecl) = first.item,
+                  let host = hostDecl.as(StructDeclSyntax.self),
+                  let member = host.memberBlock.members.first?.decl,
+                  let (leftBrace, rightBrace) = braces(of: member),
+                  leftBrace.presence == .present, rightBrace.presence == .present
+            else { return nil }
+            return (leftBrace.endPositionBeforeTrailingTrivia.utf8Offset, rightBrace.positionAfterSkippingLeadingTrivia.utf8Offset)
+        }
+        guard let offsets = offsets.flatMap(\.self) else { return nil }
         let utf8 = wrapped.utf8
-        let start = utf8.index(utf8.startIndex, offsetBy: leftBrace.endPositionBeforeTrailingTrivia.utf8Offset)
-        let end = utf8.index(utf8.startIndex, offsetBy: rightBrace.positionAfterSkippingLeadingTrivia.utf8Offset)
+        let start = utf8.index(utf8.startIndex, offsetBy: offsets.start)
+        let end = utf8.index(utf8.startIndex, offsetBy: offsets.end)
         guard start <= end else { return nil }
         return String(wrapped[start ..< end])
     }

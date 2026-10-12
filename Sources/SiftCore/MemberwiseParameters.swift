@@ -14,25 +14,32 @@ struct MemberwiseParameters {
 
     /// The labels of the memberwise initializer written from the stored `properties`, in order, or `nil` where a property's signature does not say whether it is a parameter.
     func labels(of properties: [SymbolRow]) -> ParameterLabels? {
+        ParseThread.run { labelsParsing(properties) }
+    }
+
+    /// ``labels(of:)`` read from each signature's parse, on a parse thread.
+    private func labelsParsing(_ properties: [SymbolRow]) -> ParameterLabels? {
         var parameters: [ParameterLabels.Parameter] = []
         for property in properties {
-            let tree = Parser.parse(source: property.signature)
-            guard !tree.hasError, let declaration = tree.statements.first?.item.as(VariableDeclSyntax.self),
-                  let shown = Self.binding(named: property.name, in: declaration),
-                  let identifier = shown.binding.pattern.as(IdentifierPatternSyntax.self)?.identifier
-            else { return nil }
-            // Only a signature showing its initial value is known whole; otherwise one may have been cut from it.
-            // A `lazy` property always has one, so it reads as a parameter with a default, as the compiler makes it.
-            let written = shown.binding.initializer != nil ? shown : read(property)
-            let parameter: Bool? = if let written {
-                Self.isDefaulted(written)
-            } else {
-                true
+            guard let read = NestingGate.parseOrEmpty(property.signature, { parameter(of: property, parsed: $0) }) else { return nil }
+            if let parameter = read {
+                parameters.append(parameter)
             }
-            guard let isDefaulted = parameter else { continue }
-            parameters.append(ParameterLabels.Parameter(label: WrittenArguments.label(identifier), isDefaulted: isDefaulted, isVariadic: false))
         }
         return ParameterLabels(parameters: parameters)
+    }
+
+    /// The parameter `property` gives the initializer, read from its signature's parse `tree` on the parse thread that made it: `.some(nil)` where it gives none, `nil` where the signature does not say.
+    private func parameter(of property: SymbolRow, parsed tree: SourceFileSyntax) -> ParameterLabels.Parameter?? {
+        guard !tree.hasError, let declaration = tree.statements.first?.item.as(VariableDeclSyntax.self),
+              let shown = Self.binding(named: property.name, in: declaration),
+              let identifier = shown.binding.pattern.as(IdentifierPatternSyntax.self)?.identifier
+        else { return nil }
+        // Only a signature showing its initial value is known whole; otherwise one may have been cut from it.
+        // A `lazy` property always has one, so it reads as a parameter with a default, as the compiler makes it.
+        let parameter: Bool? = shown.binding.initializer != nil ? Self.isDefaulted(shown) : isDefaultedAsWritten(property) ?? true
+        guard let isDefaulted = parameter else { return .some(nil) }
+        return ParameterLabels.Parameter(label: WrittenArguments.label(identifier), isDefaulted: isDefaulted, isVariadic: false)
     }
 
     /// Whether the property `written` binds is a defaulted parameter, or `nil` where it is no parameter: a `let` with an initial value.
@@ -49,17 +56,19 @@ struct MemberwiseParameters {
         return !isLet && (isOptional || !written.declaration.attributes.isEmpty)
     }
 
-    /// The declaration of `property` as its source writes it, or `nil` where the source cannot be read or holds no binding of its name.
-    private func read(_ property: SymbolRow) -> Written? {
+    /// ``isDefaulted(_:)`` of the declaration of `property` as its source writes it, or `nil` where the source cannot be read or holds no binding of its name.
+    private func isDefaultedAsWritten(_ property: SymbolRow) -> Bool?? {
         guard let lines = source?(property) else { return nil }
-        var pending = [Syntax(Parser.parse(source: lines.joined(separator: "\n")))]
-        while let node = pending.popLast() {
-            if let declaration = node.as(VariableDeclSyntax.self), let written = Self.binding(named: property.name, in: declaration) {
-                return written
+        return NestingGate.parseOrEmpty(lines.joined(separator: "\n")) { tree -> Bool?? in
+            var pending = [Syntax(tree)]
+            while let node = pending.popLast() {
+                if let declaration = node.as(VariableDeclSyntax.self), let written = Self.binding(named: property.name, in: declaration) {
+                    return .some(Self.isDefaulted(written))
+                }
+                pending += node.children(viewMode: .sourceAccurate)
             }
-            pending += node.children(viewMode: .sourceAccurate)
+            return nil
         }
-        return nil
     }
 
     /// The binding of `declaration` that names `name` with a plain identifier.

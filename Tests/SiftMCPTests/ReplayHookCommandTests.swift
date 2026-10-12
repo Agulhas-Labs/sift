@@ -76,7 +76,7 @@ import Testing
     @Test func aWithheldCallIsWrittenToTheStateDirectorysSuppressionLog() async throws {
         let state = try TemporaryDirectory.make("Depot")
 
-        let (status, _) = try await Self.replay(showing: false, label: "Depot", command: "xcodebuild build-for-testing -scheme Gizmo -derivedDataPath build", state: state)
+        let (status, _) = try await Self.replay(showing: false, label: "Depot", command: "xcodebuild test-without-building -scheme Gizmo -derivedDataPath build", state: state)
 
         #expect(status == 0)
         let text = try String(contentsOf: state.appendingPathComponent("suppressions.jsonl"), encoding: .utf8)

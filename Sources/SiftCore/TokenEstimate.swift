@@ -12,7 +12,7 @@ import Foundation
 ///
 /// In Core rather than beside the MCP faces that first used it, because `diff` is a CLI answer built in Core and prices itself in the same unit — one rendering, so no two surfaces can state the same saving differently.
 ///
-/// **The ratio is a fixed estimate, not a tokenizer count.** Claude's tokenizer lands between three and four bytes a token on source code — Swift is dense with punctuation and short identifiers, which tokenize *worse* than prose, not better — so four bytes a token is the low end of what those bytes would cost. That makes the *conversion* conservative, and nothing more: the bytes it converts are a counterfactual (``savedLabel``), and that baseline leans high.
+/// **The ratio is a fixed estimate, not a tokenizer count.** Claude's tokenizer lands between three and four bytes a token on source code — Swift is dense with punctuation and short identifiers, which tokenize *worse* than prose, not better — so four bytes a token is the low end of what those bytes would cost. That makes the *conversion* conservative, and nothing more: the bytes it converts are a counterfactual, priced only where it was observed (``baseline``).
 public struct TokenEstimate {
     /// Bytes per token: the low end of what Swift source costs — a fixed estimate, never the model's tokenizer.
     public static let bytesPerToken = 4
@@ -46,18 +46,18 @@ public struct TokenEstimate {
         return String(format: "~%.1fM tokens", Double(count) / 1_000_000)
     }
 
-    /// What every face that states the index's saving says beside it — `~4.9M tokens saved (est. vs whole-file reads)` — so the figure is never quoted as a measurement.
+    /// What every face that states the index's saving says beside it — `~2.1k tokens saved` — the tilde marking the conversion as an estimate.
     ///
-    /// The bytes are measured; the saving is not. Each digest is priced against reading its whole file (or its type's whole extent), which is what the agent would have done only some of the time: a grep or a ranged read would have cost less. Nothing read afterwards is subtracted: the figure is gross, and the whole reads after a digest are counted beside it (``readAnyway(_:)``), never priced. One wording, defined here, so `usage`, the report page and `audit` cannot drift apart on it.
+    /// The bytes are measured, and so is the counterfactual: a saving is priced only where the advice hook intercepted a read and the command named what it would have printed (``baseline``). Nothing read afterwards is subtracted: the figure is gross, and the whole reads after a digest are counted beside it (``readAnyway(_:)``), never priced. One wording, defined here, so `usage`, the report page and `audit` cannot drift apart on it.
     public static var savedLabel: String {
-        "saved (est. vs whole-file reads)"
+        "saved"
     }
 
-    /// What every saving is priced against and which way that errs, printed beside the saving by each face that states it, always and once: `usage`'s headline, the report page's caption, `audit`'s baseline line.
+    /// What every saving is priced against, printed beside the saving by each face that states it, always and once: `usage`'s headline, the report page's caption, `audit`'s baseline line.
     ///
-    /// Always, not only beside a floor note: the lean is the baseline's, present whether or not any call went unweighed, and a figure printed without it reads as a measurement. Once, so no face says it twice in two wordings.
+    /// Only an observed counterfactual is priced: the file or window an intercepted read asked for, less the answer the hook served in its place. A call made by choice and a grep the hook answered stand in for something nobody ran and nobody can size, and pricing them against a whole file was a number that leaned high; they are counted, never priced.
     public static var baseline: String {
-        "priced as if each file would otherwise be read whole; a ranged read or a grep costs less, so the figure leans high"
+        "file or window asked for − answer served"
     }
 
     /// The one sentence the report page, `sift report --help` and `sift audit --help` carry beside the estimate, so it is never read as a measured token saving: the end-to-end measurement is a separate artifact, and it found no detectable difference overall.
@@ -65,7 +65,7 @@ public struct TokenEstimate {
         "This is an estimate of source not read, not a measured token saving; the end-to-end measurement is in Benchmarks/RESULTS-ios-app-10.md."
     }
 
-    /// `bytes` of saving as every face states it: `~4.9M tokens saved (est. vs whole-file reads)`.
+    /// `bytes` of saving as every face states it: `~2.1k tokens saved`.
     public static func saved(bytes: Int) -> String {
         "\(short(bytes: bytes)) \(savedLabel)"
     }
@@ -77,11 +77,11 @@ public struct TokenEstimate {
 
     /// The one line every face with a transcript scan prints beside its saving: how many whole reads followed a digest of the same file — the share's own `read whole` count — or `nil` where none did.
     ///
-    /// Counted, never priced. Pricing it meant joining each digest a transcript holds to the usage-log line that claimed its saving, and three review rounds found that join overclaiming or underclaiming each time; a number that cannot be shown right is not shown. So the saving stays gross and this says by what it leans high.
+    /// Counted, never priced. Pricing it meant joining each digest a transcript holds to the usage-log line that claimed its saving, and three review rounds found that join overclaiming or underclaiming each time; a number that cannot be shown right is not shown. So the saving stays gross and this says by how many reads.
     public static func readAnyway(_ count: Int) -> String? {
         guard count > 0 else { return nil }
         let one = count == 1
         return "\(count) digest\(one ? " was" : "s were") followed by a whole read of \(one ? "its" : "their") file; "
-            + "\(one ? "its" : "their") saving is not subtracted, so the figure leans high"
+            + "a saving priced on \(one ? "it" : "any of them") is not subtracted"
     }
 }

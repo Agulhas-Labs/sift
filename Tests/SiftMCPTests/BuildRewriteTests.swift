@@ -114,7 +114,7 @@ struct BuildRewriteTests {
     }
 
     /// The shapes the wrapping already leaves alone draw no rewrite either.
-    @Test(arguments: ["xcodebuild build-for-testing -scheme Gizmo", "swiftlint lint --quiet", "swift test > test.log", "swift test 2>&1 | tail -40"])
+    @Test(arguments: ["xcodebuild test-without-building -scheme Gizmo", "swiftlint lint --quiet", "swift test > test.log", "swift test 2>&1 | tail -40"])
     func anExemptBuildIsNotRewritten(shell: String) {
         #expect(RunAdvice.suggestion(for: shell) == nil)
         #expect(RunAdvice.wrappedLegs(of: shell).isEmpty)

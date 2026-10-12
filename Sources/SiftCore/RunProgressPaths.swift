@@ -40,6 +40,11 @@ public struct RunProgressPaths {
     ///
     /// A missing directory, a file that vanished between the listing and the read, and one that is not a snapshot this version reads are no run. Nothing is written or removed.
     public static func liveRuns(inRepositoryAt repoRoot: URL, at now: Date = Date()) -> [RunProgressSnapshot] {
+        runs(inRepositoryAt: repoRoot).filter { $0.isLive(at: now) }
+    }
+
+    /// Every run file in the repository at `repoRoot` that this version reads, live or not, in no order.
+    public static func runs(inRepositoryAt repoRoot: URL) -> [RunProgressSnapshot] {
         let directory = Self.directory(in: repoRoot, writesUnder: nil)
         return ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
             .filter(isRunFile)
@@ -47,6 +52,5 @@ public struct RunProgressPaths {
                 (try? Data(contentsOf: directory.appendingPathComponent(name)))
                     .flatMap { try? RunProgressSnapshot.decoded(from: $0) }
             }
-            .filter { $0.isLive(at: now) }
     }
 }

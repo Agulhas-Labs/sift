@@ -31,9 +31,15 @@ struct DigestSignatureLayout {
 
     /// The layout of `signature`, or `nil` when it has no parameter list to wrap.
     init?(_ signature: String) {
+        guard let layout = ParseThread.run({ Self(parsing: signature) }) else { return nil }
+        self = layout
+    }
+
+    /// The layout of `signature` read from its parse, on a parse thread.
+    private init?(parsing signature: String) {
         let bytes = Array(signature.utf8)
         let finder = ParameterClauseFinder(viewMode: .sourceAccurate)
-        finder.walk(Parser.parse(source: signature + " {}"))
+        NestingGate.parseOrEmpty(signature + " {}") { finder.walk($0) }
         guard let clause = finder.clause, clause.rightParen.presence == .present, !clause.parameters.isEmpty else {
             return nil
         }

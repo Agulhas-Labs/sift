@@ -17,7 +17,7 @@ cited location such as `Library.swift:30`, and `.` for the repository overview.
 
 ```text
 $ sift digest Library
-tree: Shelf  head: ec26cde  clean  semantic: syntactic-only
+tree: Shelf  head: ec26cde  clean
 Library — Stacks — Sources/Stacks/Library.swift:3-69
 public final class Library
 
@@ -43,8 +43,8 @@ synthesized members (memberwise init, Codable) not listed
 ```
 
 Each member carries its line range, so the next step is a ranged read of the lines you want, or
-`sift digest Library.lend` for that one member's source. A digest is read from the source alone, so it is
-`syntactic-only` and never stale: files you have edited are reparsed before it answers. Code short enough
+`sift digest Library.lend` for that one member's source. A digest is read from the source alone, so it
+carries no `semantic:` field and is never stale: files you have edited are reparsed before it answers. Code short enough
 that a digest would cost as much as the code comes back as the source itself.
 
 ### where: definitions, callers and uses
@@ -55,17 +55,13 @@ written names:
 
 ```text
 $ sift where Library.lend
-tree: Shelf  head: ec26cde  clean  semantic: none (no index store — see note)
-where Library.lend
-mode: syntactic (sift help answers); no index store for this tree yet; how to build one: sift help answers, section (index store)
-callers/overrides: NOT ANSWERED from the index store; see the mode line above.
+tree: Shelf  head: ec26cde  clean  semantic: none (no index store for this tree yet)
+no store for callers, overrides or references; sites by written name; how to build one: sift help answers, section (index store)
 
 declarations (1):
   Stacks.Library.lend(title:to:days:) — func — public func lend(title: String, to borrower: String, days: Int) -> Loan? — Sources/Stacks/Library.swift:16-27
 
-syntactic call sites — by written name over the working tree, never stale — see sift help answers (call sites)
-
-"lend" (3 call sites in 1 file):
+"lend" (3 call sites by written name in 1 file):
   Tests/StacksTests/LibraryTests.swift:
     :15  in LibraryTests.lendingMovesABookToLoans().loan  | let loan = library.lend(title: "Tides", to: "Cleo", days: 7)
     :23  in LibraryTests.givingBackRestocks()  | _ = library.lend(title: "Atlas", to: "Cleo", days: 7)
@@ -78,8 +74,6 @@ answered from it:
 ```text
 $ sift where Library.lend
 tree: Shelf  head: ec26cde  clean  semantic: fresh
-where Library.lend
-mode: syntactic + semantic (index store via .build)
 
 declarations (1):
   Stacks.Library.lend(title:to:days:) — func — public func lend(title: String, to borrower: String, days: Int) -> Loan? — Sources/Stacks/Library.swift:16-27
@@ -99,8 +93,7 @@ awaits. Terms are `field:value`, ANDed, and `!` negates one. Quote the query so 
 
 ```text
 $ sift search 'kind:func calls:filter'
-tree: Shelf  source: working tree, read live — nothing stored to go stale
-search kind:func calls:filter
+tree: Shelf  source: live
 2 declaration(s) in 1 file(s) — scanned 5 file(s)
 syntactic shape match over the working tree — never stale, never refuses; calls:/uses: match written names, not resolved symbols, so same-named members of unrelated types are included — confirm a specific hit with where.
 
@@ -119,11 +112,10 @@ string catalogs (`.xcstrings`, `.strings`) and in Swift string literals:
 
 ```text
 $ sift strings 'on the shelf'
-tree: Shelf  source: working tree, read live — nothing stored to go stale
-strings "on the shelf"
+tree: Shelf  source: live
 no string catalogs (.xcstrings / .strings) in this repo
 
-source literals (Swift string literals holding the wording, not catalog entries):
+source literals:
   Library.summary() — Sources/Stacks/Library.swift:59: "\(available) on the shelf, \(loans.count) out"
 ```
 
@@ -131,10 +123,10 @@ source literals (Swift string literals holding the wording, not catalog entries)
 
 - **The header names its source.** `digest`, `search` and `strings` read the working tree, so none of them
   can be out of date, but a read of source is all they are. `search` and `strings` say so with `source:
-  working tree, read live`.
+  live`.
 - **`semantic: none` is a limit, not a verdict.** With no index store for the tree, `where` matches written
-  names. It says `callers/overrides: NOT ANSWERED from the index store` and still lists the call sites it
-  found by spelling. A call through a different spelling, a type used only in an annotation or a
+  names. It says `no store for callers, overrides or references; sites by written name` under the
+  header and still lists the call sites it found by spelling. A call through a different spelling, a type used only in an annotation or a
   conformance, a `#selector` and a name inside a string are not in that list. Read a short list as "no call
   of that name was found", never as "nothing uses this".
 - **A type has no calls.** The syntactic fallback answers for methods and properties by their written

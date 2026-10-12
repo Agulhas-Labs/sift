@@ -98,7 +98,7 @@ struct WhereAnswerRepetitionTests {
     func nameMatchedSitesAreGroupedUnderTheirFile() async throws {
         let output = try await Self.initializerAnswer()
 
-        #expect(output.contains("\"Box.init\" (4 call sites in 2 files — for both):\n  Sources/App/Other.swift:\n    :2  in other()  | _ = Box()\n  Sources/App/Uses.swift:\n    :2  in make()  | _ = Box()\n    :3  in make()  | _ = Box(width: 1, height: 2)\n    :4  in make()  | _ = Box()"), "\(output)")
+        #expect(output.contains("\"Box.init\" (4 call sites by written name in 2 files — for both):\n  Sources/App/Other.swift:\n    :2  in other()  | _ = Box()\n  Sources/App/Uses.swift:\n    :2  in make()  | _ = Box()\n    :3  in make()  | _ = Box(width: 1, height: 2)\n    :4  in make()  | _ = Box()"), "\(output)")
         #expect(output.components(separatedBy: "Uses.swift").count == 2, "\(output)")
         #expect(!output.contains("init(width:height:)):"), "\(output)")
     }

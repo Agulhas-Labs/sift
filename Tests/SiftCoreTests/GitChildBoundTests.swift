@@ -14,8 +14,11 @@ struct GitChildBoundTests {
     /// The longest a hook may take: its own timeout is 8 seconds, so an answer has to come well inside them.
     private static let hookBudget: TimeInterval = 5
 
-    /// Runs `body` on a thread of its own and waits `hookBudget` for it; `nil` where it had not returned.
-    private static func within<Result: Sendable>(_ body: @escaping @Sendable () -> Result) -> Result? {
+    /// How long a bulk read is waited for: well past its 3-second fixture delay and inside the 60-second bulk bound, so machine load cannot decide the test.
+    private static let bulkBudget: TimeInterval = 30
+
+    /// Runs `body` on a thread of its own and waits `budget` for it; `nil` where it had not returned.
+    private static func within<Result: Sendable>(_ budget: TimeInterval = hookBudget, _ body: @escaping @Sendable () -> Result) -> Result? {
         let box = Box<Result>()
         let finished = DispatchSemaphore(value: 0)
         let thread = Thread {
@@ -23,7 +26,7 @@ struct GitChildBoundTests {
             finished.signal()
         }
         thread.start()
-        return finished.wait(timeout: .now() + hookBudget) == .success ? box.value : nil
+        return finished.wait(timeout: .now() + budget) == .success ? box.value : nil
     }
 
     /// The hook's first git call comes back, as a repository git cannot read, inside the hook's budget.
@@ -230,11 +233,11 @@ struct GitChildBoundTests {
         }
         writer.start()
 
-        let answered = Self.within { () -> [String]? in
+        let answered = Self.within(Self.bulkBudget) { () -> [String]? in
             try? GitContext(repoRoot: root).changedFiles(from: first, to: second).map(\.path)
         }
 
-        let paths = try #require(answered, "the range diff was still running \(Self.hookBudget) seconds on")
+        let paths = try #require(answered, "the range diff was still running \(Self.bulkBudget) seconds on")
 
         #expect(paths == ["B.swift"])
     }

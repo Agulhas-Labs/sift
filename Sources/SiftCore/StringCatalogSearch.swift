@@ -122,13 +122,18 @@ struct StringCatalogSearch {
         let formatted = keys.compactMap { key in
             FormatKeyPieces.pieces(of: key).flatMap { pieces in pieces.contains { !$0.isEmpty } ? (key: key, pieces: pieces) : nil }
         }
+        // A plain key holding a character an escape spells is read against the text a literal prints; a key with specifiers already is.
+        let escaped = keys.filter { key in
+            key.contains { "\"\\".contains($0) || $0.unicodeScalars.contains { $0.properties.generalCategory == .control } } && !formatted.contains { $0.key == key }
+        }.map { (key: $0, pieces: [$0]) }
         for path in swiftPaths() {
             guard let data = FileManager.default.contents(atPath: repoRoot.appendingPathComponent(path).path),
                   let source = String(data: data, encoding: .utf8)
             else { continue }
             let interested = needles.filter { source.contains($0.quoted) }
             // A raw literal interpolates with `\#(`, and the match below reads a key's text as the literal prints it, so a file is kept wherever an escape could spell that text.
-            let interpolated = source.contains("\\(") || source.contains("\\#") ? formatted.filter { key in key.pieces.allSatisfy { Self.mayPrint($0, in: source) } } : []
+            let spelled = source.contains("\\(") || source.contains("\\#") ? formatted : []
+            let interpolated = (spelled + escaped).filter { key in key.pieces.allSatisfy { Self.mayPrint($0, in: source) } }
             guard !interested.isEmpty || !interpolated.isEmpty else { continue }
             var lexer = SwiftLiteralLexer()
             for (number, line) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
@@ -138,7 +143,7 @@ struct StringCatalogSearch {
                 }
                 guard !interpolated.isEmpty else { continue }
                 let literals = lexer.literals(on: line)
-                for spelling in interpolated where literals.contains(where: { $0.printedSegments == spelling.pieces }) && sites[spelling.key]?.last != site {
+                for spelling in interpolated where literals.contains(where: { $0.unindentedPrintedSegments == spelling.pieces }) && sites[spelling.key]?.last != site {
                     sites[spelling.key, default: []].append(site)
                 }
             }

@@ -202,7 +202,8 @@ struct PagedAnswerTests {
     /// In a context where the page's bytes leave a positive margin and the whole digest's would not, the read is answered: the rule weighs the page.
     @Test
     func theRuleAnswersWhereOnlyThePageIsWorthTheTurn() async throws {
-        let root = try await Self.repository(padding: 400)
+        // Padding that keeps the whole digest past two fifths of the file: within it, the digest is served whole past the budget and no page is cut.
+        let root = try await Self.repository(padding: 170)
         let match = try #require(InPlaceShape.match(forShell: "cat \(Self.path)", in: root.path))
         let backoff = try InPlaceAnswerTests.backoff()
         let page = await InPlaceAnswerTests.onItsOwnThread {

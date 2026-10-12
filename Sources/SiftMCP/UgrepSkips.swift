@@ -7,6 +7,8 @@ import SiftCore
 
 /// The files a recursive search walks that `ugrep`, behind Claude Code's `grep` function, passes over and the system grep reads.
 ///
+/// Only Claude Code's shell runs `ugrep`; Cursor's and Codex's run the system grep (``ShellGrep/Program``). Under Claude Code's the walk itself never enters a version-control directory, and this weighs only what is left.
+///
 /// `ugrep` skips a version-control directory — the operand included, where it is one — and every path the ignore rules in the `.gitignore` files at or below the operand ignore, a tracked file included; it reads no `.gitignore` above the operand, and neither `.git/info/exclude` nor the excludes file git's configuration names. The system grep reads every one of them.
 ///
 /// `ugrep` reads those rules as git does, a `!` pattern keeping what an earlier one ignored, except that it matches case-sensitively whatever `core.ignorecase` says, reads some spellings its own way, and matches a pattern holding a `/` inside it against the path as the walk spells it from the operand, not from the `.gitignore`'s own directory.

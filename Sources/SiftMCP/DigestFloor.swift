@@ -52,23 +52,25 @@ public struct DigestFloor {
     /// A `wouldServeContent` that answers each path once.
     ///
     /// A cold read is a first touch, so within one transcript nothing repeats — but the audit walks every transcript in a window, and the same `SummaryState.swift` is first-touched in each of them. Sharing one of these across a run turns hundreds of redundant reads into one per file.
-    public static func memoised() -> (String) -> Bool {
+    public static func memoised() -> @Sendable (String) -> Bool {
         let answers = Answers()
         return { path in answers.value(for: path) }
     }
 }
 
 private extension DigestFloor {
-    /// A tiny reference box, so the closure above can memoise without static mutable state.
-    final class Answers {
+    /// A tiny reference box, so the closure above can memoise without static mutable state, shared by scans running on several threads at once.
+    final class Answers: @unchecked Sendable {
+        private let lock = NSLock()
         private var known: [String: Bool] = [:]
 
+        /// Two threads asking for one path at once may both read it; the answer is the same either way.
         func value(for path: String) -> Bool {
-            if let known = known[path] {
+            if let known = lock.withLock({ known[path] }) {
                 return known
             }
             let answer = DigestFloor.wouldServeContent(path)
-            known[path] = answer
+            lock.withLock { known[path] = answer }
             return answer
         }
     }

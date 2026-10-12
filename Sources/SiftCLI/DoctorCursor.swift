@@ -16,6 +16,17 @@ struct DoctorCursor {
         .cursor
     }
 
+    /// Whether nothing of sift's is in Cursor: no hook registered and no server of this tool's, read the way ``checks()`` reads them; a file that cannot be read or parsed is not nothing, and a server named sift is something however it runs.
+    var hasNothingOfSift: Bool {
+        let data: Data?
+        do {
+            data = try CursorInstall.read(directory.appendingPathComponent(CursorHooksFile.fileName))
+        } catch {
+            return false
+        }
+        return DoctorTraces.hooksHoldNothing(data) && DoctorTraces.serversHoldNothing(in: directory.appendingPathComponent(CursorMcpFile.fileName))
+    }
+
     /// Every check, in the order the answer lists them.
     func checks() -> [DoctorCheck] {
         let hooksFile = directory.appendingPathComponent(CursorHooksFile.fileName)

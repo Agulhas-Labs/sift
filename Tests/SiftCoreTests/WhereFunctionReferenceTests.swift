@@ -66,7 +66,7 @@ struct WhereFunctionReferenceTests {
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Uses.swift:3  in Uses.qualified(_:)"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Uses.swift:6  in Uses.implicit()"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Uses.swift:10  in Uses.unlabeled(_:)"), "\(output)")
-        #expect(output.contains("syntactic call sites — by written name"), "\(output)")
+        #expect(output.contains("no store for callers, overrides or references; sites by written name"), "\(output)")
     }
 
     /// A compound name states the labels of the declaration it means, so one spelling other labels is narrowed out as a call with them is.
@@ -89,7 +89,7 @@ struct WhereFunctionReferenceTests {
 
         let output = try await Self.lookup("Depot.restock(from:)", in: root)
 
-        #expect(output.contains("\"restock\" (2 call sites by name, 1 with the labels (from:), in 1 file"), "\(output)")
+        #expect(output.contains("\"restock\" (2 call sites by written name, 1 with the labels (from:), in 1 file"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Shell.swift:7  in Depot.moves(_:)"), "\(output)")
         #expect(!WhereStoreSiteTextTests.located(output).contains("Sources/App/Uses.swift:3"), "\(output)")
     }
@@ -114,7 +114,7 @@ struct WhereFunctionReferenceTests {
 
         let output = try await Self.lookup("Panel.tap(_:)", in: root)
 
-        #expect(output.contains("\"tap\" (2 call sites in 1 file"), "\(output)")
+        #expect(output.contains("\"tap\" (2 call sites by written name in 1 file"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Panel.swift:4  in Panel.wire()"), "\(output)")
     }
 
@@ -265,9 +265,11 @@ struct WhereFunctionReferenceTests {
 
         let output = try await Self.lookup("Engine.fast(level:)", in: root)
 
-        #expect(output.contains("\"fast\" (1 call site in 1 file"), "\(output)")
+        #expect(output.contains("\"fast\" (1 call site by written name in 1 file"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Engine.swift:11  in start()"), "\(output)")
-        #expect(!WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Engine.swift:9  in start()"), "\(output)")
+        let (listed, written) = SyntacticWhereUnappliedRefsTests.listedAndWrittenWithNoCall(output)
+        #expect(!listed.contains("Sources/App/Engine.swift:9  in start()"), "\(output)")
+        #expect(written.contains("Sources/App/Engine.swift:9  in start()"), "\(output)")
     }
 
     /// A name written twice on one line with no call — `self.size = size` — is one place to look, listed and counted once.

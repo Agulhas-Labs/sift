@@ -36,7 +36,7 @@ struct WhereNestedTypeAliasFoldTests {
         try TestSources.commitAll(in: root, message: "nested alias fixture, unbuilt")
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
-        return try await engine.lookup(symbol: "Net.URL", freshness: freshness)
+        return try await engine.lookup(symbol: "Net.URL", freshness: freshness, options: WhereOptions(standsInForSearch: true))
     }
 
     /// A top-level alias writing only the nested type's last name is the framework type of that name, so its uses are not the nested type's.

@@ -60,7 +60,7 @@ public struct ScanDumpRequest: Sendable, Equatable, Codable {
             return scan.windows.map { window in
                 var keyed = window
                 keyed.session = id
-                if unreachable, keyed.classification == "cold" {
+                if unreachable, keyed.isColdMiss {
                     keyed.classification = "unreachable"
                 }
                 return keyed

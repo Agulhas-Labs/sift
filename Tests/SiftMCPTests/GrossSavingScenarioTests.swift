@@ -7,7 +7,7 @@ import SiftCore
 @testable import SiftMCP
 import Testing
 
-/// Every face states the index's saving gross: the usage log's figure, labelled, with its baseline, and one line counting the digests whose file was then read whole.
+/// Every face states the index's saving gross: the usage log's figure, labelled, with what it was priced on, and one line counting the digests whose file was then read whole.
 ///
 /// Counted from the share, never priced, never subtracted. Built from a real transcript and usage log.
 @Suite(.temporaryDirectories)
@@ -18,7 +18,7 @@ struct GrossSavingScenarioTests {
 
     /// The count line for one digest read whole afterwards, as every face with a scan prints it.
     private static var oneReadAnyway: String {
-        "1 digest was followed by a whole read of its file; its saving is not subtracted, so the figure leans high"
+        "1 digest was followed by a whole read of its file; a saving priced on it is not subtracted"
     }
 
     /// A checkout holding one file well above the digest floor, the digest answer the index would serve for it, and a second digest's claim beside it in the log.
@@ -46,8 +46,8 @@ struct GrossSavingScenarioTests {
         try Data(stamped(digest + reading(file.path, cwd)).flatMap { $0 + [0x0A] }).write(to: project.appendingPathComponent("session.jsonl"))
         let log = directory.appendingPathComponent("usage.jsonl")
         try [
-            logLine(target: relative, served: answer.utf8.count, source: source.utf8.count, via: via),
-            logLine(target: "Ledger", served: 1000, source: 41000, via: nil),
+            logLine(target: relative, served: answer.utf8.count, source: source.utf8.count),
+            logLine(target: "Ledger", served: 1000, source: 41000),
         ].joined(separator: "\n").appending("\n").write(to: log, atomically: true, encoding: .utf8)
         return Scenario(directory: directory, file: file.path, log: log, gross: source.utf8.count - answer.utf8.count + 40000)
     }
@@ -62,12 +62,12 @@ struct GrossSavingScenarioTests {
         }
     }
 
-    private static func logLine(target: String, served: Int, source: Int, via: String?) -> String {
-        var entry: [String: Any] = [
+    /// An intercepted window, the one shape the log prices, whatever shape the transcript's digest took.
+    private static func logLine(target: String, served: Int, source: Int) -> String {
+        let entry: [String: Any] = [
             "ts": "2026-10-01T10:00:00Z", "tool": "digest", "target": target, "root": "/repo", "ms": 4, "ok": true,
-            "session": "session", "outBytes": served, "srcBytes": source,
+            "session": "session", "outBytes": served, "srcBytes": source, "via": "hook", "intercepted": "window",
         ]
-        entry["via"] = via
         let data = (try? JSONSerialization.data(withJSONObject: entry)) ?? Data()
         return String(bytes: data, encoding: .utf8) ?? ""
     }
@@ -105,7 +105,7 @@ struct GrossSavingScenarioTests {
 
         let report = TranscriptAudit.render(projectsDirectory: scenario.directory.appendingPathComponent("projects"), usageLog: scenario.log)
 
-        #expect(report.contains("    saving    \(TokenEstimate.saved(bytes: scenario.gross)), \(TokenEstimate.basis(bytes: scenario.gross)): every measured call the usage log holds for this window"))
+        #expect(report.contains("    saving    \(TokenEstimate.saved(bytes: scenario.gross)), \(TokenEstimate.basis(bytes: scenario.gross)): the 2 intercepted reads the usage log priced for this window"))
         #expect(report.contains("    gross     \(Self.oneReadAnyway)"))
         #expect(Self.carriesNoNetting(report))
     }
@@ -117,8 +117,8 @@ struct GrossSavingScenarioTests {
 
         let report = UsageReport.render(fileURL: scenario.log)
 
-        #expect(report.contains("estimated savings — \(TokenEstimate.saved(bytes: scenario.gross)), \(TokenEstimate.basis(bytes: scenario.gross)): "))
-        #expect(report.contains("the figure above is gross: a digest or answer whose file was then read whole anyway still counts, which this log cannot see; sift audit counts those reads"))
+        #expect(report.contains("estimated savings — \(TokenEstimate.saved(bytes: scenario.gross)) on 2 intercepted reads (\(TokenEstimate.baseline)) — \(TokenEstimate.basis(bytes: scenario.gross))"))
+        #expect(report.contains("the figure above is gross: an answer whose file was then read whole anyway is taken back only by a re-run or whole read the hook let through; sift audit counts those reads"))
         #expect(Self.carriesNoNetting(report))
     }
 
@@ -130,7 +130,7 @@ struct GrossSavingScenarioTests {
         let page = Self.page(scenario)
 
         #expect(page.contains("<p class=\"figure\">\(TokenEstimate.saved(bytes: scenario.gross))</p>"))
-        #expect(page.contains("<p class=\"caption\">\(TokenEstimate.basis(bytes: scenario.gross)) — "))
+        #expect(page.contains("<p class=\"caption\">\(TokenEstimate.basis(bytes: scenario.gross)), on 2 intercepted reads"))
         #expect(page.contains("<p class=\"caption\">\(Self.oneReadAnyway)</p>"))
         #expect(Self.carriesNoNetting(page))
     }

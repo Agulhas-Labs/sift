@@ -102,7 +102,7 @@ public struct ReadOnlyIndex {
 
     /// Whether the syntactic index at `root` has completed at least one build — the same predicate `SiftEngine.ensureFresh()` uses to decide a full index is owed (0 files, or no `indexed_head` meta row).
     ///
-    /// A store that merely opens at the current schema is not enough: an in-place answerer that overran its budget leaves exactly this — the file created, nothing indexed into it — and that store must count as no index at all, the same as a missing one, or nothing ever fills it.
+    /// A store that merely opens at the current schema is not enough: an in-place answerer that overran its budget leaves exactly this — the file created, perhaps some batches of files committed, but no `indexed_head` — and that store must count as no index at all, the same as a missing one, or nothing ever fills it.
     public static func hasUsableIndex(atRoot root: String) -> Bool {
         open(atRoot: root).map(isUsable) ?? false
     }
@@ -128,7 +128,9 @@ public struct ReadOnlyIndex {
         let url = URL(filePath: root)
         // A configuration that does not load stops an engine opening at all; probed with the defaults, the answer
         // is still whether a store is there to find.
-        var discovery = IndexStoreDiscovery(repoRoot: url, config: (try? SiftConfig.load(repoRoot: url)) ?? SiftConfig())
+        let config = (try? SiftConfig.load(repoRoot: url)) ?? SiftConfig()
+        var discovery = IndexStoreDiscovery(repoRoot: url, config: config)
+        discovery.packageDirectories = ModuleResolver(repoRoot: url, config: config).packageDirectories
         discovery.weighsCandidates = false
         return discovery.discover() != nil
     }

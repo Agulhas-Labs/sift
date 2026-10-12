@@ -492,7 +492,7 @@ struct RunCommandTests {
     /// The finished transcripts in `directory`, in a stable order, and none where there is no such directory.
     private static func transcripts(in directory: URL) -> [URL] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        return names.filter { $0.hasPrefix("run-") && $0.hasSuffix(".log") }
+        return names.filter { ($0.hasPrefix("run-") || $0.hasPrefix("failed-")) && $0.hasSuffix(".log") }
             .sorted()
             .map { directory.appendingPathComponent($0) }
     }

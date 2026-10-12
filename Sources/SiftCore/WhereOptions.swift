@@ -16,8 +16,13 @@ public struct WhereOptions: Sendable {
     ///
     /// The command line asks for a few: its reader is a person or an agent at a shell, and a list of leads the answer itself says may be other symbols' sites is worth its count and a sample there, not a page of them.
     public var nameMatchedSiteCap: Int?
+    /// Set by the hook's in-place answers alone, never by the MCP face or the command line: the answer stands in for the lines a search printed, so it keeps a type's rows and omits the non-code section.
+    ///
+    /// `InPlaceAnswerer` builds `shownPerName` and `UnshownGrepLines` from those rows, and a count line alone would leave the lines a search printed unaccounted for.
+    public var standsInForSearch: Bool
 
-    public init(includeSemantic: Bool = true, includeReferences: Bool = false, offset: Int = 0, collapsesSeveralOwners: Bool = true, nameMatchedSiteCap: Int? = nil) {
+    public init(includeSemantic: Bool = true, includeReferences: Bool = false, offset: Int = 0, collapsesSeveralOwners: Bool = true, nameMatchedSiteCap: Int? = nil, standsInForSearch: Bool = false) {
+        self.standsInForSearch = standsInForSearch
         self.includeSemantic = includeSemantic
         self.includeReferences = includeReferences
         self.offset = offset

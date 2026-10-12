@@ -81,6 +81,9 @@ public struct UsageLog: Sendable {
         agent: String? = nil,
         session: String? = Self.currentSession,
         via: String? = nil,
+        intercepted: String? = nil,
+        call: String? = nil,
+        readBytes: Int? = nil,
         located: [String] = [],
         miss: Bool = false,
         parts: [MeasuredAnswer.Part] = []
@@ -105,6 +108,21 @@ public struct UsageLog: Sendable {
         }
         if let via {
             entry["via"] = via
+        }
+        // What an answer given in place stood in for — a whole file, a window, or neither — which is all that decides
+        // whether its saving can be priced (``UsageScan/Entry/credited``). Absent on every other line, and on a hook
+        // line written before the field, which is therefore never priced.
+        if let intercepted {
+            entry["intercepted"] = intercepted
+        }
+        // The harness's id for the command a hook answer stood in for, which a later read-anyway line names
+        // (``recordReadAnyway(call:target:session:agent:)``), and for a whole file, the bytes one `Read` of it returns,
+        // which is what its saving is priced against. Absent on every other line.
+        if let call {
+            entry["call"] = call
+        }
+        if let readBytes {
+            entry["readBytes"] = readBytes
         }
         // And *which context inside* that session, where a hook was there to say so. A subagent's calls
         // arrive under its parent's session id and are otherwise indistinguishable from its parent's, which
@@ -139,6 +157,20 @@ public struct UsageLog: Sendable {
             if let source = answer.source {
                 entry["srcBytes"] = source
             }
+        }
+        log.append(entry)
+    }
+
+    /// Records that the context read anyway what a hook answer stood in for — re-ran the command it answered, or read the file whole — naming the answer by the command's id and the target its line recorded, so ``UsageScan`` takes that answer's saving back.
+    ///
+    /// A line of its own rather than a call: it has no `tool`, so every reader that counts calls passes over it.
+    public func recordReadAnyway(call: String, target: String, session: String?, agent: String?) {
+        var entry: [String: Any] = ["ts": ISO8601DateFormatter().string(from: Date()), "readAnyway": call, "target": target]
+        if let session, !session.isEmpty {
+            entry["session"] = session
+        }
+        if let agent, !agent.isEmpty {
+            entry["agent"] = agent
         }
         log.append(entry)
     }

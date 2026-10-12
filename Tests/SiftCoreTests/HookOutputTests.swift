@@ -73,6 +73,18 @@ struct HookOutputTests {
         #expect(specific["permissionDecisionReason"] == nil)
     }
 
+    /// A context given with an amendment rides in the same output as `additionalContext` and still decides no permission.
+    @Test
+    func anAmendmentCanCarryAContextNoteAndStillDecidesNoPermission() throws {
+        let rendered = try #require(HookOutput.preToolUseAmendment(input: ["command": "sift run -- swift test"], context: "a note"))
+        let object = try #require(JSONSerialization.jsonObject(with: Data(rendered.utf8)) as? [String: Any])
+        let specific = try #require(object["hookSpecificOutput"] as? [String: Any])
+
+        #expect(specific["additionalContext"] as? String == "a note")
+        #expect((specific["updatedInput"] as? [String: Any])?["command"] as? String == "sift run -- swift test")
+        #expect(specific["permissionDecision"] == nil)
+    }
+
     /// An input this cannot encode produces nothing rather than a half-written envelope: silence leaves the call as it was, which is the safe direction for a hook that decides whether a tool runs.
     @Test
     func anUnencodableAmendmentPrintsNothing() {

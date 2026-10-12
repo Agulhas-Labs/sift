@@ -27,10 +27,11 @@ struct IfConfigLabel {
 
     /// Every clause of `text` whose lines hold `line`, outermost first, the tree discarded once walked.
     private static func clauses(around line: Int, in text: String) -> [Clause] {
-        let tree = Parser.parse(source: text)
-        let collector = ClauseCollector(line: line, converter: SourceLocationConverter(fileName: "", tree: tree))
-        collector.walk(tree)
-        return collector.clauses
+        NestingGate.parseOrEmpty(text) { tree in
+            let collector = ClauseCollector(line: line, converter: SourceLocationConverter(fileName: "", tree: tree))
+            collector.walk(tree)
+            return collector.clauses
+        }
     }
 }
 

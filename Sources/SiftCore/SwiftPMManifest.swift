@@ -21,6 +21,8 @@ public struct SwiftPMManifest {
     let conditionalTestTargets: Bool
     /// Whether any target factory is called with a `name:` that is not a plain literal, which makes ``targets`` a partial list of what the manifest declares.
     let computedTargetNames: Bool
+    /// The package's own name, as the `Package(name:)` call writes it in a plain literal, and `nil` where it is computed or no such call is read.
+    let packageName: String?
 
     /// `true` for a SwiftPM manifest at any depth — source to the build system, not to any module.
     ///
@@ -35,17 +37,23 @@ public struct SwiftPMManifest {
         !parse(fileAt: root.appendingPathComponent("Package.swift")).testTargets.isEmpty
     }
 
+    /// The name the `Package.swift` in `root` gives its package in a plain literal, read syntactically like everything here; `nil` for a manifest that cannot be read or computes the name.
+    static func packageName(inPackageAt root: URL) -> String? {
+        parse(fileAt: root.appendingPathComponent("Package.swift")).packageName
+    }
+
     static func parse(fileAt url: URL) -> SwiftPMManifest {
         guard let data = FileManager.default.contents(atPath: url.path),
-              let source = String(data: data, encoding: .utf8) else { return SwiftPMManifest(targets: [], testTargets: [], conditionalTestTargets: false, computedTargetNames: false) }
+              let source = String(data: data, encoding: .utf8) else { return SwiftPMManifest(targets: [], testTargets: [], conditionalTestTargets: false, computedTargetNames: false, packageName: nil) }
         return parse(source: source)
     }
 
     static func parse(source: String) -> SwiftPMManifest {
-        let tree = Parser.parse(source: source)
-        let visitor = Visitor(viewMode: .sourceAccurate)
-        visitor.walk(tree)
-        return SwiftPMManifest(targets: visitor.targets, testTargets: visitor.testTargets, conditionalTestTargets: visitor.conditionalTestTargets, computedTargetNames: visitor.computedTargetNames)
+        NestingGate.parseOrEmpty(source) { tree in
+            let visitor = Visitor(viewMode: .sourceAccurate)
+            visitor.walk(tree)
+            return SwiftPMManifest(targets: visitor.targets, testTargets: visitor.testTargets, conditionalTestTargets: visitor.conditionalTestTargets, computedTargetNames: visitor.computedTargetNames, packageName: visitor.packageName)
+        }
     }
 }
 
@@ -66,6 +74,8 @@ private extension SwiftPMManifest {
         var testTargets: [String] = []
         var conditionalTestTargets = false
         var computedTargetNames = false
+        /// The name the first `Package(name:)` call writes as a plain literal.
+        var packageName: String?
         /// How many `#if` declarations enclose the node being visited, so a target inside one is known to be conditional whatever the condition says.
         private var ifConfigDepth = 0
 
@@ -79,6 +89,9 @@ private extension SwiftPMManifest {
         }
 
         override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
+            if packageName == nil, node.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text == "Package" {
+                packageName = literal(labeled: "name", in: node)
+            }
             guard let callee = node.calledExpression.as(MemberAccessExprSyntax.self),
                   callee.base == nil,
                   SwiftPMManifest.targetFactories.contains(callee.declName.baseName.text) else { return .visitChildren }

@@ -98,10 +98,10 @@ struct RunCommandKindTests {
 
     /// An action argv leaves in doubt is not guessed into a key, and the bare tool name is where that lands.
     ///
-    /// `-scheme test` names a scheme, and an export replaces the build with a mode whose closing line nobody here has measured. Both file exactly as a line recorded without its action does — under `xcodebuild`, which ``RunCommandKind/population(of:)`` refuses to count. Guessing either into a population is the failure this whole path is arranged to prevent, and the fallback for it is the one already on disk.
+    /// An action word behind a flag this reader has never heard of may be that flag's value or the action, and an export replaces the build with a mode whose closing line nobody here has measured. Both file exactly as a line recorded without its action does — under `xcodebuild`, which ``RunCommandKind/population(of:)`` refuses to count. Guessing either into a population is the failure this whole path is arranged to prevent, and the fallback for it is the one already on disk.
     @Test
     func anActionArgvLeavesInDoubtFilesUnderTheBareToolName() {
-        #expect(RunCommandKind.logKey(of: ["xcodebuild", "-scheme", "test", "-project", "Gizmo.xcodeproj"]) == "xcodebuild")
+        #expect(RunCommandKind.logKey(of: ["xcodebuild", "-aFlagAddedAfterThisTableWasWritten", "test", "-project", "Gizmo.xcodeproj"]) == "xcodebuild")
         #expect(RunCommandKind.logKey(of: ["xcodebuild", "-exportArchive", "-archivePath", "A.xcarchive"]) == "xcodebuild")
         #expect(RunCommandKind.population(of: "xcodebuild") == nil)
     }

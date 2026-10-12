@@ -12,10 +12,11 @@ import SwiftSyntax
 struct HostCompilation {
     /// Every `#if` clause in `source`, nested ones included, each with the lines it spans and its state, the tree discarded once walked.
     static func regions(in source: String) -> [Region] {
-        let tree = Parser.parse(source: source)
-        let collector = RegionCollector(converter: SourceLocationConverter(fileName: "", tree: tree))
-        collector.walk(tree)
-        return collector.regions
+        NestingGate.parseOrEmpty(source) { tree in
+            let collector = RegionCollector(converter: SourceLocationConverter(fileName: "", tree: tree))
+            collector.walk(tree)
+            return collector.regions
+        }
     }
 
     /// What the host makes of `line`: compiled out where any clause around it is inactive, undecided where any is undecided, and active otherwise.

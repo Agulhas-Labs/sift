@@ -11,13 +11,21 @@ import SiftCore
 public struct InPlaceAnswer {
     /// How long the hook spends answering before it lets the command through: three seconds, for the engine open, the freshness check, the query and the rendering together.
     ///
-    /// An order of magnitude more than a warm index takes to answer from a fresh process, and still well inside the five-second timeout the hook is registered with. It is spent against an outcome that costs a turn of the model's — the answer handed over in the denial, so the call that makes it is never spent — where the alternative is the command running as it would have anyway. What overruns it is the index doing something other than answering: reindexing a large dirty set, waiting on another process's write, reading a cold volume. The call is allowed then, never refused bare, and the back-off holds the shape off in that repository for the window, so the wait is paid at most once in it. The budget bounds the one path of the hook that runs the index at all; every command the hook lets through without attempting an answer never reaches it.
+    /// An order of magnitude more than a warm index takes to answer from a fresh process, and still well inside the five-second timeout the hook is registered with. It is spent against an outcome that costs a turn of the model's — the answer handed over in the denial, so the call that makes it is never spent — where the alternative is the command running as it would have anyway. What overruns it is the index doing something other than answering: reindexing a large dirty set, waiting on another process's write, reading a cold volume. The call is allowed then, never refused bare, and the back-off holds the shape off in that repository for the window, so the wait is paid at most once in it — a short window where the overrun was the repository's first index build (``InPlaceBackoff/coldStartWindow``). The budget bounds the one path of the hook that runs the index at all; every command the hook lets through without attempting an answer never reaches it.
     public static let timeBudget: TimeInterval = 3
 
     /// The most the whole refusal may hold, in UTF-8 bytes: ten thousand, the harness's own line for how much hook text it puts in front of the model.
     ///
     /// Claude Code hands a model hook-supplied context whole up to ten thousand characters and past that saves it to a file and shows a preview. A refusal's reason is delivered whole today at three times that, but a reason past the harness's own line is one change away from arriving cut, and an answer cut mid-listing reads as complete. Bytes bound characters from above, so the limit holds however much of the text is outside ASCII. A digest too long for it is served as its first page cut to fit, ending in the cursor that pages it, where one file's digest is over it and the page saves at least the window-saving floor and reaches any window asked for; any other answer too long for it lets the call run.
     public static let sizeBudget = 10000
+
+    /// The share of a file's bytes the whole digest served for a whole read of it may run to past ``sizeBudget``: two fifths.
+    public static let wholeReadShare = (numerator: 2, denominator: 5)
+
+    /// The most that digest may run to however large the file: twenty-four thousand bytes.
+    ///
+    /// A whole digest past either bound is served as its first page cut to fit the size budget, as any other over it is.
+    public static let wholeReadCeiling = 24000
 
     /// The least a window's answer must save, in UTF-8 bytes, where the answer does not show the text of the lines the window asks for: four kibibytes, about a thousand tokens.
     ///
@@ -58,10 +66,16 @@ public struct InPlaceAnswer {
     /// `note` is an aside outside the backticks, for a call spelled with less than it seems to offer — a bounded window's `digest F.swift` stands for the file's whole digest without being it, and the note is where that is said, right beside the call it qualifies.
     ///
     /// `rerun` is the size of the file a whole read asked for, where the answer is that file's digest: the suffix then says what the identical re-run costs and names the ranged read that costs less.
-    static func openingLine(calls: [String], wholeCommand: Bool = true, lookups: Int = 1, note: String? = nil, rerun: (lines: Int, bytes: Int)? = nil) -> String {
+    ///
+    /// `teed` names the files a trailing `tee` of the command would have written, as the command spells them: the command did not run, so the suffix ends by saying they were not written.
+    static func openingLine(calls: [String], wholeCommand: Bool = true, lookups: Int = 1, note: String? = nil, rerun: (lines: Int, bytes: Int)? = nil, teed: [String] = []) -> String {
         let subject = wholeCommand ? "this" : lookups > 1 ? "the lookups in this command" : "the lookup in this command"
         let aside = note.map { " (\($0))" } ?? ""
-        let suffix = rerun.map { rerunSuffix(lines: $0.lines, bytes: $0.bytes) } ?? openingSuffix
+        var suffix = rerun.map { rerunSuffix(lines: $0.lines, bytes: $0.bytes) } ?? openingSuffix
+        if !teed.isEmpty, suffix.hasSuffix(".") {
+            suffix.removeLast()
+            suffix += " (not run: \(teed.joined(separator: ", ")) \(teed.count == 1 ? "was" : "were") not written)."
+        }
         return "sift answered \(subject) with \(calls.map { "`\($0)`" }.joined(separator: ", "))\(aside) instead of running it\(suffix)"
     }
 
@@ -130,9 +144,10 @@ public struct InPlaceAnswer {
         wholeCommand: Bool = true,
         lookups: Int = 1,
         note: String? = nil,
-        rerun: (lines: Int, bytes: Int)? = nil
+        rerun: (lines: Int, bytes: Int)? = nil,
+        teed: [String] = []
     ) -> Refusal {
-        let framed = "\(openingLine(calls: calls, wholeCommand: wholeCommand, lookups: lookups, note: note, rerun: rerun))\n\n\(answer)\n\n"
+        let framed = "\(openingLine(calls: calls, wholeCommand: wholeCommand, lookups: lookups, note: note, rerun: rerun, teed: teed))\n\n\(answer)\n\n"
         let fixed = framed.utf8.count
         // A length the closing line can have whose line, priced at the framing plus that length, is that long. Its
         // figures move its length by a few bytes, and a claim is never twice as long as a denial, so any such length

@@ -24,7 +24,11 @@ public extension SetAsideRecord.MutatedLine {
     ///
     /// Only a statement that starts and ends on the line, whose right-hand side is one identifier and whose target is not already `_`, qualifies: a call, a member access, an operator, a literal, a declaration and a compound assignment (`+=`) all give `nil`, because setting those aside as `_ = name` would do more than remove the store. The file is read with the parser, so the first line of a statement that goes on to the next, a line that shares its statement with another, and a line that does not parse are `nil` as well.
     static func bareAssignment(inFile text: String, line number: Int) -> BareAssignment? {
-        let tree = Parser.parse(source: text)
+        NestingGate.parseOrEmpty(text) { bareAssignment(in: $0, line: number) }
+    }
+
+    /// Line `number` of the parsed file `tree` as a bare-identifier assignment, as ``bareAssignment(inFile:line:)`` reads it.
+    private static func bareAssignment(in tree: SourceFileSyntax, line number: Int) -> BareAssignment? {
         let converter = SourceLocationConverter(fileName: "", tree: tree)
         var touching: [CodeBlockItemSyntax] = []
         collectItems(Syntax(tree), converter: converter, line: number, into: &touching)

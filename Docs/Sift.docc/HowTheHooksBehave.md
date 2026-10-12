@@ -50,7 +50,7 @@ over 2000 lines, the most a `Read` prints by default.
 and goes on with the digest:
 
 ```text
-tree: Shelf  head: ec26cde  dirty: 1  parse_errors: 0  semantic: syntactic-only
+tree: Shelf  head: ec26cde  dirty: 1  parse_errors: 0
 Sources/Stacks/Library.swift — module: Stacks
 imports: Foundation
 
@@ -107,8 +107,9 @@ This checks syntax only; a type error still needs a build. The same content is b
 When the edit added a function shaped like one that already exists, the hook names the existing one in a
 single line. A clean edit with no resemblance prints nothing.
 
-The `Stop` and `SubagentStop` hooks send a context back once to build before it stops, when it edited Swift
-since its last green `sift run` build.
+The `Stop` and `SubagentStop` hooks send a context back once to build before it stops, when it edited Swift or another
+build input (a build setting, a plist, a C source) since its last green `sift run` build.
+While a `sift run` of the tree as it stands is still going (its process alive), they say nothing: that run's verdict will be the record.
 
 ### Seeing what the hooks did
 

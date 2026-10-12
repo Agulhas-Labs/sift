@@ -146,8 +146,13 @@ public struct ReportPage {
 
     private static func savingsSection(_ data: ReportData) -> String {
         guard let savings = data.savings else {
+            // A saving is priced only on a read the advice hook intercepted and answered in place; every other call is
+            // counted, never priced, so a window without one says why it states no figure.
+            let empty = "No saving is priced in this window: only a read the advice hook intercepted and answered in place "
+                + "has an observed counterfactual (\(TokenEstimate.baseline))."
             return section(title: "Estimated savings", body: """
-            <p class="empty">No call in this window measured itself against the source it replaced.</p>
+            <p class="empty">\(empty)</p>
+            \(data.markdown.map { "<p class=\"caption\">\(escaped($0.note))</p>" } ?? "")
             \(runsRow(data))
             """)
         }
@@ -165,9 +170,7 @@ public struct ReportPage {
         // never priced, since no join of a call to its log line could be shown right (Docs/Design.md).
         let notes = [
             savings.savedText.flatMap { _ in TokenEstimate.readAnyway(data.share?.tally.readWholeAfterDigest ?? 0) },
-            savings.unrecorded.map { "\($0.calls) \($0.note)" },
             savings.unpriced.map { "\($0.calls) \($0.note)" },
-            savings.floorNote,
             // Plural on the count of *agents*, not of calls: the note it runs into names them ("is work 2
             // subagents did"), and a singular opening against a plural close reads as a rendering bug in a
             // page whose whole job is to be believed about its numbers. The article goes with the plural,
@@ -175,12 +178,14 @@ public struct ReportPage {
             savings.subagents.map {
                 "\($0.row.calls) of those calls came from \($0.agents == 1 ? "a subagent" : "subagents"): \($0.note)"
             },
+            // After the subagent note, which is a share of the total and must not read as a share of this.
+            data.markdown.map(\.note),
         ]
         .compactMap(\.self)
         .map { "<p class=\"caption\">\(escaped($0))</p>" }
         return section(title: "Estimated savings", body: """
         \(savings.savedText.map { "<p class=\"figure\">\(escaped($0))</p>" } ?? "")
-        <p class="caption">\(escaped(savings.savedBasis.map { basis in "\(basis) — \(savings.sentence)" } ?? savings.sentence)); \(escaped(TokenEstimate.baseline))</p>
+        <p class="caption">\(escaped(savings.savedBasis.map { basis in "\(basis), \(savings.sentence)" } ?? savings.headline))</p>
         <table>
         <thead><tr><th>calls</th><th>answers</th><th>source → served</th><th>outcome</th></tr></thead>
         <tbody>

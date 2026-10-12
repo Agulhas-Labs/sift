@@ -28,14 +28,15 @@ final class FingerprintScanner: SyntaxVisitor {
 
     /// Parses `source` and returns its fingerprints; the tree is local to this call and released when it returns.
     static func fingerprints(in source: String, path: String) -> [DeclarationFingerprint] {
-        let tree = Parser.parse(source: source)
-        let scanner = FingerprintScanner(
-            path: path,
-            converter: SourceLocationConverter(fileName: path, tree: tree),
-            sourceBytes: Array(source.utf8)
-        )
-        scanner.walk(tree)
-        return scanner.fingerprints
+        NestingGate.parseOrEmpty(source) { tree in
+            let scanner = FingerprintScanner(
+                path: path,
+                converter: SourceLocationConverter(fileName: path, tree: tree),
+                sourceBytes: Array(source.utf8)
+            )
+            scanner.walk(tree)
+            return scanner.fingerprints
+        }
     }
 
     // MARK: Containers

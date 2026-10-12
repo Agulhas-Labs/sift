@@ -68,7 +68,7 @@ struct DigestedFilesTests {
 
         syntactic call sites — matched on written name over the working tree: never stale, but a name is not a symbol.
 
-        "SummaryState" (1 call sites in 1 files — for App.SummaryState):
+        "SummaryState" (1 call sites by written name in 1 files — for App.SummaryState):
           Sources/App/CatalogueStore.swift:12  in CatalogueStore.load()
         """
     }
@@ -142,7 +142,7 @@ struct DigestedFilesTests {
         #expect(recording.rules == ["alreadyDigested"])
     }
 
-    /// A window of a file this context digested — a ranged `Read`, or a shell window — is the loop working: no lookup, and nothing noted, where a whole read of it is logged `alreadyDigested`; the same window of a file it never digested is the lookup, offered the file's digest.
+    /// A window of a file this context digested — a ranged `Read`, or a shell window — is the loop working: no lookup, logged `locatedWindow`, where a whole read of it is logged `alreadyDigested`; the same window of a file it never digested is the lookup, offered the file's digest.
     @Test(arguments: [true, false])
     func aWindowOfAFileThisContextDigestedIsNoLookup(ranged: Bool) throws {
         let payload: [String: Any] = ranged
@@ -158,7 +158,7 @@ struct DigestedFilesTests {
         }
 
         #expect(Self.lookup(payload, log: digested, noting: recording) == nil)
-        #expect(recording.rules.isEmpty)
+        #expect(recording.rules == ["locatedWindow"])
         #expect(Self.lookup(payload, log: cold, noting: recording)?.suggestion.call == "digest SummaryState")
     }
 
@@ -313,7 +313,7 @@ struct DigestedFilesTests {
         #expect(!log.digested.contains(Self.file("CatalogueStore"), session: Self.session, agent: nil))
     }
 
-    /// A window of a file a `where` answer of this context located is the loop working, as it is after a digest: no lookup, nothing noted.
+    /// A window of a file a `where` answer of this context located is the loop working, as it is after a digest: no lookup, logged `locatedWindow`.
     ///
     /// A file the answer lists only among its name-matched call sites is not located, and is still answered with its digest, as is a file the answer never named — and a whole read of the located file is still refused, since a location is not the file's digest.
     @Test(arguments: [true, false])
@@ -331,7 +331,7 @@ struct DigestedFilesTests {
         }
 
         #expect(Self.lookup(window("SummaryState"), log: log, noting: recording) == nil)
-        #expect(recording.rules.isEmpty)
+        #expect(recording.rules == ["locatedWindow"])
         #expect(Self.lookup(window("CatalogueStore"), log: log, noting: recording)?.suggestion.call == "digest CatalogueStore")
         #expect(Self.lookup(window("DepotStore"), log: log, noting: recording)?.suggestion.call == "digest DepotStore")
         #expect(Self.lookup(Self.read(), log: log, noting: recording)?.suggestion.call == "digest SummaryState")
@@ -375,7 +375,7 @@ struct DigestedFilesTests {
         }
 
         #expect(Self.lookup(payload, log: digested, noting: recording) == nil)
-        #expect(recording.rules.isEmpty)
+        #expect(recording.rules == ["locatedWindow"])
         #expect(Self.lookup(payload, log: cold, noting: recording)?.suggestion.call == "digest SummaryState")
     }
 
@@ -555,11 +555,11 @@ extension DigestedFilesTests {
 
         #expect(line["located"] as? [String] == ["Sources/App/SummaryState.swift"])
         #expect(Self.lookup(window("SummaryState"), log: log, noting: recording) == nil)
-        #expect(recording.rules.isEmpty)
+        #expect(recording.rules == ["locatedWindow"])
         #expect(Self.lookup(window("CatalogueStore"), log: log, noting: recording)?.suggestion.call == "digest CatalogueStore")
         // The answer handed over the served file's whole digest, so a whole read of it is the one already held.
         #expect(Self.lookup(Self.read(), log: log, noting: recording) == nil)
-        #expect(recording.rules == ["alreadyDigested"])
+        #expect(recording.rules == ["locatedWindow", "alreadyDigested"])
     }
 
     /// A digest does not lapse when its file is written after it was served: the whole read is still let through as `alreadyDigested`, by either record, since a modification time cannot tell an edit from a rewrite of the same text.

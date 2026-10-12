@@ -130,7 +130,7 @@ struct WhereConformersOnceTests {
     @Test
     func usageCountsConformancesAndListsOnlyTheRest() async throws {
         try await Self.fixture().withEngine { engine in
-            let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh())
+            let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
 
             #expect(output.contains("used by Lib.Greeter: 8 references in 2 files, 5 of them the conformances listed below — 8 production · 0 tests"), "\(output)")
             #expect(output.contains("  Sources/Lib/Drill.swift (2):\n    :1  | public func drill(greeter: Greeter) {\n    :5  | public func parade(_ first: Greeter, _ second: Greeter) {}\n"), "\(output)")
@@ -143,7 +143,7 @@ struct WhereConformersOnceTests {
     func everyReferenceIsListedOrAConformerLine() async throws {
         try await Self.fixture().withEngine { engine in
             let freshness = try await engine.ensureFresh()
-            let plain = try await engine.lookup(symbol: "Greeter", freshness: freshness)
+            let plain = try await engine.lookup(symbol: "Greeter", freshness: freshness, options: WhereOptions(standsInForSearch: true))
             let swept = try await engine.lookup(symbol: "Greeter", freshness: freshness, options: WhereOptions(includeReferences: true))
 
             let all = Self.fileLines(under: "references to Lib.Greeter (", in: swept)
@@ -188,7 +188,7 @@ struct WhereConformersOnceTests {
         _ = try await engine.ensureFresh()
         try TestSources.write("public struct Soldier: Officer {}\n\npublic protocol Officer: Greeter {}\n", to: "Sources/Lib/Ranks.swift", in: root)
 
-        let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh())
+        let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
 
         #expect(output.contains("conformers of Greeter (2: 1 direct, 1 indirect — direct is every inheritance clause in this tree's source that writes the name, so a grep for the name finds the same lines; a typealias to it is not followed; indirect is from the index store, 1 file changed since last build):"), "\(output)")
         #expect(output.contains("  Lib.Officer — protocol — Sources/Lib/Ranks.swift:3 — direct; the index store does not have it\n"), "\(output)")

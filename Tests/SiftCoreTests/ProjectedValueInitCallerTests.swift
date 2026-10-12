@@ -89,14 +89,29 @@ struct ProjectedValueInitCallerTests {
 
     /// The `where` answer for `symbol` over a built package holding `files`, after the file declaring the second initializer is written again since the build.
     static func staleLookup(_ symbol: String, files: [String: String], thenWriting later: [String: String] = [:]) async throws -> String {
+        try await WhereAnswerRepetitionTests.sitesOnePerLine(staleAnswer(symbol, files: files, thenWriting: later))
+    }
+
+    /// The `where` answer ``staleLookup(_:files:thenWriting:)`` reads, as the answer prints it.
+    static func staleAnswer(_ symbol: String, files: [String: String], thenWriting later: [String: String] = [:]) async throws -> String {
         let root = try ProjectedValueCallTests.repo(files)
         try TestSources.swiftBuild(packageAt: root)
         try TestSources.write("\n" + (files["Sources/Probe/More.swift"] ?? ""), to: "Sources/Probe/More.swift", in: root)
         for (path, text) in later {
             try TestSources.write(text, to: path, in: root)
         }
-        let answer = try await ProjectedValueCallTests.lookup(symbol, in: root, built: false)
-        return WhereAnswerRepetitionTests.sitesOnePerLine(answer)
+        return try await ProjectedValueCallTests.lookup(symbol, in: root, built: false)
+    }
+
+    /// A site listed under the sub-heading of those reaching another initializer by their labels shows its line, though its file's path sits two spaces deeper than the block's own and its row two deeper again.
+    @Test
+    func aSiteReachingAnotherInitializerByItsLabelsShowsItsLine() async throws {
+        let later = ["Sources/Probe/Use.swift": Self.use(spelling: "Clamp(wrappedValue: 3, step: 5)")]
+        let answer = try await Self.staleAnswer("Clamp.init", files: Self.edited, thenWriting: later)
+        let below = Self.text(below: Self.reachingWrappedValue, in: answer).split(separator: "\n").prefix(2).map(String.init)
+
+        #expect(below == ["    Sources/Probe/Use.swift:", "      :5  in use().d  | let d = Clamp(wrappedValue: 4)"], "\(answer)")
+        #expect(NameMatchedSites.shownLines(inAnswer: answer).contains(ExactAnswer.Location(path: "Sources/Probe/Use.swift", line: 5)), "\(answer)")
     }
 
     /// How many times `text` appears in `output`.
@@ -211,10 +226,10 @@ struct ProjectedValueInitCallerTests {
         let output = try await Self.staleLookup("Clamp.init", files: Self.stepped(), thenWriting: Self.rewrittenUse(Self.stepped()))
 
         #expect(output.contains("semantic REFUSED for init(wrappedValue:step:)"), "\(output)")
-        #expect(output.contains("\"Clamp.init\" (2 call sites by name, 1 listed above, in 1 file — for init(wrappedValue:step:)):"), "\(output)")
+        #expect(output.contains("\"Clamp.init\" (2 call sites by written name, 1 listed above, in 1 file — for init(wrappedValue:step:)):"), "\(output)")
         #expect((output + "\n").contains("Use.swift:3  in Box.b\n"), "\(output)")
         #expect(Self.count(of: "Use.swift:2  in Box.a", in: output) == 1, "\(output)")
-        #expect(Self.count(of: "Use.swift:2  in Box.a", in: Self.text(below: "\"@Clamp\" (1 call site in 1 file — for init(wrappedValue:)):", in: output)) == 1, "\(output)")
+        #expect(Self.count(of: "Use.swift:2  in Box.a", in: Self.text(below: "\"@Clamp\" (1 call site by written name in 1 file — for init(wrappedValue:)):", in: output)) == 1, "\(output)")
         #expect(!Self.text(below: Self.refusedSites, in: output).contains("Box.a"), "\(output)")
     }
 
@@ -226,7 +241,7 @@ struct ProjectedValueInitCallerTests {
 
         #expect(output.contains("semantic REFUSED for init(wrappedValue:step:)"), "\(output)")
         #expect(Self.count(of: "Use.swift:2  in Box.a", in: output) == 1, "\(output)")
-        #expect(Self.count(of: "Use.swift:2  in Box.a", in: Self.text(below: "\"@Clamp\" (1 call site in 1 file — for Probe.Clamp, no one initializer by its labels):", in: output)) == 1, "\(output)")
+        #expect(Self.count(of: "Use.swift:2  in Box.a", in: Self.text(below: "\"@Clamp\" (1 call site by written name in 1 file — for Probe.Clamp, no one initializer by its labels):", in: output)) == 1, "\(output)")
         #expect((output + "\n").contains("Use.swift:3  in Box.b\n"), "\(output)")
     }
 
@@ -242,10 +257,10 @@ struct ProjectedValueInitCallerTests {
         """
         let output = try await Self.staleLookup("Clamp.init", files: Self.stepped(), thenWriting: ["Sources/Probe/Use.swift": use])
 
-        #expect(Self.count(of: "Use.swift:4  in Box.c", in: Self.text(below: "\"@Clamp\" (1 call site in 1 file — for Probe.Clamp, no one initializer by its labels):", in: output)) == 1, "\(output)")
+        #expect(Self.count(of: "Use.swift:4  in Box.c", in: Self.text(below: "\"@Clamp\" (1 call site by written name in 1 file — for Probe.Clamp, no one initializer by its labels):", in: output)) == 1, "\(output)")
         #expect((output + "\n").contains("Use.swift:3  in Box.b\n"), "\(output)")
         #expect(Self.count(of: "Use.swift:2  in Box.a", in: output) == 1, "\(output)")
-        #expect(Self.count(of: "Use.swift:2  in Box.a", in: Self.text(below: "\"@Clamp\" (1 call site in 1 file — for init(wrappedValue:)):", in: output)) == 1, "\(output)")
+        #expect(Self.count(of: "Use.swift:2  in Box.a", in: Self.text(below: "\"@Clamp\" (1 call site by written name in 1 file — for init(wrappedValue:)):", in: output)) == 1, "\(output)")
         #expect(!Self.text(below: Self.refusedSites, in: output).contains("Box.a"), "\(output)")
     }
 

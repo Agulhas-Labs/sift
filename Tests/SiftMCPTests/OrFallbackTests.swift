@@ -279,6 +279,7 @@ struct OrFallbackTests {
     @Test
     func aSweepWhoseProofFailsIsReadLooselyBehindAFallbackWhereItPrints() async throws {
         let root = try Self.gadgetRepository(parts: [
+            "Sources/App/Parts/Stock/Aisles/Bays/Racks/Pallets.swift": Self.pallets,
             "Sources/App/Parts/Uses.swift": "// Gadget is spoken of here\nstruct Holder {\n    func make() -> Gadget { Gadget() }\n}\n",
         ])
 
@@ -299,6 +300,7 @@ struct OrFallbackTests {
     func aSweepNotProvenToPrintIsNotReadLooselyBehindAFallback() async throws {
         let root = try Self.gadgetRepository(parts: [
             "Sources/App/Parts/Notes.md": "Gadget is spoken of here\n",
+            "Sources/App/Parts/Stock/Aisles/Bays/Racks/Pallets.swift": Self.pallets,
             "Sources/App/Parts/Uses.swift": "struct Holder {\n    func make() -> Gadget { Gadget() }\n}\n",
             "Sources/App/Quiet/Plain.swift": "struct Plain {}\n",
         ])
@@ -314,6 +316,9 @@ struct OrFallbackTests {
         #expect(try await Self.anyOutcome("grep -rnw Gadget Sources/App/Parts || echo X", in: root) == .withheld(.notExact))
         #expect(try await Self.anyOutcome("grep -rnw Gadget Sources/App/Quiet || echo X", in: root) == .withheld(.notExact))
     }
+
+    /// Many lines naming `Gadget` in a file under a deep directory, so a search for it prints more than the `where` answering it.
+    private static let pallets = (1 ... 26).map { "func pallet\($0)(first: Gadget = Gadget(), second: Gadget = Gadget()) {}" }.joined(separator: "\n") + "\n"
 
     /// A built package declaring `Gadget`, with `parts` beside it.
     private static func gadgetRepository(parts: [String: String]) throws -> URL {

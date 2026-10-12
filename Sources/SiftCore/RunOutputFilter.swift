@@ -211,7 +211,7 @@ public extension RunOutputFilter {
                 noted = held.index
             } else {
                 closeNote(for: held.index)
-                diagnostics.record(held.line)
+                diagnostics.record(held.line, building: !testsStarted)
             }
         }
         // An observer, not a reader that claims the line: a test's finishing line is read here and still
@@ -277,7 +277,7 @@ public extension RunOutputFilter {
         if let noted {
             closeNote(for: noted)
         }
-        diagnostics.record(line)
+        diagnostics.record(line, building: !testsStarted)
     }
 
     /// SwiftPM's notice that another process holds the `.build` lock and the line it was glued to, or `nil` where `line` does not open on one with more after it.
@@ -312,7 +312,7 @@ public extension RunOutputFilter {
         if let held = heldBlank {
             heldBlank = nil
             closeNote(for: held.index)
-            diagnostics.record(held.line)
+            diagnostics.record(held.line, building: !testsStarted)
         }
         diagnostics.closeExpansion()
         appendUnexplainedFailures()
@@ -320,6 +320,7 @@ public extension RunOutputFilter {
         return RunReport(
             errors: diagnostics.errors,
             warnings: diagnostics.warnings,
+            toolLog: diagnostics.toolLog,
             testFailures: testFailures,
             summaryLines: [buildSummary].compactMap(\.self) + xctestSummaries + swiftTestingSummaries,
             contract: contract,
@@ -846,7 +847,7 @@ extension RunOutputFilter {
 
     /// XCTest: `File.swift:10: error: -[Suite testName] : XCTAssertEqual failed: …`.
     private mutating func recordXCTestAssertion(_ line: String) -> Bool {
-        guard let diagnostic = RunDiagnostic.parse(line), diagnostic.severity == .error else {
+        guard let diagnostic = RunDiagnostic.parse(line), diagnostic.severity == .error, diagnostic.source == nil else {
             return false
         }
         guard diagnostic.isXCTestAssertion, let split = diagnostic.message.range(of: "] : ") else {

@@ -37,14 +37,14 @@ struct WhereQualifiedTypeNameTests {
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
 
-        let search = try await engine.lookup(symbol: "Search.Answer", freshness: freshness)
-        let log = try await engine.lookup(symbol: "Log.Answer", freshness: freshness)
+        let search = try await engine.lookup(symbol: "Search.Answer", freshness: freshness, options: WhereOptions(standsInForSearch: true))
+        let log = try await engine.lookup(symbol: "Log.Answer", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
-        #expect(search.contains("\"Answer\" used by 6 lines in 1 file — "), "\(search)")
+        #expect(search.contains("\"Answer\" (6 uses by written name in 1 file) — "), "\(search)")
         #expect(search.contains("; 2 of them write \"Answer\" behind a qualifier the index reads as Log, which declares another \"Answer\", so may be that type's rather than this struct's — counted all the same, as a qualifier read from the index alone may name another type in Swift (for "), "\(search)")
         #expect(search.contains("\n  Sources/Lib/Lib.swift (6):\n    :8  | let a: Search.Answer\n    :9  | let b: Log.Answer\n    :10  | let c = Log.Answer()\n    :11  | let e: Unknown.Answer? = nil\n    :12  | let g: Answer? = nil\n    :13  | func pick() -> Any { .Answer }"), "\(search)")
         #expect(!search.contains("resolves to another type's"), "\(search)")
-        #expect(log.contains("\"Answer\" used by 6 lines in 1 file — "), "\(log)")
+        #expect(log.contains("\"Answer\" (6 uses by written name in 1 file) — "), "\(log)")
         #expect(log.contains("; 1 of them writes \"Answer\" behind a qualifier the index reads as Search, which declares another \"Answer\", so may be that type's rather than this struct's — counted all the same, as a qualifier read from the index alone may name another type in Swift (for "), "\(log)")
         #expect(log.contains("\n  Sources/Lib/Lib.swift (6):\n    :8  | let a: Search.Answer\n    :9  | let b: Log.Answer\n    :10  | let c = Log.Answer()\n    :11  | let e: Unknown.Answer? = nil\n    :12  | let g: Answer? = nil\n    :13  | func pick() -> Any { .Answer }"), "\(log)")
         #expect(!log.contains("resolves to another type's"), "\(log)")
@@ -84,8 +84,8 @@ struct WhereQualifiedTypeNameTests {
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
 
-        let search = try await engine.lookup(symbol: "Search.Answer", freshness: freshness)
-        let log = try await engine.lookup(symbol: "Log.Answer", freshness: freshness)
+        let search = try await engine.lookup(symbol: "Search.Answer", freshness: freshness, options: WhereOptions(standsInForSearch: true))
+        let log = try await engine.lookup(symbol: "Log.Answer", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
         #expect(search.contains("\n  Sources/Lib/Lib.swift (3):\n    :12  | let a: Log.Answer\n    :15  | let b: Log.Answer?\n    :18  | var c: Log.Answer? { nil }"), "\(search)")
         #expect(!search.contains("resolves to another type's"), "\(search)")
@@ -118,7 +118,7 @@ struct WhereQualifiedTypeNameTests {
         )
         try TestSources.commitAll(in: root, message: "two types named Use, one aliasing Log")
         let engine = try SiftEngine(directory: root)
-        let log = try await engine.lookup(symbol: "Log.Answer", freshness: engine.ensureFresh())
+        let log = try await engine.lookup(symbol: "Log.Answer", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
 
         #expect(log.contains("\n  Sources/Lib/Lib.swift (1):\n    :11  | struct Use { let x: Log.Answer }"), "\(log)")
     }
@@ -164,7 +164,7 @@ struct WhereQualifiedTypeNameTests {
         #expect(searchSites.contains("Sources/Lib/Lib.swift:15  in Gen.make() (builds "), "\(search)")
         #expect(!search.contains("of another type named Answer dropped"), "\(search)")
         #expect(logSites.contains("Sources/Lib/Lib.swift:12  in Use.make()\n"), "\(log)")
-        #expect(log.contains("(2 call sites by name, 1 of them writes \"Answer\" behind a qualifier the index reads as Search, which declares another \"Answer\", so may be that type's rather than this struct's — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file"), "\(log)")
+        #expect(log.contains("(2 call sites by written name, 1 of them writes \"Answer\" behind a qualifier the index reads as Search, which declares another \"Answer\", so may be that type's rather than this struct's — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file"), "\(log)")
         #expect(!log.contains("of another type named Answer dropped"), "\(log)")
         #expect(logSites.contains("Sources/Lib/Lib.swift:15  in Gen.make() (builds "), "\(log)")
     }

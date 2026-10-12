@@ -65,15 +65,15 @@ struct RunSwiftTestingSkipTotalsTests {
         #expect(line?.hasSuffix("Swift Testing 7 tests in 2 suites, 1 skipped") == true, "\(line ?? "no totals line")")
     }
 
-    /// A run that skipped nothing says nothing about skips.
+    /// A run that skipped nothing says so, in the same words as one that skipped some.
     @Test
-    func aRunThatSkippedNothingSaysNothingOfSkips() {
+    func aRunThatSkippedNothingSaysZeroSkipped() {
         let lines = [
             "◇ Test run started.",
             "✔ Test anOrdinaryPass() passed after 0.001 seconds.",
             "✔ Test run with 1 test in 0 suites passed after 0.001 seconds.",
         ]
 
-        #expect(Self.totals(of: lines, invokedAs: ["swift", "test"]) == "totals: ✔ passed · Swift Testing 1 test in 0 suites")
+        #expect(Self.totals(of: lines, invokedAs: ["swift", "test"]) == "totals: ✔ passed · Swift Testing 1 test in 0 suites, 0 skipped")
     }
 }

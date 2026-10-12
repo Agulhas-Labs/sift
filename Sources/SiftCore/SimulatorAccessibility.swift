@@ -73,6 +73,21 @@ public struct SimulatorAccessibility {
         }
     }
 
+    /// The warnings owed before a test run starts, one for each simulator the command names outright whose preference reads off.
+    ///
+    /// **Only an `id=` destination, and only a plain read.** A named destination needs a listing to settle which device it is, and the run has not chosen yet; a read that fails says nothing, since the after-run check is the one that answers for a device it cannot reach. Nothing is written and nothing is rebooted: the line says what to do, and the run goes on as it would have.
+    public static func warnings(
+        before arguments: [String],
+        run: (String, [String]) throws -> Output = { try spawn($0, $1) }
+    ) -> [String] {
+        SimulatorDestination.simulatorsOfTestRun(arguments).compactMap { destination in
+            guard case let .identified(udid) = destination, case let .value(value) = read(udid: udid, run: run), value == offValue else {
+                return nil
+            }
+            return "accessibility: off on \(udid) — the first launch will draw an empty tree; arm it and reboot the simulator first"
+        }
+    }
+
     /// Switches the preference back on for one device, and says what it did.
     ///
     /// The first read decides everything. Off is the teardown's own write, so both keys go back on and the write is confirmed a few seconds later — seeing a write land is not seeing it hold, and a late teardown is the case that tells them apart. On, still on after the short poll, is a device nothing has to be done to. A read that fails is one of three different things and is answered as whichever it is — see ``Restoration/State``.
@@ -140,15 +155,19 @@ public struct SimulatorAccessibility {
     /// **Bounded, on every path out.** The wait for exit is a deadline rather than a `waitUntilExit`, the child is ended when it expires, and the pipes are drained on the reader's own queue rather than by a `readDataToEndOfFile` on this thread — because a grandchild that inherited the write end holds the pipe open long after the child is gone, and a read of it would extend a bounded wait into an unbounded one. What comes back from an expired call is a failed ``Output`` whose standard error says it timed out, which every caller above reads as a read or a write that did not succeed.
     ///
     /// - Parameters:
-    ///   - deadline: how long the child may take before it is ended, in seconds of wall clock. The call itself returns within `deadline` plus a short grace for its read ends to close, and when the child is ended, plus the two short grace windows it is given to die in as well.
+    ///   - deadline: how long the child may take before it is ended, in seconds of wall clock. Where `ready` is given, the clock starts when the child is ready rather than at launch, so the call also spends up to the readiness wait (thirty seconds) before it. The call itself returns within `deadline` plus a short grace for its read ends to close, and when the child is ended, plus the two short grace windows it is given to die in as well.
     ///   - directory: where the child is started, for a caller whose arguments are only correct relative to a directory of its own — a relative `-project` path, say. The host's own working directory where `nil`.
     ///   - environment: the child's whole environment, for a caller that must ask as another command would run. This process's own where `nil`.
+    ///   - grace: how long an ended child is given to die after each signal, in seconds. The short fixed grace where `nil`; a test that needs the polite signal to be the one that ends the child, however slowly its handler runs, passes a long one.
+    ///   - ready: text on the child's standard output that says it is set up, for a test whose child must be listening before the deadline can matter. The deadline's clock starts when the text shows, when the child exits, or after thirty seconds, whichever comes first; `nil` starts it at once.
     public static func spawn(
         _ executable: String,
         _ arguments: [String],
         deadline: TimeInterval = spawnDeadline,
         in directory: URL? = nil,
-        environment: [String: String]? = nil
+        environment: [String: String]? = nil,
+        grace: TimeInterval? = nil,
+        ready marker: String? = nil
     ) throws -> Output {
         let process = process(executable, arguments, in: directory, environment: environment)
         let output = Pipe()
@@ -156,8 +175,12 @@ public struct SimulatorAccessibility {
         process.standardOutput = output
         process.standardError = errors
         let exited = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in exited.signal() }
-        let started = Date()
+        let readiness = marker.map { SpawnStreams.Readiness(marker: Data($0.utf8)) }
+        process.terminationHandler = { _ in
+            exited.signal()
+            readiness?.seen.signal()
+        }
+        var started = Date()
         do {
             try process.run()
         } catch {
@@ -165,15 +188,22 @@ public struct SimulatorAccessibility {
             throw error
         }
         // Read from here on: what the child writes before the handlers are in place waits in the pipe for them.
-        let streams = SpawnStreams(standardOutput: output, standardError: errors)
+        let streams = SpawnStreams(standardOutput: output, standardError: errors, readiness: readiness)
+        var ready = false
+        if let readiness {
+            ready = readiness.seen.wait(timeout: .now() + readinessLimit) == .success
+            started = Date()
+        }
         guard exited.wait(timeout: .now() + deadline) == .success else {
-            end(process, exited: exited)
+            end(process, exited: exited, grace: grace ?? terminationGrace)
             let collected = streams.collected()
             let name = URL(fileURLWithPath: executable).lastPathComponent
+            // Where the readiness wait ran out, the clock started without the marker, so the message says that instead.
+            let counted = readiness == nil ? "" : ready ? " of being ready" : " after its \(seconds(readinessLimit)) wait to be ready ran out"
             return Output(
                 succeeded: false,
                 standardOutput: collected.standardOutput,
-                standardError: "\(collected.standardError)the spawn timed out: \(name) did not finish within \(seconds(deadline)) and was ended"
+                standardError: "\(collected.standardError)the spawn timed out: \(name) did not finish within \(seconds(deadline))\(counted) and was ended"
             )
         }
         // Exit is not end of output: the handlers may still owe the last bytes, and a grandchild may owe them
@@ -335,14 +365,19 @@ private extension SimulatorAccessibility {
     /// Ends a child that has passed its deadline: the polite signal, a moment to take it, then the one it cannot ignore.
     ///
     /// The second wait is what makes the child *gone* rather than merely signalled by the time this returns — a process that ignores `SIGTERM` would otherwise outlive the call that gave up on it. The child only: anything it started is not signalled, for the reason the type states, and the pipes are drained against a deadline precisely so that a survivor holding one open cannot extend the wait.
-    static func end(_ process: Process, exited: DispatchSemaphore) {
+    static func end(_ process: Process, exited: DispatchSemaphore, grace: TimeInterval = terminationGrace) {
         let pid = process.processIdentifier
         process.terminate()
-        guard exited.wait(timeout: .now() + terminationGrace) != .success else {
+        guard exited.wait(timeout: .now() + grace) != .success else {
             return
         }
         kill(pid, SIGKILL)
-        _ = exited.wait(timeout: .now() + terminationGrace)
+        _ = exited.wait(timeout: .now() + grace)
+    }
+
+    /// The longest a spawn that was told to wait for its child's readiness waits for it, in seconds, before the deadline's clock starts regardless.
+    static var readinessLimit: TimeInterval {
+        30
     }
 
     /// How long an ended child is given to die, in seconds — once after `SIGTERM` and once after `SIGKILL`.
@@ -407,9 +442,19 @@ extension SimulatorAccessibility {
         private let released = DispatchSemaphore(value: 0)
         private let handles: [FileHandle]
         private var sources: [DispatchSourceRead] = []
+        private let readiness: Readiness?
+        private var readinessSignalled = false
+        private var searchedThrough = 0
+        private var scanned = 0
 
-        /// Starts watching both read ends on `queue`, which runs every read and every close.
-        init(standardOutput: Pipe, standardError: Pipe, queue: DispatchQueue = DispatchQueue(label: "SimulatorAccessibility.spawn")) {
+        /// Starts watching both read ends on `queue`, which runs every read and every close, and signals `readiness` once the marker shows on standard output.
+        init(
+            standardOutput: Pipe,
+            standardError: Pipe,
+            readiness: Readiness? = nil,
+            queue: DispatchQueue = DispatchQueue(label: "SimulatorAccessibility.spawn")
+        ) {
+            self.readiness = readiness
             handles = [standardOutput.fileHandleForReading, standardError.fileHandleForReading]
             sources = handles.indices.map { drain($0, on: queue) }
             for source in sources {
@@ -485,13 +530,37 @@ extension SimulatorAccessibility {
             }
         }
 
-        private func append(_ data: Data, isError: Bool) {
+        /// How many bytes of standard output the readiness search has looked at, counting the overlap it re-reads each time.
+        var scannedBytes: Int {
             lock.lock()
             defer { lock.unlock() }
+            return scanned
+        }
+
+        /// The bytes of standard output a search reads once it has been through `searchedThrough`: the new ones up to `end`, and the marker's length less one before them that a split marker would start in, and no earlier.
+        static func searchWindow(searchedThrough: Int, end: Int, markerLength: Int) -> Range<Int> {
+            max(0, searchedThrough - (markerLength - 1)) ..< end
+        }
+
+        /// Adds what arrived to its stream and, for standard output, looks for the readiness marker in the new bytes and the few before them that a split marker would start in.
+        func append(_ data: Data, isError: Bool) {
+            lock.lock()
             if isError {
                 standardError.append(data)
             } else {
                 standardOutput.append(data)
+            }
+            var ready = false
+            if !isError, !readinessSignalled, let marker = readiness?.marker {
+                let window = Self.searchWindow(searchedThrough: searchedThrough, end: standardOutput.endIndex, markerLength: marker.count)
+                scanned += window.count
+                ready = standardOutput[window].range(of: marker) != nil
+                searchedThrough = standardOutput.endIndex
+            }
+            readinessSignalled = readinessSignalled || ready
+            lock.unlock()
+            if ready {
+                readiness?.seen.signal()
             }
         }
 
@@ -517,6 +586,14 @@ extension SimulatorAccessibility {
                 _ = released.wait(timeout: deadline)
             }
         }
+    }
+}
+
+extension SimulatorAccessibility.SpawnStreams {
+    /// What a spawn that waits for its child to say it is set up watches for, and the signal raised when it shows.
+    struct Readiness {
+        let marker: Data
+        let seen = DispatchSemaphore(value: 0)
     }
 }
 

@@ -39,27 +39,76 @@ public enum RunInventoryCheck: Sendable {
 }
 
 public extension RunInventoryCheck {
-    /// Whether a run of `arguments` is one the inventory bounds: an unnarrowed, serial `swift test` of the package at the repository's root that reported at least one test.
+    /// The package a run of `arguments` tests, where the inventory bounds the run: an unnarrowed, serial `swift test` that reported at least one test, of the package at or above the directory `--package-path`, `-C` or `--chdir` names, or else `workingDirectory`; or an unnarrowed, serial `xcodebuild` test run of the `<Name>-Package` scheme of the package in `workingDirectory` itself (``xcodebuildBounds(_:report:workingDirectory:executedNothing:)``).
     ///
-    /// The bound is `--against`'s own — the root manifest's test targets — so anything that runs another set is out of it and says nothing: a filtered or skipped run, another package, a `--parallel` run whose log names only some of its tests, and an `xcodebuild` run, whose set is its scheme's.
+    /// The bound is `--against`'s own — that package's manifest's test targets — so anything that runs another set is out of it: a filtered or skipped run, a `--parallel` run whose log names only some of its tests, and a run with no manifest at or above its directory or one naming its directory through a variable say nothing, and any other unnarrowed `xcodebuild` test run, whose set is its scheme's, says why it was not checked (``unboundedXcodebuild(by:report:workingDirectory:executedNothing:)``).
     ///
     /// - Parameter executedNothing: Whether the run exited 0 having executed no test in a package that declares test targets (``RunTestSelector/executedNothing(_:exitCode:testBundles:)``): it reported none, and is bounded all the same, since the declared count is what says how much it missed.
-    static func applies(to arguments: [String], report: RunReport, workingDirectory: URL, repositoryRoot: URL, executedNothing: Bool = false) -> Bool {
-        let narrowing = RunTestBundles.narrowingOptions + ["--parallel"]
-        guard RunCommandKind.recognize(arguments) == .swiftTest,
-              !report.testOutcomes.isEmpty || executedNothing,
-              !report.parallelSwiftTest,
-              !arguments.contains(where: { argument in narrowing.contains { argument == $0 || argument.hasPrefix($0 + "=") } })
-        else {
-            return false
+    static func testedPackage(by arguments: [String], report: RunReport, workingDirectory: URL, executedNothing: Bool = false) -> URL? {
+        if RunCommandKind.recognize(arguments) == .xcodebuild {
+            return xcodebuildBounds(arguments, report: report, workingDirectory: workingDirectory, executedNothing: executedNothing) ? workingDirectory : nil
         }
-        return packageRoot(above: workingDirectory).map(CanonicalPath.of) == CanonicalPath.of(repositoryRoot.path)
+        guard bounds(arguments, report: report, executedNothing: executedNothing),
+              let directory = RunCommandKind.builtDirectory(of: arguments, from: workingDirectory.path)
+        else {
+            return nil
+        }
+        return packageRoot(above: URL(fileURLWithPath: directory, isDirectory: true)).map { URL(fileURLWithPath: $0, isDirectory: true) }
     }
 
-    /// Reconciles `outcomes` against the index at `repositoryRoot`, brought up to date first as `--against` does, and never builds an index that is not there.
+    /// The unchecked form of the line for a run the inventory would bound but whose package directory is spelled through a variable, so there is no package to take the declared tests from; `nil` for every other run.
     ///
-    /// - Parameter executedNothing: Whether the run executed no test, as ``applies(to:report:workingDirectory:repositoryRoot:executedNothing:)`` takes it: its empty outcomes reconcile as zero reported, so the line names every declared test that never reported.
-    static func check(_ outcomes: RunTestOutcomes, loggedAt logURL: URL?, repositoryRoot: URL, budget: TimeInterval = freshenBudget, executedNothing: Bool = false) -> RunInventoryCheck {
+    /// Saying nothing there would read as a run that was checked and found whole.
+    static func unresolvedPackage(by arguments: [String], report: RunReport, workingDirectory: URL, executedNothing: Bool = false) -> RunInventoryCheck? {
+        guard bounds(arguments, report: report, executedNothing: executedNothing),
+              RunCommandKind.builtDirectory(of: arguments, from: workingDirectory.path) == nil
+        else {
+            return nil
+        }
+        return .skipped("the package directory is spelled through a variable, so the package whose tests it declares cannot be told")
+    }
+
+    /// The unchecked line a run carries where ``testedPackage(by:report:workingDirectory:executedNothing:)`` finds no package to reconcile against: ``unresolvedPackage(by:report:workingDirectory:executedNothing:)``'s, or else ``unboundedXcodebuild(by:report:workingDirectory:executedNothing:)``'s, and `nil` for a run that says nothing.
+    static func unchecked(by arguments: [String], report: RunReport, workingDirectory: URL, executedNothing: Bool = false) -> RunInventoryCheck? {
+        unresolvedPackage(by: arguments, report: report, workingDirectory: workingDirectory, executedNothing: executedNothing)
+            ?? unboundedXcodebuild(by: arguments, report: report, workingDirectory: workingDirectory, executedNothing: executedNothing)
+    }
+
+    /// The unchecked form of the line for an unnarrowed `xcodebuild` test run that reported a test, or executed none, and that no package manifest bounds; `nil` for every other run, a narrowed one included, which says nothing as a filtered `swift test` does.
+    ///
+    /// Saying nothing there would read as a run that was checked and found whole. A run under `xcodebuild`'s parallel testing, or under `-quiet` with no build error, says why its own way instead: the first names its tests in lines that are not read as outcomes, and the second prints no line for a test that passed, so reconciling either would name tests that ran as never reported.
+    static func unboundedXcodebuild(by arguments: [String], report: RunReport, workingDirectory: URL, executedNothing: Bool = false) -> RunInventoryCheck? {
+        let quiet = RunVerdict.Contract.isQuietXcodebuild(arguments)
+        guard RunCommandKind.recognize(arguments) == .xcodebuild,
+              RunCommandKind.executesTests(arguments),
+              !report.testOutcomes.isEmpty || executedNothing || runsInParallel(report) || (quiet && report.errors.isEmpty),
+              !narrowsXcodebuild(arguments),
+              !xcodebuildBounds(arguments, report: report, workingDirectory: workingDirectory, executedNothing: executedNothing)
+        else {
+            return nil
+        }
+        if runsInParallel(report) {
+            return .skipped("xcodebuild's parallel testing names its tests in lines this does not read as outcomes")
+        }
+        if quiet {
+            return .skipped("xcodebuild -quiet prints no line for a test that passed, so there is no list of tests to reconcile")
+        }
+        if let scheme = scheme(in: arguments), let file = schemeFile(named: scheme, in: workingDirectory) {
+            return .skipped("\(file) replaces the scheme Xcode generates over the package's test targets, so no package manifest bounds the tests it runs")
+        }
+        return .skipped("an xcodebuild scheme runs the test targets it names, which no package manifest bounds")
+    }
+
+    /// Reconciles `outcomes` against the index at `repositoryRoot`, inside the manifest of `package` (the repository's root where it is `nil`), brought up to date first as `--against` does, and never builds an index that is not there.
+    ///
+    /// - Parameter executedNothing: Whether the run executed no test, as ``testedPackage(by:report:workingDirectory:executedNothing:)`` takes it: its empty outcomes reconcile as zero reported, so the line names every declared test that never reported.
+    static func check(_ outcomes: RunTestOutcomes, loggedAt logURL: URL?, repositoryRoot: URL, package: URL? = nil, budget: TimeInterval = freshenBudget, executedNothing: Bool = false) -> RunInventoryCheck {
+        let root = CanonicalPath.of(repositoryRoot.path)
+        let packagePath = package.map { CanonicalPath.of($0.path) } ?? root
+        guard packagePath == root || packagePath.hasPrefix(root + "/") else {
+            return .skipped("the package at \(packagePath) lies outside the repository at \(root), whose index this reads")
+        }
+        let packageDirectory = String(packagePath.dropFirst(min(packagePath.count, root.count + 1)))
         let database = SiftPaths.cache(in: repositoryRoot).appendingPathComponent(SiftPaths.indexFileName)
         guard FileManager.default.fileExists(atPath: database.path) else {
             return .skipped("this checkout has no sift index yet, and building one is not this run's to pay for (`sift index` builds it)")
@@ -71,7 +120,7 @@ public extension RunInventoryCheck {
             do {
                 let engine = try SiftEngine(directory: repositoryRoot)
                 try await engine.ensureFresh()
-                check = try .reconciled(engine.reconcileRun(outcomes, loggedAt: logURL, executedNothing: executedNothing))
+                check = try .reconciled(engine.reconcileRun(outcomes, loggedAt: logURL, packageDirectory: packageDirectory, executedNothing: executedNothing))
             } catch {
                 check = .skipped("the inventory could not be read: \(error)")
             }
@@ -86,6 +135,69 @@ public extension RunInventoryCheck {
 }
 
 private extension RunInventoryCheck {
+    /// Whether the inventory bounds the run of `arguments`: an unnarrowed, serial `swift test` that reported a test, or executed none in a package that declares some.
+    static func bounds(_ arguments: [String], report: RunReport, executedNothing: Bool) -> Bool {
+        let narrowing = RunTestBundles.narrowingOptions + ["--parallel"]
+        return RunCommandKind.recognize(arguments) == .swiftTest
+            && (!report.testOutcomes.isEmpty || executedNothing)
+            && !report.parallelSwiftTest
+            && !arguments.contains(where: { argument in narrowing.contains { argument == $0 || argument.hasPrefix($0 + "=") } })
+    }
+
+    /// The `xcodebuild` options that narrow a test run to part of its scheme, each written `-flag value` or `-flag:value`.
+    static let xcodebuildNarrowingOptions = ["-only-testing", "-skip-testing", "-testPlan", "-only-test-configuration", "-skip-test-configuration"]
+
+    /// Whether any of `arguments` narrows an `xcodebuild` test run to part of its scheme or test plan.
+    static func narrowsXcodebuild(_ arguments: [String]) -> Bool {
+        arguments.contains { argument in xcodebuildNarrowingOptions.contains { argument == $0 || argument.hasPrefix($0 + ":") } }
+    }
+
+    /// Whether the run printed the lines `xcodebuild`'s parallel testing reports in, which name tests without being read as their outcomes.
+    static func runsInParallel(_ report: RunReport) -> Bool {
+        report.testOutcomes.parallelLines > 0 || report.testOutcomes.parallelSuiteStarts > 0
+    }
+
+    /// Whether the inventory bounds the `xcodebuild` run of `arguments` from `workingDirectory` exactly as it bounds an unnarrowed `swift test` of the package there.
+    ///
+    /// That holds only for the scheme Xcode generates over a package's every test target, `<Name>-Package` with the name the manifest writes and no scheme file of that name kept under `.swiftpm/xcode` in its place (``schemeFile(named:in:)``), run serially, unnarrowed and without `-quiet`, and only where `xcodebuild` reads that manifest: no `-project` or `-workspace` names another, and no `.xcodeproj` or `.xcworkspace` beside the `Package.swift` takes its place. A package with a single product gets no `-Package` scheme, and its product's scheme is read as unbounded rather than guessed at.
+    static func xcodebuildBounds(_ arguments: [String], report: RunReport, workingDirectory: URL, executedNothing: Bool) -> Bool {
+        guard RunCommandKind.recognize(arguments) == .xcodebuild,
+              RunCommandKind.executesTests(arguments),
+              !report.testOutcomes.isEmpty || executedNothing,
+              !runsInParallel(report),
+              !RunVerdict.Contract.isQuietXcodebuild(arguments),
+              !narrowsXcodebuild(arguments),
+              !arguments.contains(where: { argument in ["-project", "-workspace"].contains { argument == $0 || argument.hasPrefix($0 + "=") } }),
+              let scheme = scheme(in: arguments),
+              let entries = try? FileManager.default.contentsOfDirectory(atPath: workingDirectory.path),
+              entries.contains("Package.swift"),
+              !entries.contains(where: { $0.hasSuffix(".xcodeproj") || $0.hasSuffix(".xcworkspace") }),
+              let name = SwiftPMManifest.packageName(inPackageAt: workingDirectory)
+        else {
+            return false
+        }
+        return scheme == name + "-Package" && schemeFile(named: scheme, in: workingDirectory) == nil
+    }
+
+    /// The scheme `-scheme` names in `arguments`, the last where it is given twice.
+    static func scheme(in arguments: [String]) -> String? {
+        guard let flag = arguments.lastIndex(of: "-scheme"), flag + 1 < arguments.count else {
+            return nil
+        }
+        return arguments[flag + 1]
+    }
+
+    /// The package-relative path of a scheme file named `scheme` that the package at `package` keeps, shared or any one user's, or `nil` where it keeps none.
+    ///
+    /// Xcode generates a package's schemes only where no such file exists, so a kept file decides which test targets the scheme runs, and can skip any of them.
+    static func schemeFile(named scheme: String, in package: URL) -> String? {
+        let xcode = ".swiftpm/xcode"
+        let file = "xcschemes/\(scheme).xcscheme"
+        let users = (try? FileManager.default.contentsOfDirectory(atPath: package.appendingPathComponent(xcode + "/xcuserdata").path)) ?? []
+        let candidates = ["\(xcode)/xcshareddata/\(file)"] + users.filter { $0.hasSuffix(".xcuserdatad") }.sorted().map { "\(xcode)/xcuserdata/\($0)/\(file)" }
+        return candidates.first { FileManager.default.fileExists(atPath: package.appendingPathComponent($0).path) }
+    }
+
     /// The nearest directory at or above `directory` holding a `Package.swift`, which is the package `swift test` runs there.
     static func packageRoot(above directory: URL) -> String? {
         var current = directory.standardizedFileURL

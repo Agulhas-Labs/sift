@@ -8,7 +8,7 @@ import Testing
 
 /// A `where` answer in a tree with no index store opens with at most three short lines, and the recipe for building a store moves to the help topic the first of them names.
 ///
-/// The preamble is every line from the mode line to the blank line that opens the answer itself: the header and the `where` line above it are the same on every answer.
+/// The preamble is every line from the degraded note to the blank line that opens the answer itself: the header and the `where` line above it are the same on every answer.
 @Suite(.temporaryDirectories)
 struct WhereShortModeTests {
     /// The widest a preamble line may run.
@@ -32,10 +32,10 @@ struct WhereShortModeTests {
         return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh(), options: WhereOptions(includeReferences: true))
     }
 
-    /// The lines from the mode line up to the blank line under it.
+    /// The lines from the degraded note up to the blank line under it.
     private static func preamble(of answer: String, sourceLocation: SourceLocation = #_sourceLocation) throws -> [String] {
         let lines = answer.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let start = try #require(lines.firstIndex { $0.hasPrefix("mode: ") }, "\(answer)", sourceLocation: sourceLocation)
+        let start = try #require(lines.firstIndex { $0.hasPrefix(DegradedNote.noStoreOpening) }, "\(answer)", sourceLocation: sourceLocation)
         let end = lines[start...].firstIndex(of: "") ?? lines.endIndex
         return Array(lines[start ..< end])
     }
@@ -62,13 +62,11 @@ struct WhereShortModeTests {
         let preamble = try await Self.preamble(of: Self.answer("work()", in: Self.makeRepo()))
 
         Self.expectShort(preamble)
-        #expect(preamble.count == 3, "\(preamble)")
-        #expect(preamble.first?.contains("no index store for this tree yet") == true, "\(preamble)")
+        #expect(preamble.count == 1, "\(preamble)")
+        #expect(preamble.first?.contains("how to build one") == true, "\(preamble)")
         #expect(preamble.first?.contains("sift help answers") == true, "\(preamble)")
-        #expect(preamble.contains { $0.hasPrefix("callers/overrides: NOT ANSWERED") }, "\(preamble)")
+        #expect(preamble.first?.contains("callers, overrides or references") == true, "\(preamble)")
         #expect(preamble.last?.contains("by written name") == true, "\(preamble)")
-        #expect(preamble.last?.contains("same-named") == true, "\(preamble)")
-        #expect(preamble.last?.contains("comments") == true, "\(preamble)")
         #expect(!preamble.joined().contains("xcodebuild"), "\(preamble)")
         try Self.expectRecipe(inTopic: "answers")
     }
@@ -80,7 +78,7 @@ struct WhereShortModeTests {
         let preamble = try await Self.preamble(of: Self.answer("work()", in: worktree))
 
         Self.expectShort(preamble)
-        #expect(preamble.first?.contains("no index store in this worktree") == true, "\(preamble)")
+        #expect(preamble.first?.hasPrefix(DegradedNote.noStoreOpening) == true, "\(preamble)")
         #expect(preamble.first?.contains("sift help worktree-index") == true, "\(preamble)")
         try Self.expectRecipe(inTopic: "worktree-index")
     }
@@ -101,7 +99,7 @@ struct WhereShortModeTests {
     func aTypeSweepIsHeldToTheSameWidth() async throws {
         let preamble = try await Self.preamble(of: Self.answer("Helper", in: Self.makeRepo()))
 
-        #expect(preamble.contains { $0.hasPrefix("used by: NOT ANSWERED") }, "\(preamble)")
+        #expect(preamble.contains { $0.hasPrefix("no store for uses") }, "\(preamble)")
         Self.expectShort(preamble)
     }
 
@@ -116,6 +114,6 @@ struct WhereShortModeTests {
         let rejection = "indexStorePath '.build/debug/index/store' in .sift.json is not an index store (no v<N>/units under it)"
 
         #expect(preamble.count <= 3, "\(preamble)")
-        #expect(preamble.first?.contains("no index store for this tree yet — \(rejection); how to build one:") == true, "\(preamble)")
+        #expect(preamble.first?.contains("how to build one: sift help answers, section (index store); passed over: \(rejection)") == true, "\(preamble)")
     }
 }

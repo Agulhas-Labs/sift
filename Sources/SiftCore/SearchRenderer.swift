@@ -2,7 +2,7 @@
 // Copyright © Agulhas Labs
 //
 
-/// Renders structural search results: grouped one block per file, budgeted, and honest about what a shape match is and isn't.
+/// Renders structural search results: grouped one block per file, budgeted, with what a shape match is and isn't said once per session (Docs/Design.md §2, *standing caveats*).
 struct SearchRenderer {
     /// Matches listed before the remainder is counted instead — the same budgeting discipline the digest applies, for the same reason.
     static var matchCap: Int {
@@ -10,21 +10,22 @@ struct SearchRenderer {
     }
 
     /// Renders `result` for `query`, paged from `offset`.
-    static func render(result: StructuralSearch.Result, query: StructuralQuery, offset: Int = 0) -> String {
-        var lines = [query.echo]
+    static func render(result: StructuralSearch.Result, query: StructuralQuery, offset: Int = 0, typeBodyNote: String? = nil) -> String {
+        var lines = query.echo.map { [$0] } ?? []
         guard !result.matches.isEmpty else {
             lines.append(missLine(result: result, query: query))
-            lines.append(caveat(for: query))
+            lines.append(contentsOf: typeBodyNote.map { [$0] } ?? [])
             return lines.joined(separator: "\n")
         }
 
         lines.append(summaryLine(result: result))
-        lines.append(caveat(for: query))
         lines.append("")
 
         let start = min(max(0, offset), result.matches.count)
         let page = Array(result.matches.dropFirst(start).prefix(matchCap))
-        if start > 0 {
+        if PastEndLine.applies(offset: offset, count: result.matches.count) {
+            lines.append(PastEndLine.text(offset: offset, count: result.matches.count, noun: "matches"))
+        } else if start > 0 {
             lines.append("(…\(start) matches skipped)")
         }
         var currentPath = ""
@@ -41,24 +42,52 @@ struct SearchRenderer {
         let remaining = result.matches.count - start - page.count
         if remaining > 0 {
             lines.append("")
-            lines.append("… truncated: \(remaining) more matches — pass offset \(start + page.count)")
+            let next = start + page.count
+            if let names = remainderNames(result.matches.dropFirst(next), next: next) {
+                lines.append(contentsOf: names)
+            } else {
+                lines.append("… truncated: \(remaining) more matches — pass offset \(next)")
+            }
         }
         return lines.joined(separator: "\n")
     }
 
+    /// The bytes the remainder's names may take before the truncation line stands in for them: about 135 names in 130 files.
+    static var remainderBudget: Int {
+        8000
+    }
+
+    /// The matches past the page as one line per file in first-appearance order, `path: Name, Name`, under a header, an extension named with its line range (`Name (:337-916)`) so `digest path:337-916` serves it; nil where they would not fit `remainderBudget`.
+    private static func remainderNames(_ rest: ArraySlice<StructuralMatch>, next: Int) -> [String]? {
+        var groups: [(path: String, names: [String])] = []
+        var slot: [String: Int] = [:]
+        for match in rest {
+            let entry = match.kind == "extension" ? "\(match.qualifiedName) (:\(match.line)-\(match.endLine))" : match.qualifiedName
+            if let index = slot[match.path] {
+                groups[index].names.append(entry)
+            } else {
+                slot[match.path] = groups.count
+                groups.append((match.path, [entry]))
+            }
+        }
+        let header = "\(rest.count) more, names only (digest or offset \(next) for their rows):"
+        let body = groups.map { "\($0.path): " + $0.names.joined(separator: ", ") }
+        let size = ([header] + body).reduce(0) { $0 + $1.utf8.count + 1 }
+        return size <= remainderBudget ? [header] + body : nil
+    }
+
     /// `search --count`: the header, the summary line and — when the matches span more than one module — the per-module breakdown a caller would otherwise build by hand with `grep | sort | uniq -c`, and no listing.
     ///
-    /// The summary line and the caveat are the same two lines `render(result:query:offset:)` opens with, so a caller comparing a count against the full answer for the same query reads the same numbers in the same place; this just stops before the page that made them expensive.
-    static func renderCount(result: StructuralSearch.Result, query: StructuralQuery, moduleFor: (String) -> String) -> String {
-        var lines = [query.echo]
+    /// The summary line is the one `render(result:query:offset:)` opens with, so a caller comparing a count against the full answer for the same query reads the same numbers in the same place; this just stops before the page that made them expensive.
+    static func renderCount(result: StructuralSearch.Result, query: StructuralQuery, typeBodyNote: String? = nil, moduleFor: (String) -> String) -> String {
+        var lines = query.echo.map { [$0] } ?? []
         guard !result.matches.isEmpty else {
             lines.append(missLine(result: result, query: query))
-            lines.append(caveat(for: query))
+            lines.append(contentsOf: typeBodyNote.map { [$0] } ?? [])
             return lines.joined(separator: "\n")
         }
 
         lines.append(summaryLine(result: result))
-        lines.append(caveat(for: query))
 
         var byModule: [String: Int] = [:]
         for match in result.matches {
@@ -93,16 +122,5 @@ struct SearchRenderer {
         guard let (position, removed) = result.eliminations.max(by: { $0.key < $1.key }), applied.indices.contains(position) else { return bare }
         let reach = removed == result.eliminations.values.reduce(0, +) ? "all" : "the last"
         return bare + "; \(applied[position].spelled) removed \(reach) \(removed) declaration(s)"
-    }
-
-    /// What the answer does and does not promise.
-    ///
-    /// Two limits, both load-bearing. The scan reads the working tree, so unlike the semantic axis it is never stale and never refuses — worth saying, because every other multi-file answer this tool gives carries a staleness caveat. But `calls:` and `uses:` match *written names*, not resolved symbols: two unrelated types with a `save` method are one name here. Stating that inline is the difference between a shape query used as a lead and one mistaken for a resolved fact.
-    private static func caveat(for query: StructuralQuery) -> String {
-        let base = "syntactic shape match over the working tree — never stale, never refuses"
-        guard query.terms.contains(where: { $0.field == .calls || $0.field == .uses }) else {
-            return base + "."
-        }
-        return base + "; calls:/uses: match written names, not resolved symbols, so same-named members of unrelated types are included — confirm a specific hit with where."
     }
 }

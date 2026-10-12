@@ -56,7 +56,7 @@ struct WhereUndeclaredInitTests {
         #expect(!output.contains("could not resolve the path"), "\(output)")
         #expect(output.contains(".Sub — class — final class Sub: Base — Sources/App/Shapes.swift:6"), "\(output)")
         #expect(output.contains("Sub declares no init — it inherits Base's initializers"), "\(output)")
-        #expect(output.contains("\"Sub.init\" (1 call site in 1 file):"), "\(output)")
+        #expect(output.contains("\"Sub.init\" (1 call site by written name in 1 file):"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Shapes.swift:18  in Maker.make().sub"), "\(output)")
         #expect(!output.contains("Depot"), "\(output)")
     }
@@ -144,7 +144,7 @@ struct WhereUndeclaredInitTests {
         #expect(sites.contains("Sources/App/Named.swift:6  in Hold.make()"), "\(output)")
         #expect(sites.contains("Sources/App/Named.swift:12  in buildPod() (labels fit Sources.Pod)"), "\(output)")
         #expect(sites.contains("Sources/App/Named.swift:29  in repod()"), "\(output)")
-        #expect(output.contains("\"Pod.init\" (3 call sites by name, 1 of them writes \"Pod\" behind a qualifier the index reads as Sources, which declares another \"Pod\", so may be that type's rather than this struct's — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file):"), "\(output)")
+        #expect(output.contains("\"Pod.init\" (3 call sites by written name, 1 of them writes \"Pod\" behind a qualifier the index reads as Sources, which declares another \"Pod\", so may be that type's rather than this struct's — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file):"), "\(output)")
         #expect(!output.contains("of another type named Pod dropped"), "\(output)")
     }
 

@@ -128,8 +128,8 @@ struct WhereFixedTextBudgetTests {
 
         #expect(answer.contains("REFUSED"), "\(symbol) — expected a REFUSED notice", sourceLocation: sourceLocation)
         #expect(
-            answer.contains(NameMatchedSites.headingOpening),
-            "\(symbol) — expected the call-sites heading",
+            answer.contains("by written name"),
+            "\(symbol) — expected the call-sites block's count line",
             sourceLocation: sourceLocation
         )
 
@@ -168,7 +168,7 @@ struct WhereFixedTextBudgetTests {
         try await Self.assertBudget("Depot.run", root: root)
     }
 
-    /// The call-sites heading itself is a single line, well under the 200-byte ceiling `CallSiteHeadingTests` already asserts — kept to a tighter number here since this suite is the one pinning byte weight.
+    /// The call-sites block's count line, which replaced the heading, is a single line, well under the 200-byte ceiling `CallSiteHeadingTests` already asserts — kept to a tighter number here since this suite is the one pinning byte weight.
     @Test
     func theCallSitesHeadingIsASingleShortLine() async throws {
         let root = try Self.makeRefusedFixture()
@@ -176,7 +176,7 @@ struct WhereFixedTextBudgetTests {
         let freshness = try await engine.ensureFresh()
         let answer = try await engine.lookup(symbol: "Box.init", freshness: freshness)
 
-        let heading = try #require(answer.split(separator: "\n").first { $0.hasPrefix(NameMatchedSites.headingOpening) })
+        let heading = try #require(answer.split(separator: "\n").first { $0.hasPrefix("\"") && $0.contains("by written name") })
 
         #expect(heading.utf8.count <= 160)
     }

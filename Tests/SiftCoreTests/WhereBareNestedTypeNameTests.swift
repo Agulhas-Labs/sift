@@ -35,9 +35,9 @@ struct WhereBareNestedTypeNameTests {
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
 
-        let output = try await engine.lookup(symbol: "Crate.Item", freshness: freshness)
+        let output = try await engine.lookup(symbol: "Crate.Item", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
-        #expect(output.contains("\"Item\" used by 2 lines in 1 file — "), "\(output)")
+        #expect(output.contains("\"Item\" (2 uses by written name in 1 file) — "), "\(output)")
         #expect(output.contains("; 2 more lines writing \"Item\" bare inside a type that declares its own \"Item\", which is what the name means there, so not use (for "), "\(output)")
         #expect(output.contains("\n  Sources/Lib/Lib.swift (2):\n    :3  | let items: [Item]\n    :8  | let crated: Crate.Item? = nil\n") || output.hasSuffix("\n  Sources/Lib/Lib.swift (2):\n    :3  | let items: [Item]\n    :8  | let crated: Crate.Item? = nil"), "\(output)")
     }

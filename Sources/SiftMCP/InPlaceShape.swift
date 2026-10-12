@@ -367,7 +367,7 @@ public struct InPlaceShape {
               (input["-i"] as? Bool) != true,
               !["-A", "-B", "-C"].contains(where: { input[$0] is NSNumber }),
               let pattern = input["pattern"] as? String,
-              let call = symbolsCall(forPattern: pattern, paths: searched.map { [$0] } ?? [])
+              let call = symbolsCall(forPattern: pattern, paths: searched.map { [$0] } ?? [], spelled: path.map { [$0] })
         else {
             return nil
         }
@@ -376,15 +376,11 @@ public struct InPlaceShape {
 
     /// The call for one pipeline stage, or `nil` where it is not one of the shapes.
     private static func call(for query: ShellQuery, cut: ShellGrep.Cut?, piped: Bool) -> InPlaceCall? {
-        // Paired, not filtered separately, so a raw word never drifts from the unquoted one beside it once
-        // a stderr redirection drops out of both.
-        let paired = zip(query.invocation, query.rawInvocation).filter { !isStandardErrorRedirection($0.0) }
-        let words = paired.map(\.0)
-        guard let verb = words.first.map({ URL(fileURLWithPath: $0).lastPathComponent }) else { return nil }
+        guard let paired = stageWords(of: query) else { return nil }
+        let words = paired.map(\.word)
         let rest = Array(words.dropFirst())
-        let rawRest = Array(paired.dropFirst().map(\.1))
-        guard !rest.contains(where: isAnyRedirection) else { return nil }
-        switch verb {
+        let rawRest = paired.dropFirst().map(\.raw)
+        switch URL(fileURLWithPath: words[0]).lastPathComponent {
         case "cat":
             // A whole read, and only a whole read: a `head` after it is a window, and a flag but `-n` changes the text.
             guard !piped, rest.count == 1 || (rest.count == 2 && rest[0] == "-n"), let file = rest.last,
@@ -404,13 +400,8 @@ public struct InPlaceShape {
             guard !piped, let (file, range) = RangeRead.reading(words), isSwiftFile(file) else { return nil }
             return .memberRange(file: file, range: range)
         case "grep":
-            // A glob whose wildcard is quoted or escaped reaches the search as the literal path it spells, since no
-            // shell expanded it; one whose quotes or escapes hold only the rest of its path, a space say, is expanded.
-            let literal = zip(query.invocation, query.rawInvocation).compactMap { word, raw -> String? in
-                guard let shell = ShellOperand(raw: raw) else { return word != raw && SearchOperand(path: word).isGlob ? word : nil }
-                return shell.quotesAGlobCharacter && SearchOperand(path: shell.value).isGlob ? shell.value : nil
-            }
-            return grepCall(rest, rawArguments: rawRest, cut: cut, literal: Set(literal))
+            guard case let .answered(call) = grepReading(rest, rawArguments: rawRest, cut: cut, literal: unexpandedGlobs(of: query)) else { return nil }
+            return call
         default:
             return nil
         }
@@ -418,55 +409,55 @@ public struct InPlaceShape {
 
     /// Whether every operand is a Swift file or a glob of them, so a search is about those files alone and no `where` of the whole tree stands in for it.
     ///
-    /// The hook's gate for letting such a search run, and the audit's scan asks it of the same operands, so the two cannot disagree about which searches that is.
-    static func namesOnlySwiftFiles(_ paths: [String]) -> Bool {
+    /// The hook's gate for letting such a search run, which the audit's scan reaches only through the hook's own reading of the line (``namedFileSearch(_:)``).
+    private static func namesOnlySwiftFiles(_ paths: [String]) -> Bool {
         paths.allSatisfy { $0.hasSuffix(".swift") }
     }
 
-    /// The call for a `grep`'s arguments, or `nil` where a flag, the operands or the pattern leave the shapes.
+    /// What the hook reads a `grep`'s arguments as: the call that answers it in place, a search of the Swift files it names let run as written, or neither, where a flag, the operands or the pattern leave the shapes.
     ///
     /// Context lines are allowed for a member's declaration alone: its source may hold them, and the search accounts for each one printed. A file's digest numbers declarations and nothing between them, and a sweep's references are lines, so context on either could only ever be refused.
     ///
     /// An operand among `literal` is a glob the shell passed on unexpanded, which the search reads as one file's name that is never there, so no answer speaks for it. A brace expansion (`{Uses,Gizmo}.swift`) leaves the shape the same way: the shell would have split it into several paths before the search ran, which no `where` here stands in for.
-    private static func grepCall(_ arguments: [String], rawArguments: [String]? = nil, cut: ShellGrep.Cut?, literal: Set<String> = []) -> InPlaceCall? {
+    private static func grepReading(_ arguments: [String], rawArguments: [String]? = nil, cut: ShellGrep.Cut?, literal: Set<String> = []) -> GrepReading {
         guard var search = ShellGrep(arguments: arguments, rawArguments: rawArguments),
               !search.paths.contains(where: literal.contains),
               !search.paths.contains(where: SwiftSourcePath.isBraceExpansion)
-        else { return nil }
+        else { return .declined }
         search.cut = cut
         let namesFiles = search.paths.contains { $0.hasSuffix(".swift") }
         if search.recursive, !namesFiles {
             // A whole-line search (`-x`) prints only a line that is the name alone, which a declaration site
             // almost never is, so neither reading below would answer what the search itself prints — withheld
             // before either is tried, rather than after the anchored one is proven wrong.
-            guard !search.paths.isEmpty, !search.hasContext, !search.options.wholeLine else { return nil }
+            guard !search.paths.isEmpty, !search.hasContext, !search.options.wholeLine else { return .declined }
             // The anchored reading stays first: it is exact, and an answer that accounts for every line the
             // grep prints is worth more than the same call handed over unproven. Where that proof fails, the
             // answerer asks the same name as the names shape (``InPlaceAnswerer``), so the precise spelling is
             // never answered less than the loose one.
             if let name = anchoredName(in: search.pattern, wholeWords: search.options.wholeWords, fixed: search.options.dialect == .fixed) {
-                return .references(name: name, search: search)
+                return .answered(.references(name: name, search: search))
             }
             // A case-folded search prints sites of every casing; `where` resolves the name as written, so its
             // answer would not say what the search says. The search runs, as the anchored `-i` sweep does
             // once its proof fails (``InPlaceAnswerer``).
-            guard !search.options.ignoresCase else { return nil }
-            return symbolsCall(forPattern: search.pattern, paths: search.paths, search: search)
+            guard !search.options.ignoresCase else { return .declined }
+            return GrepReading(symbolsCall(forPattern: search.pattern, paths: search.paths, search: search))
         }
         // A declaration grep of one file is that file's digest or its members' source, proven against what it
         // prints, and is asked first: only a pattern that shape does not read falls to the names below.
-        let oneFile = !search.recursive && search.paths.count == 1 && search.paths.first.map(isSwiftFile) == true
+        let oneFile = searchesOneFile(search)
         // One of the closed spellings of a grep for declaration vocabulary alone is the digest's to prove, whichever
         // of its keywords the shared vocabulary below reads.
         if oneFile, let file = search.paths.first, search.asksForDeclarationVocabulary {
-            return .declarations(file: file, search: search)
+            return .answered(.declarations(file: file, search: search))
         }
         if oneFile, let file = search.paths.first, let reading = declarationReading(of: search.pattern, patternWasQuoted: search.patternWasQuoted) {
             switch reading {
             case .member:
-                return .members(search: search)
+                return .answered(.members(search: search))
             case .declarations:
-                return search.hasContext ? nil : .declarations(file: file, search: search)
+                return search.hasContext ? .declined : .answered(.declarations(file: file, search: search))
             }
         }
         // A member grep of several Swift files, a glob of them, or one searched recursively — a file recurses into
@@ -476,14 +467,14 @@ public struct InPlaceShape {
            search.paths.allSatisfy({ $0.hasSuffix(".swift") && !SwiftPMManifest.isManifestPath($0) }),
            case .member? = declarationReading(of: search.pattern, patternWasQuoted: search.patternWasQuoted)
         {
-            return .members(search: search)
+            return .answered(.members(search: search))
         }
         // A search whose every operand is a Swift file or a glob of them — one, several, recursive or not, since a
         // file recurses into nothing — is about those files alone, and a name's `where` is about the whole tree:
         // it lists the declaration and every site wherever they are, files the search never named included. No
         // `where` stands in for it; only the members shape above, answered file by file, is scoped to what it
         // names, and anything else runs as written.
-        guard !namesOnlySwiftFiles(search.paths) else { return nil }
+        guard !namesOnlySwiftFiles(search.paths) else { return search.paths.isEmpty ? .declined : .namedFiles(search) }
         // What is left is a recursive search of a tree with a Swift file named beside it. It builds the tree's
         // names call, bounded by the operands and carrying the search itself, and that call is withheld unchecked,
         // since the lines it prints cannot be checked against a tree's names. On a compound line that withholding decides
@@ -493,25 +484,25 @@ public struct InPlaceShape {
         guard search.recursive, namesFiles, !search.hasContext, !search.options.ignoresCase, !search.options.wholeLine,
               !opensADeclarationInAnyBranch(search.pattern)
         else {
-            return nil
+            return .declined
         }
-        guard case let .symbols(names, paths, uncovered, proof, _)? = symbolsCall(forPattern: search.pattern, paths: search.paths, search: search) else { return nil }
-        return .symbols(names: names, paths: paths, uncovered: uncovered, proof: proof, unchecked: true)
+        guard case let .symbols(names, paths, uncovered, proof, _, _)? = symbolsCall(forPattern: search.pattern, paths: search.paths, search: search) else { return .declined }
+        return .answered(.symbols(names: names, paths: paths, uncovered: uncovered, proof: proof, unchecked: true))
     }
 
     /// One plain `where` per name for a search's pattern, over the subtrees, Swift files and globs of them `paths` names, or `nil` where the pattern is anything else.
     ///
-    /// `paths` is the search's own operands, spelled as the surface wrote them — relative to the command's working directory on the shell, and the `Grep`'s own `path` resolved in full, since that surface's directory *is* the path it searched. Carrying them is what keeps the answer about the tree the caller searched: they root it, and they bound it (``InPlaceAnswerer``).
+    /// `paths` is the search's own operands, spelled as the surface wrote them — relative to the command's working directory on the shell, and the `Grep`'s own `path` resolved in full, since that surface's directory *is* the path it searched. Carrying them is what keeps the answer about the tree the caller searched: they root it, and they bound it (``InPlaceAnswerer``). `spelled` is the `Grep`'s `path` as it wrote it, which the answer names it by.
     ///
     /// The reading is ``SweepPattern``'s, which is what builds the offer this hands over (``IndexSuggestion/forSweep(pattern:memberExists:)``): only a pattern that reads as names is taken, so a shape query and a phrase are refused here as they always were, and an alternation with prose beside its names carries that prose into the call, for the answer to name as left to a search. Capped at ``IndexSuggestion/callCap`` because the offer itself is — past it the refusal lists five calls and counts the rest, and an answer would have to serve names the offer never named.
     ///
     /// Whether the index declares those names is not asked here. The hook asks it a layer along, of the offer's own symbols, and withholds the whole alternation where any of them is undeclared (`PreToolUseCommand.lookup`) — so every name that reaches the answerer is one `where` speaks for.
     ///
-    /// `search` is the command's own, where there is one this can re-run. A pattern spelling a metatype, a self-expression or a member through `Self` (`T.Type`, `T.self`, `Self.x`) carries it as the proof its answer is held to (``InPlaceCall/symbols(names:paths:uncovered:proof:)``), and without one — a `Grep`, which is ripgrep behind a payload — it is no candidate at all.
-    static func symbolsCall(forPattern pattern: String, paths: [String], search: ShellGrep? = nil) -> InPlaceCall? {
-        let needsProof = PatternReading.spellsAMetatype(pattern) || PatternReading.spellsASelfMember(pattern)
-        let proof = needsProof ? search : nil
-        guard proof != nil || !needsProof else { return nil }
+    /// `search` is the command's own, where there is one this can re-run, and the call carries it whatever the pattern (``InPlaceCall/symbols(names:paths:uncovered:proof:unchecked:spelled:)``): the answer is served only where it is smaller than what that search prints. A pattern spelling a metatype, a self-expression or a member through `Self` (`T.Type`, `T.self`, `Self.x`) holds the answer to it as a proof too (``needsProof(_:)``), and without one — a `Grep`, which is ripgrep behind a payload — it is no candidate at all.
+    static func symbolsCall(forPattern pattern: String, paths: [String], search: ShellGrep? = nil, spelled: [String]? = nil) -> InPlaceCall? {
+        // The command's own search rides with every shell grep, since the answer is weighed against what it prints.
+        let proof = search
+        guard proof != nil || !needsProof(pattern) else { return nil }
         let (names, prose): ([String], [String])
         switch SweepPattern.reading(of: pattern) {
         case let .names(read):
@@ -522,7 +513,7 @@ public struct InPlaceShape {
             return nil
         }
         guard !names.isEmpty, names.count <= IndexSuggestion.callCap else { return nil }
-        return .symbols(names: names, paths: paths, uncovered: prose, proof: proof)
+        return .symbols(names: names, paths: paths, uncovered: prose, proof: proof, spelled: spelled)
     }
 
     /// The directory the first statement of `command` moves to with a `cd`, or `nil` where that statement is anything else or its word is computed.
@@ -560,7 +551,7 @@ public struct InPlaceShape {
 
     /// Whether `call` is a name search bounded by Swift files named outright or by a glob of them, rather than by a tree.
     private static func isNameSearchOfNamedFiles(_ call: InPlaceCall) -> Bool {
-        guard case let .symbols(_, paths, _, _, _) = call else { return false }
+        guard case let .symbols(_, paths, _, _, _, _) = call else { return false }
         return paths.contains { $0.hasSuffix(".swift") }
     }
 
@@ -623,6 +614,8 @@ public extension InPlaceShape {
         public let statements: [[String]]
         /// Whether another statement on the line prints what the answer does not reproduce — an `ls`, a search this does not answer, a lookup the answer dropped — so the line is let run rather than refused with an answer to part of it (``InPlaceAnswerer/Withholding/otherStatementsRun``).
         public private(set) var runsOtherStatements = false
+        /// The files a trailing `tee` of the command would have written, as the command spells them: the answer runs nothing, so it says they were not written.
+        public private(set) var teedFiles: [String] = []
         /// Held as a list of none or one, since a value cannot hold itself: see ``ordinary``.
         private var ordinaryReading: [Self]
 
@@ -669,6 +662,14 @@ public extension InPlaceShape {
         func running(others: Bool) -> Self {
             var match = self
             match.runsOtherStatements = runsOtherStatements || others
+            return match
+        }
+
+        /// This match, and the reading it falls back to, saying that `files` were not written.
+        public func teeing(_ files: [String]) -> Self {
+            var match = self
+            match.teedFiles = files
+            match.ordinaryReading = ordinaryReading.map { $0.teeing(files) }
             return match
         }
 
@@ -904,5 +905,62 @@ private extension ShellQuery {
     /// Whether the segment's first word is its command word: no environment assignment and no subshell brace in front of it.
     var opensOnItsCommandWord: Bool {
         invocation == arguments
+    }
+}
+
+extension InPlaceShape {
+    /// Whether a names search's pattern reads a name through a metatype, a self-expression or `Self`, so every line its search prints has to be a site the names' references locate.
+    static func needsProof(_ pattern: String) -> Bool {
+        PatternReading.spellsAMetatype(pattern) || PatternReading.spellsASelfMember(pattern)
+    }
+}
+
+extension InPlaceShape {
+    /// What the hook reads a `grep` stage as (``grepReading(_:rawArguments:cut:literal:)``).
+    private enum GrepReading {
+        /// The call that answers it in place.
+        case answered(InPlaceCall)
+        /// A search naming at least one operand, every one a Swift file or a glob of them, which runs as written: a `where` of the whole tree would list sites in files the search never named.
+        case namedFiles(ShellGrep)
+        /// Neither: a flag, the operands or the pattern leave the shapes.
+        case declined
+
+        init(_ call: InPlaceCall?) {
+            self = call.map(Self.answered) ?? .declined
+        }
+    }
+
+    /// The search of named Swift files the hook lets the stage `query` run as, read with the hook's own words, flags and operands, or `nil` where the hook reads the stage as anything else.
+    ///
+    /// What the audit's scan asks of a line the hook found no answer for, so the two read a line one way: a stderr redirect dropped, a quoted `~` or a bare number kept as an operand, a flag `grep` alone is read with, and only the `grep` verb.
+    static func namedFileSearch(_ query: ShellQuery) -> ShellGrep? {
+        guard let paired = stageWords(of: query), URL(fileURLWithPath: paired[0].word).lastPathComponent == "grep",
+              case let .namedFiles(search) = grepReading(paired.dropFirst().map(\.word), rawArguments: paired.dropFirst().map(\.raw), cut: nil, literal: unexpandedGlobs(of: query))
+        else { return nil }
+        return search
+    }
+
+    /// Whether `search` is non-recursive over one Swift file named outright, which the hook reads as that file's declarations or members before anything else.
+    static func searchesOneFile(_ search: ShellGrep) -> Bool {
+        !search.recursive && search.paths.count == 1 && search.paths.first.map(isSwiftFile) == true
+    }
+
+    /// A stage's words, each unquoted and as written, with a standard-error redirection dropped, or `nil` where the stage is empty or redirects anything else.
+    private static func stageWords(of query: ShellQuery) -> [(word: String, raw: String)]? {
+        // Paired, not filtered separately, so a raw word never drifts from the unquoted one beside it once
+        // a stderr redirection drops out of both.
+        let paired = zip(query.invocation, query.rawInvocation).filter { !isStandardErrorRedirection($0.0) }
+        guard !paired.isEmpty, !paired.dropFirst().contains(where: { isAnyRedirection($0.0) }) else { return nil }
+        return paired.map { (word: $0.0, raw: $0.1) }
+    }
+
+    /// The operands of `query` that reach the search as the literal paths they spell: a glob whose wildcard is quoted or escaped, which no shell expanded.
+    ///
+    /// One whose quotes or escapes hold only the rest of its path, a space say, is expanded.
+    private static func unexpandedGlobs(of query: ShellQuery) -> Set<String> {
+        Set(zip(query.invocation, query.rawInvocation).compactMap { word, raw -> String? in
+            guard let shell = ShellOperand(raw: raw) else { return word != raw && SearchOperand(path: word).isGlob ? word : nil }
+            return shell.quotesAGlobCharacter && SearchOperand(path: shell.value).isGlob ? shell.value : nil
+        })
     }
 }

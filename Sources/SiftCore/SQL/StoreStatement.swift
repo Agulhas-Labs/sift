@@ -24,6 +24,7 @@ enum StoreStatement {
     case counts
     case moduleNames
     case moduleOverview
+    case modulesNamedLikeTypes
     case symbolSelectBase
     case extensionsClause
     case specializedExtensionsClause
@@ -113,6 +114,14 @@ enum StoreStatement {
             LEFT JOIN \(SymbolsTable.name) s ON s.\(SymbolsTable.fileID) = f.\(FilesTable.id)
             GROUP BY f.\(FilesTable.module)
             ORDER BY f.\(FilesTable.module)
+            """
+        case .modulesNamedLikeTypes:
+            """
+            SELECT DISTINCT s.\(SymbolsTable.symbolName)
+            FROM \(SymbolsTable.name) s
+            WHERE s.\(SymbolsTable.kind) IN ('struct','class','actor','enum','protocol')
+              AND s.\(SymbolsTable.symbolName) IN (SELECT \(FilesTable.module) FROM \(FilesTable.name))
+            ORDER BY s.\(SymbolsTable.symbolName)
             """
         case .symbolSelectBase:
             """

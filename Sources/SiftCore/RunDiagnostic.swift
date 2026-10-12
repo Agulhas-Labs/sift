@@ -13,6 +13,8 @@ public struct RunDiagnostic: Sendable {
     public let line: Int?
     public let column: Int?
     public let message: String
+    /// The tool that printed a diagnostic naming no file, taken from its timestamped log prefix (`appintentsmetadataprocessor` from `<date> <time> appintentsmetadataprocessor[<pid>:<tid>] warning: …`) — `nil` for every other diagnostic.
+    public let source: String?
     /// Lines that belong to this diagnostic and mean nothing without it — the symbol list under an `Undefined symbols` header.
     public let detail: [String]
     /// The source line a diagnostic raised inside a macro's expansion sits at, read from the compiler's note beneath it — `nil` for every other diagnostic, and for one whose note never arrived.
@@ -24,6 +26,7 @@ public struct RunDiagnostic: Sendable {
         line: Int? = nil,
         column: Int? = nil,
         message: String,
+        source: String? = nil,
         detail: [String] = [],
         expansion: ExpansionSite? = nil
     ) {
@@ -32,6 +35,7 @@ public struct RunDiagnostic: Sendable {
         self.line = line
         self.column = column
         self.message = message
+        self.source = source
         self.detail = detail
         self.expansion = expansion
     }
@@ -64,11 +68,12 @@ public extension RunDiagnostic {
         public let line: Int?
         public let column: Int?
         public let message: String
+        public let source: String?
         public let expansion: ExpansionSite?
     }
 
     var identity: Identity {
-        Identity(path: path, line: line, column: column, message: message, expansion: expansion)
+        Identity(path: path, line: line, column: column, message: message, source: source, expansion: expansion)
     }
 
     /// Whether this is no compiler diagnostic but an XCTest assertion failing, which XCTest prints in the compiler's shape: `File.swift:10: error: -[Suite testName] : XCTAssertEqual failed: …`.
@@ -99,6 +104,9 @@ public extension RunDiagnostic {
             }
             location += ": "
         }
+        if let source, path == nil {
+            location = "\(source): "
+        }
         return "\(location)\(severity.rawValue): \(message)"
     }
 
@@ -120,6 +128,7 @@ public extension RunDiagnostic {
             line: line,
             column: column,
             message: message,
+            source: source,
             detail: detail + extra,
             expansion: expansion
         )
@@ -133,6 +142,7 @@ public extension RunDiagnostic {
             line: line,
             column: column,
             message: message,
+            source: source,
             detail: detail,
             expansion: site
         )
@@ -175,7 +185,7 @@ public extension RunDiagnostic {
 
     /// Executables allowed to name themselves where a file path would otherwise stand.
     ///
-    /// Without this list `ld: warning: …` and `clang: error: linker command failed` would be dropped as unlocated noise; with anything wider, a timestamped tool log line reads as a diagnostic.
+    /// Without this list `ld: warning: …` and `clang: error: linker command failed` would be dropped as unlocated noise; a timestamped tool log line (`date time tool[pid:tid]: warning: …`) is read by its own shape instead, see ``timestampedTool(_:)``.
     ///
     /// `xcrun` earns its place for the same reason the bare-path shape does: it is how a toolchain that cannot find the utility it was asked for says so (`xcrun: error: unable to find utility "xctest"`), and with no `/` and no `.` in the name it is neither a tool nor a path, so without this the run would fail with nothing in the answer explaining why.
     private static let toolNames: Set<String> = [
@@ -188,10 +198,10 @@ public extension RunDiagnostic {
         guard let first = raw.first, !first.isWhitespace else {
             return nil
         }
-        guard let parts = split(raw) else {
+        guard let parts = split(withToolSeparator(raw)) else {
             return nil
         }
-        guard let location = parseLocation(parts.prefix) else {
+        guard let location = parseLocation(parts.prefix), opensItsLine(location.path) else {
             return nil
         }
         if parts.prefix.isEmpty, let stated = locatedInMessage(parts.message, severity: parts.severity) {
@@ -200,27 +210,31 @@ public extension RunDiagnostic {
         guard !(parts.prefix.isEmpty && namesAFailedSubcommand(parts.message)) else {
             return nil
         }
-        let diagnostic = RunDiagnostic(
+        return RunDiagnostic(
             severity: parts.severity,
             path: location.path,
             line: location.line,
             column: location.column,
-            message: parts.message
+            message: parts.message,
+            source: location.source
         )
-        guard !diagnostic.isXCTestAssertion || opensItsLine(location.path) else {
-            return nil
-        }
-        return diagnostic
     }
 
-    /// Whether an XCTest assertion's path is where XCTest prints it, at the head of the line: an absolute path, which may hold a space, or a relative one, which holds none.
+    /// Whether a diagnostic's path is where the compiler and XCTest print it, at the head of the line: a relative path holding no space, the default style's `macro expansion #require` buffer, or one absolute path, which may hold a space but holds no second absolute path after one.
     ///
-    /// The assertion's shape can sit inside other text — a parameterized case's argument (`◇ Test case passing 1 argument text → "/…/T.swift:12: error: -[T.A b] : …"`), a line a test echoes — and the location reader takes everything before the line number as the path. Read as a failure there, it listed a test that never failed and turned a green run red; read as a compiler error, it would have done the same.
+    /// A diagnostic's shape can sit inside other text — a parameterized case's argument (`◇ Test case passing 1 argument text → "/…/T.swift:12: error: -[T.A b] : …"`), a line a test echoes (`said /x/T.swift:13: error: boom`), a command a test prints (`/bin/echo said /x/T.swift:12: error: -[T.A b] : boom`) — and the location reader takes everything before the line number as the path. Read as a failure there, it listed a test that never failed and turned a green run red; read as a compiler error, it listed an error no compiler raised.
+    ///
+    /// An absolute path's spaces are told apart from a sentence's by the words after the first: a word that opens on `/`, behind any quote, starts a path of its own, so the text before it was never part of one. The deliberate cost: a real path through a directory whose name ends in a space is not read as one, which is recoverable in the way ``looksLikePath(_:)`` describes.
     private static func opensItsLine(_ path: String?) -> Bool {
-        guard let path else {
+        guard let path, !path.hasPrefix("macro expansion ") else {
             return true
         }
-        return path.hasPrefix("/") || !path.contains(where: \.isWhitespace)
+        guard path.hasPrefix("/") else {
+            return !path.contains(where: \.isWhitespace)
+        }
+        return !path.split(whereSeparator: \.isWhitespace).dropFirst().contains { word in
+            word.drop { $0 == "\"" || $0 == "'" }.hasPrefix("/")
+        }
     }
 
     /// A diagnostic line cut at its severity marker: everything standing before the marker, and the message after it.
@@ -307,6 +321,14 @@ public extension RunDiagnostic {
         let path: String?
         let line: Int?
         let column: Int?
+        let source: String?
+
+        init(path: String?, line: Int?, column: Int?, source: String? = nil) {
+            self.path = path
+            self.line = line
+            self.column = column
+            self.source = source
+        }
     }
 
     /// Reads `path:line:col`, `path:line`, an empty prefix, or a bare tool name — and rejects everything else.
@@ -329,6 +351,9 @@ public extension RunDiagnostic {
             // where the tool is the last colon-separated field; and a bare path, which is how xcodebuild
             // reports a project-level failure — signing, provisioning, `Multiple commands produce`. Dropping
             // the second would leave a signing-only failure with no cause in the answer at all.
+            if let tool = timestampedTool(prefix) {
+                return Location(path: nil, line: nil, column: nil, source: tool)
+            }
             if let tail = components.last?.trimmingCharacters(in: .whitespaces), toolNames.contains(tail) {
                 return Location(path: nil, line: nil, column: nil)
             }
@@ -386,11 +411,29 @@ public extension RunDiagnostic {
             && message[sentence.upperBound...].first?.isNumber == true
     }
 
+    /// `raw` with a timestamped tool line's missing colon put back: `<date> <time> tool[pid:tid] warning: …` is how the system's tools print a severity, a space where a compiler has a colon, and every other line comes back unchanged.
+    private static func withToolSeparator(_ raw: String) -> String {
+        guard let match = raw.firstMatch(of: #/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? [^\s\[\]]+\[\d+:\d+\]) (warning|error): /#) else {
+            return raw
+        }
+        return "\(match.1): \(match.2): \(raw[match.range.upperBound...])"
+    }
+
+    /// The tool a timestamped log prefix names, `appintentsmetadataprocessor` from `<date> <time> appintentsmetadataprocessor[<pid>:<tid>]`, or `nil` for any other prefix.
+    ///
+    /// The date, time and `[pid:tid]` are dropped: they differ on every run and would keep two copies of one warning apart. Shape-checked whole rather than guessed from a space and a bracket, so a prefix that merely resembles a log line stays a non-diagnostic.
+    private static func timestampedTool(_ prefix: String) -> String? {
+        guard let match = prefix.wholeMatch(of: #/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)? ([^\s\[\]]+)\[\d+:\d+\]/#) else {
+            return nil
+        }
+        return String(match.1)
+    }
+
     /// Whether a location prefix carrying no line number names a file.
     ///
-    /// The thing it has to be told apart from is a timestamped tool log — `YYYY-MM-DD 10:00:00.000 xcodebuild[123:456]: warning: …` — and the two are discriminable without guessing: that prefix carries whitespace and a `[pid:tid]` bracket, where a path carries neither and does carry a separator or an extension.
+    /// The thing it has to be told apart from is a timestamped tool log — `YYYY-MM-DD 10:00:00.000 xcodebuild[123:456]: warning: …` — and the two are discriminable without guessing: that prefix carries whitespace and a `[pid:tid]` bracket, where a path carries neither and does carry a separator or an extension. ``timestampedTool(_:)`` reads that shape before this is asked.
     ///
-    /// The deliberate cost: a path containing a space is not read as one. Missing a diagnostic is recoverable — the run's exit code is unchanged and the raw log holds the line — where reading a log line as a diagnostic puts words in the toolchain's mouth.
+    /// The deliberate cost: a path containing a space is not read as one. Missing a diagnostic is recoverable — the run's exit code is unchanged and the raw log holds the line — where reading a path-shaped log line as a diagnostic puts words in the toolchain's mouth.
     private static func looksLikePath(_ prefix: String) -> Bool {
         guard !prefix.contains(where: \.isWhitespace) else {
             return false

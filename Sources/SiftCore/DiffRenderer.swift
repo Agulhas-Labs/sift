@@ -598,22 +598,28 @@ private extension DiffRenderer {
             if report.sites.count > DiffCallers.siteCap {
                 lines.append("      truncated: \(report.sites.count - DiffCallers.siteCap) more — `sift where \(report.target.label)` lists them all")
             }
-            // As `where` says it: with no site listed, "0 call sites" of a function reached only as `x.f` reads as unused.
-            if report.sites.isEmpty {
-                lines += SyntacticCallerFallback.nameOnlyLines(
-                    report.nameOnly,
-                    cap: DiffCallers.siteCap,
-                    truncationPointer: "`sift where \(report.target.label)` lists them all",
-                    initializerOf: report.target.kind == .initializer ? report.searchedName : nil
-                ).map { "      \($0)" }
-            }
+            // As `where` says it, beside a list as beside none: "0 call sites" of a function reached only as `x.f` reads
+            // as unused, and a list of calls reads as every use of one also handed on unapplied.
+            lines += SyntacticCallerFallback.nameOnlyLines(
+                report.nameOnly,
+                cap: DiffCallers.siteCap,
+                truncationPointer: "`sift where \(report.target.label)` lists them all",
+                initializerOf: report.target.kind == .initializer ? report.searchedName : nil
+            ).map { "      \($0)" }
             // The store records no call where a property wrapper is written on a function's parameter, so those attribute sites are listed by name beside a resolved initializer's answer, and "0 call sites" is never the whole story over one.
             if let type = report.searchedName {
-                let marker = { (site: SyntacticCallSite) in report.staleFiles.contains(site.path) ? OccurrenceState.modifiedSinceBuild.marker ?? "" : "" }
+                let marker = { (site: SyntacticCallSite) in report.staleFiles[site.path] != nil ? OccurrenceState.modifiedSinceBuild.marker ?? "" : "" }
                 let blocks = WrapperAttributeSites.lines(report.wrapperSites, named: type, for: report.target.label, cap: DiffCallers.siteCap, marker: marker)
                     + WrapperAttributeSites.lines(report.unassignedWrapperSites, named: type, for: WrapperAttributeSites.unassignedOwner(report.wrapperTypePath ?? type), cap: DiffCallers.siteCap, marker: marker)
                 lines += blocks.filter { !$0.isEmpty }.map { "      \($0)" }
             }
+        }
+        var setAside = SetAsideSites()
+        for report in reports {
+            setAside.merge(report.setAside)
+        }
+        if let line = setAside.line {
+            lines.append("  " + line)
         }
         if reports.count > DiffCallers.memberCap {
             lines.append("  truncated: \(reports.count - DiffCallers.memberCap) more members — `sift where <Type.member>` answers each")

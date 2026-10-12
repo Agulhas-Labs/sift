@@ -46,6 +46,75 @@ struct StopBuildGateTests {
     }
 
     @Test
+    func aBuildSettingEditedInARepositoryWhoseCurrentPathNamesNothingOfTheToolIsStillCounted() async throws {
+        let fixture = try StopGateFixture(neutralPath: true)
+        #expect(!fixture.repo.path.contains("sift"))
+        let config = try fixture.file("Config/Base.xcconfig")
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: config), StopGateFixture.result("t1")])
+
+        let reason = try #require(await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript])))
+
+        #expect(reason.contains("you edited 1 build input (Base.xcconfig)"))
+    }
+
+    @Test
+    func aContextThatEditedOnlyABuildSettingIsAskedToBuildNamingItAsABuildInput() async throws {
+        let fixture = try StopGateFixture()
+        let config = try fixture.file("Config/Base.xcconfig")
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: config), StopGateFixture.result("t1")])
+
+        let reason = try #require(await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript])))
+
+        #expect(reason.contains("you edited 1 build input (Base.xcconfig) and no green `sift run` build or test is on record"))
+        #expect(!reason.contains("Swift file"))
+    }
+
+    @Test
+    func aSwiftEditBesideAnotherInputCountsEveryFileAsABuildInput() async throws {
+        let fixture = try StopGateFixture()
+        let plist = try fixture.file("App/Info.plist")
+        let transcript = try fixture.transcript([
+            StopGateFixture.edit("t1", path: plist),
+            StopGateFixture.result("t1"),
+            StopGateFixture.edit("t2", path: fixture.depot),
+            StopGateFixture.result("t2"),
+        ])
+
+        let reason = try #require(await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript])))
+
+        #expect(reason.contains("you edited 2 build inputs (Info.plist, Depot.swift)"))
+    }
+
+    @Test
+    func aSwiftOnlyEditKeepsTheSwiftFileWording() async throws {
+        let fixture = try StopGateFixture()
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: fixture.depot), StopGateFixture.result("t1")])
+
+        let reason = try #require(await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript])))
+
+        #expect(reason.contains("you edited 1 Swift file (Depot.swift) and no green"))
+        #expect(!reason.contains("build input"))
+    }
+
+    @Test
+    func aMarkdownOnlyEditNeverAsksForABuild() async throws {
+        let fixture = try StopGateFixture()
+        let notes = try fixture.file("Docs/Notes.md")
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: notes), StopGateFixture.result("t1")])
+
+        #expect(await fixture.hook(["transcript_path": transcript]).isEmpty)
+    }
+
+    @Test
+    func aBuildSettingUnderAHiddenDirectoryIsNoEdit() async throws {
+        let fixture = try StopGateFixture()
+        let config = try fixture.file(".scratch/Base.xcconfig")
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: config), StopGateFixture.result("t1")])
+
+        #expect(await fixture.hook(["transcript_path": transcript]).isEmpty)
+    }
+
+    @Test
     func anEditWhoseResultWasAnErrorCountsForNothing() async throws {
         let fixture = try StopGateFixture()
         let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: fixture.depot), StopGateFixture.result("t1", failed: true)])
@@ -88,6 +157,21 @@ struct StopBuildGateTests {
         let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: fixture.depot), StopGateFixture.result("t1")])
 
         #expect(await fixture.hook(["transcript_path": transcript]).isEmpty)
+    }
+
+    @Test
+    func aBuildSettingChangedSinceTheGreenRunStillBlocks() async throws {
+        let fixture = try StopGateFixture()
+        try StopGateFixture.recordGreenBuild(in: fixture.repo)
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: fixture.depot), StopGateFixture.result("t1")])
+        #expect(await fixture.hook(["transcript_path": transcript]).isEmpty)
+
+        let settings = fixture.repo.appendingPathComponent("Base.xcconfig")
+        try "SWIFT_STRICT_CONCURRENCY = complete\n".write(to: settings, atomically: true, encoding: .utf8)
+
+        let printed = await fixture.hook(["transcript_path": transcript])
+        let reason = try #require(try StopGateFixture.blockReason(of: printed))
+        #expect(reason.contains("1 Swift file (Depot.swift)"))
     }
 
     @Test
@@ -216,6 +300,55 @@ struct StopBuildGateTests {
         let busy = try fixture.transcript([StopGateFixture.edit("t9", path: fixture.depot), StopGateFixture.result("t9")], named: "agent-busy")
         let blocked = await fixture.hook(["hook_event_name": "SubagentStop", "transcript_path": parent, "agent_id": "busy", "agent_transcript_path": busy])
         #expect(try StopGateFixture.blockReason(of: blocked) != nil)
+    }
+
+    /// Writes the progress file a run of `tree` with process `pid` would keep in the fixture's repository, its heartbeat long stale.
+    private func run(in fixture: StopGateFixture, tree: String, pid: Int32, sourceLocation: SourceLocation = #_sourceLocation) throws {
+        let directory = RunProgressPaths.directory(in: fixture.repo, writesUnder: nil)
+        #expect(directory.path.hasPrefix(fixture.repo.path), sourceLocation: sourceLocation)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var snapshot = RunProgressSnapshot(
+            runId: "20261010T100000000Z-0a1b2c3d",
+            pid: pid,
+            repoRoot: fixture.repo.path,
+            startedAt: Date().addingTimeInterval(-600),
+            command: "swift test",
+            tree: tree
+        )
+        snapshot.phase = .testing
+        snapshot.updatedAt = Date().addingTimeInterval(-300)
+        try snapshot.encoded().write(to: RunProgressPaths.file(runId: snapshot.runId, in: directory))
+    }
+
+    @Test
+    func aRunOfTheTreeWhoseProcessIsAliveLetsTheStopThroughHoweverOldItsHeartbeat() async throws {
+        let fixture = try StopGateFixture()
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: fixture.depot), StopGateFixture.result("t1")])
+        try run(in: fixture, tree: #require(TreeKey.of(repositoryRoot: fixture.repo)).value, pid: getpid())
+
+        #expect(await fixture.hook(["transcript_path": transcript]).isEmpty)
+    }
+
+    @Test
+    func aRunOfTheTreeWhoseProcessIsGoneIsIgnoredAndTheBuildIsAsked() async throws {
+        let fixture = try StopGateFixture()
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: fixture.depot), StopGateFixture.result("t1")])
+        try run(in: fixture, tree: #require(TreeKey.of(repositoryRoot: fixture.repo)).value, pid: ServerRootByParentTests.exitedPid())
+
+        let reason = try #require(try await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript])))
+
+        #expect(reason.contains("Run `sift run -- swift build` from"))
+    }
+
+    @Test
+    func aLiveRunOfAnotherTreeStillGetsTheBuildAskedAfterIt() async throws {
+        let fixture = try StopGateFixture()
+        let transcript = try fixture.transcript([StopGateFixture.edit("t1", path: fixture.depot), StopGateFixture.result("t1")])
+        try run(in: fixture, tree: String(repeating: "b", count: 40), pid: getpid())
+
+        let reason = try #require(try await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript], now: Date().addingTimeInterval(-299))))
+
+        #expect(reason.contains("Once it ends, run `sift run -- swift build`"))
     }
 
     @Test

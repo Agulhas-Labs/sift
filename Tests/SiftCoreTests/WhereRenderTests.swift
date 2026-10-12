@@ -45,7 +45,7 @@ struct WhereRenderTests {
     func typeLookupListsDeclarationConformersAndMode() async throws {
         let output = try await Self.render("Sampler")
 
-        #expect(output.contains("mode: syntactic"))
+        #expect(output.contains("--syntactic: uses not asked for, sites by written name"))
         #expect(output.contains("declarations (1):"))
         #expect(output.contains("Alpha.Sampler — protocol"))
         #expect(output.contains("conformers of Sampler (2, by written name):"))

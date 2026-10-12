@@ -52,7 +52,7 @@ struct WindowShapesR1bTests {
         #expect(fixture.verdict(lookup, session: "cold-\(command.hashValue)").token == "in-place")
     }
 
-    /// Once the context holds the file's digest, each spelling is no lookup at all — let through with nothing noted, as the plain window is.
+    /// Once the context holds the file's digest, each spelling is no lookup at all — let through and logged `locatedWindow`, as the plain window is.
     @Test(arguments: shapes)
     func aShapeOfADigestedFileIsNoLookup(command: String, lines _: [Int]) throws {
         let fixture = try Fixture()
@@ -61,7 +61,7 @@ struct WindowShapesR1bTests {
 
         #expect(try fixture.verdict(fixture.classified(command: command)).line == "allowed\t\tnoLookup", "\(command)")
         #expect(try fixture.verdict(fixture.classified(command: "LC_ALL=C " + command)).line == "allowed\t\tnoLookup", "\(command)")
-        #expect(!FileManager.default.fileExists(atPath: fixture.stores.appendingPathComponent("suppressions.jsonl").path))
+        #expect(Set(LocatedPassLogTests.rules(in: fixture.stores.appendingPathComponent("suppressions.jsonl"))) == ["locatedWindow"])
     }
 
     /// The real answerer serves each spelling from the file's digest — bounded to the members each range overlaps, one call a range, since the whole digest is over the budget — priced against the lines it prints.

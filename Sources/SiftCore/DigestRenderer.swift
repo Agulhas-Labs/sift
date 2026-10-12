@@ -15,6 +15,8 @@ public struct DigestRenderer {
     var siblingRoots: ((String) -> [SiblingPointer])?
     /// The narrowing the index was built under — consulted only when a file target misses, to name the rule that kept an existing file out.
     var config = SiftConfig()
+    /// Whether a guessed file's build file renames its module through a setting the resolver cannot read, so its banner says that rather than that nothing declares it.
+    var isUnreadablyRenamed: (String) -> Bool = { _ in false }
     /// Every read of the source this digest serves goes through here; the engine hands in one that checks the bytes against their rows.
     var sourceReader = ServedSourceReader()
     /// Where a relative path target is read from when the repository root's own reading of it names no indexed file.
@@ -57,13 +59,25 @@ public struct DigestRenderer {
         if MarkdownOutline.names(target) {
             return renderMarkdown(path: target, options: options) ?? MeasuredAnswer(text: markdownMiss(path: target), missed: true)
         }
+        // The explicit module spelling: `Name/` is the module `Name` even where a type shares the name and a bare `Name` serves the type.
+        let moduleSpelled = SymbolNaming.unbackticked(String(target.dropLast()))
+        if target.hasSuffix("/"), moduleNames.contains(moduleSpelled) {
+            return try MeasuredAnswer(text: renderModule(moduleSpelled, options: options))
+        }
         if target.contains("/") || target.hasSuffix(".swift") {
-            return try renderFile(path: target, options: options)
+            let answer = try renderFile(path: target, options: options)
+            // `Name/` is first the module spelling, so a miss on it says no module is named so either.
+            return target.hasSuffix("/") && answer.missed ? answer.appending(["no module named \(moduleSpelled) either"]) : answer
         }
         // A name written in backticks is asked for by the name the index holds, which drops them around an ordinary word.
         let target = SymbolNaming.unbackticked(target)
         if moduleNames.contains(target) {
-            return try MeasuredAnswer(text: renderModule(target, options: options))
+            // A type of the module's name is the likelier subject of a bare name, and the module is one line away.
+            let shadow = DigestModuleShadow(renderer: self, name: target)
+            guard try !shadow.types().isEmpty else {
+                return try MeasuredAnswer(text: renderModule(target, options: options))
+            }
+            return try renderType(name: target, qualifiers: [], module: nil, memberTarget: nil, options: options).appending(shadow.moduleNote(options: options))
         }
         if target.contains(".") {
             let components = QualifiedPath.components(of: target)
@@ -108,8 +122,7 @@ public struct DigestRenderer {
         for row in overview {
             lines.append("  \(row.module) — \(row.files) file\(row.files == 1 ? "" : "s"), \(row.topLevelSymbols) top-level declaration\(row.topLevelSymbols == 1 ? "" : "s")")
         }
-        lines.append("")
-        lines.append("digest <Module> lists one module's declarations; digest <Type> serves a type's shape")
+        try lines.append(contentsOf: [""] + OverviewModuleHints(store: store).lines(for: overview))
         return lines.joined(separator: "\n")
     }
 
@@ -157,7 +170,8 @@ public struct DigestRenderer {
         }
 
         let primary = declarations[0]
-        let extensions = try store.extensions(ofTypeNamed: name).filter { try owns(extension: $0, primary: primary) }
+        let placed = try DigestOwnedExtensions.of(primary, renderer: self)
+        let extensions = placed.map(\.row)
         let paths = [primary.path] + extensions.map(\.path)
         // Two exposures, not one, and only the first is answer-scoped. The cited files can be truncated,
         // which the banner covers. The extension *count* cannot be scoped at all: `extensions(ofTypeNamed:)`
@@ -225,10 +239,11 @@ public struct DigestRenderer {
                 ))
             }
         }
-        for extensionRow in extensions {
+        for (extensionRow, mayExtendAnother) in placed {
             budgeted.append(BudgetedLine(text: "", counted: false))
+            let mark = mayExtendAnother ? DigestOwnedExtensions.mark(named: name) : ""
             budgeted.append(BudgetedLine(
-                text: "extension \(extensionRow.name)\(extensionContext(extensionRow)) — \(extensionRow.path)\(extensionRow.rangeDescription)",
+                text: "extension \(extensionRow.name)\(extensionContext(extensionRow)) — \(extensionRow.path)\(extensionRow.rangeDescription)\(mark)",
                 counted: false
             ))
             for member in try store.children(of: extensionRow.id) {
@@ -285,7 +300,9 @@ public struct DigestRenderer {
     ///
     /// Not `private`: `DigestMissAnswer` separates a local extension from an external type's the same way.
     func owns(extension row: SymbolRow, primary: SymbolRow) throws -> Bool {
-        let written = row.name.split(separator: ".").map(String.init)
+        // The path with generic arguments set aside, as `where` reads it: `extension Box<String>` writes `Box`.
+        let spelling = row.name.contains("<") ? DeclaredTypeName.path(ofSpelling: row.name) : row.name
+        let written = spelling.split(separator: ".").map(String.init)
         let chain = try enclosingNames(of: primary) + [primary.name]
         if written == chain {
             return true
@@ -314,7 +331,7 @@ public struct DigestRenderer {
             // this number and from the list under it, and the file that would have carried it is not among the
             // paths named here — because nothing in it was readable to name. A served answer words its own
             // repository-wide notice, which leaves out the files it served from.
-            if options.offset == 0, let served = try SmallOverloadsServed(renderer: self).answer(members, target: target) {
+            if options.offset == 0, let served = try SmallOverloadsServed(renderer: self).answer(members, target: target, signatureOnly: options.signaturesOnly) {
                 return served.joined(separator: "\n")
             }
             var lines = try absenceCountBanner(ParseErrorNotice.acrossRepository(store))
@@ -326,7 +343,7 @@ public struct DigestRenderer {
             }
             return lines.joined(separator: "\n")
         }
-        return try memberSource(of: first, target: target, options: options)
+        return try memberSource(of: first, target: target, options: options, signatureOnly: options.signaturesOnly)
     }
 
     /// The answer to a `Type.deinit`, which the index never stores and so no member lookup finds, or `nil` where the target names no type.
@@ -343,7 +360,7 @@ public struct DigestRenderer {
     /// A single member's source, capped at `bodyLineCap` and paged by `options.offset`, with the ranged Read that fetches any remainder.
     ///
     /// The resume target is the target that serves `row` alone, given for a block served beside others: there a bare "pass --offset" would be sent back with the target that produced several blocks, which refuses an offset, so the advice names the one call that pages this block — that target with the offset, spelled for the face — instead.
-    private func memberSource(of row: SymbolRow, target: String, options: DigestOptions, resumeTarget: String? = nil) throws -> String {
+    private func memberSource(of row: SymbolRow, target: String, options: DigestOptions, resumeTarget: String? = nil, signatureOnly: Bool = false) throws -> String {
         // A member body is served verbatim from the file, so a parse error in it can have truncated the very range being sliced — the banner leads here as it does on every other digest path.
         let preamble = try parseErrorBanner(touching: [row.path]) + guessedModuleBanner(touching: [row.path])
         let header = try SmallOverloadsServed(renderer: self).header(of: row)
@@ -352,19 +369,20 @@ public struct DigestRenderer {
             return (preamble + ["\(target) resolves to \(row.path), which could not be read"]).joined(separator: "\n")
         case .emptyRange:
             return (preamble + ["\(target) has an empty range at \(row.path)\(row.rangeDescription)"]).joined(separator: "\n")
-        case let .lines(all, firstLineNumber):
+        case let .lines(sliced, firstLineNumber):
+            let all = signatureOnly ? MemberSignature.lines(of: sliced) : sliced
             // `offset` is the same cursor the truncation markers elsewhere in this file teach, measured here in body lines rather than member lines.
+            if PastEndLine.applies(offset: options.offset, count: all.count) {
+                return (preamble + [header, "", PastEndLine.text(offset: options.offset, count: all.count, noun: "body lines")]).joined(separator: "\n")
+            }
             let offset = min(max(0, options.offset), all.count)
             var body = Array(all.dropFirst(offset).prefix(Self.bodyLineCap))
-            if offset > 0 {
-                body.insert("(…\(offset) body lines skipped)", at: 0)
-            }
+            body.insert(contentsOf: offset > 0 ? ["(…\(offset) body lines skipped)"] : [], at: 0)
             let remaining = all.count - offset - min(Self.bodyLineCap, all.count - offset)
             if remaining > 0 {
-                let resumeLine = firstLineNumber + offset + Self.bodyLineCap
                 let resumeOffset = offset + Self.bodyLineCap
                 let resume = resumeTarget.map { options.spelling.digest($0, offset: resumeOffset) } ?? "pass \(options.spelling.offset(resumeOffset))"
-                body.append("… truncated: \(remaining) more lines — \(resume), or Read \(row.path) from line \(resumeLine)")
+                body.append("… truncated: \(remaining) more lines — \(resume), or Read \(row.path) from line \(firstLineNumber + resumeOffset)")
             }
             return (preamble + [header, ""] + body).joined(separator: "\n")
         }
@@ -942,8 +960,7 @@ extension DigestRenderer {
     /// The guessed-module banner for the files an answer drew on, on the same answer-scoped rule as the one above.
     func guessedModuleBanner(touching paths: [String]) throws -> [String] {
         let affected = try Set(store.filesWithGuessedModule().map(\.path))
-        guard let banner = GuessedModuleNotice(paths: paths.filter(affected.contains)).banner else { return [] }
-        return [banner, ""]
+        return GuessedModuleNotice.bannerLines(for: paths.filter(affected.contains), isUnreadablyRenamed: isUnreadablyRenamed)
     }
 
     private func macroMarker(for row: SymbolRow) -> String {
@@ -997,7 +1014,7 @@ extension DigestRenderer {
         let affected = try store.filesWithParseErrors().filter { $0.module == module }.map(\.path)
         var lines = countBanner(ParseErrorNotice(paths: affected))
         let guessed = try store.filesWithGuessedModule().filter { $0.module == module }.map(\.path)
-        lines += GuessedModuleNotice(paths: guessed).banner.map { [$0, ""] } ?? []
+        lines += GuessedModuleNotice.bannerLines(for: guessed, isUnreadablyRenamed: isUnreadablyRenamed)
         lines.append("module \(module) — \(symbols.count) top-level declarations")
         var budgeted: [BudgetedLine] = []
         var outlineBudget = Self.outlineCap
@@ -1024,16 +1041,7 @@ extension DigestRenderer {
             lines.append("")
             lines.append("\(hidden) private/fileprivate declaration\(hidden == 1 ? "" : "s") not shown — `--all` (MCP `all: true`) includes them")
         }
-        // A module and a type can share a name — every SwiftPM executable target with an eponymous entry-point type does. The module keeps the default, but `where` promises candidates over silent guessing, so the buried type is named rather than discoverable only by already knowing the qualified form.
-        let sameNamedTypes = try store.typeDeclarations(named: module)
-        if !sameNamedTypes.isEmpty {
-            let calls = try Set(sameNamedTypes.map { try qualifiedTarget(of: $0) })
-                .sorted()
-                .map { "`digest \($0)`" }
-                .joined(separator: " or ")
-            lines.append("")
-            lines.append("a type named \(module) also exists — \(calls) serves it")
-        }
+        lines += try DigestModuleShadow(renderer: self, name: module).typeNote()
         return lines.joined(separator: "\n")
     }
 

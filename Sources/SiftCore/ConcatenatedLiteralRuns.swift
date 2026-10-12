@@ -44,7 +44,7 @@ struct ConcatenatedLiteralRuns {
         }
         for form in [run.map { $0.literal.segments[0] }, run.map { $0.literal.printedSegments[0] }] {
             let joined = form.joined()
-            guard let found = SmartCaseQuery.range(of: query, in: joined) else { continue }
+            guard let found = CaseFoldedQuery.range(of: query, in: joined) else { continue }
             let start = joined.distance(from: joined.startIndex, to: found.lowerBound)
             return located(start ..< start + joined.distance(from: found.lowerBound, to: found.upperBound), lengths: form.map(\.count), in: run)
         }

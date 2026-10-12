@@ -306,6 +306,15 @@ public struct GitContext {
         return ISO8601DateFormatter().date(from: output.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    /// When the newest commit touching `path` was made, in seconds since 1970, or `nil` when none did (an untracked file) or git cannot say.
+    ///
+    /// `--no-show-signature` for the reason ``commitDate(_:)`` gives; the committer time, whole seconds.
+    public func lastCommitTime(of path: String) -> Double? {
+        let arguments = ["log", "-1", "--no-show-signature", "--format=%ct", "--", Self.literalPathspec(path)]
+        guard let output = try? Self.run(arguments: arguments, in: repoRoot) else { return nil }
+        return Double(output.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// The abbreviated hash git would print for `rev`, or `nil` when it names nothing.
     public func shortHash(_ rev: String) -> String? {
         guard let output = try? Self.run(arguments: ["rev-parse", "--short", "--verify", "--quiet", rev], in: repoRoot) else { return nil }
@@ -636,5 +645,16 @@ public extension GitContext {
         public let added: Int
         public let removed: Int
         public let binary: Bool
+    }
+}
+
+public extension GitContext {
+    /// Every `.md` file git would show, as ``visibleSwiftFiles()`` lists the `.swift` ones: tracked plus untracked-but-not-ignored, repo-relative.
+    func visibleMarkdownFiles() throws -> [String] {
+        let output = try Self.run(
+            arguments: ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "*.md"],
+            in: repoRoot, within: ChildDeadline.gitBulk
+        )
+        return output.split(separator: "\0").map(String.init)
     }
 }

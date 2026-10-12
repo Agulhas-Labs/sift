@@ -99,6 +99,20 @@ struct MarkdownOutlineTests {
     }
 
     @Test
+    func boldFurtherAlongABulletIsNotItsTitle() {
+        let found = Self.bullets("## Open\n\n- A tinted row without a tier heading **does not compile** here\n")
+
+        #expect(found.map(\.title) == ["A tinted row without a tier heading **does not compile** here"])
+    }
+
+    @Test
+    func boldMarkersInsideACodeSpanFurtherAlongABulletAreNotItsTitle() {
+        let found = Self.bullets("## Open\n\n- T010 prints `** TEST BUILD SUCCEEDED **`, not the other\n")
+
+        #expect(found.map(\.title) == ["T010 prints `** TEST BUILD SUCCEEDED **`, not the other"])
+    }
+
+    @Test
     func aBulletWithNoBoldRunTitlesItselfByItsFirstDozenWords() {
         let found = Self.bullets("## Open\n\n- one two three four five six seven eight nine ten eleven twelve thirteen\n")
 

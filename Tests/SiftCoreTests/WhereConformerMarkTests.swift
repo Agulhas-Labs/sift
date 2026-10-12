@@ -62,7 +62,7 @@ struct WhereConformerMarkTests {
         _ = try await engine.ensureFresh()
         try FileManager.default.removeItem(at: root.appendingPathComponent("Sources/Lib/Medic.swift"))
 
-        let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh())
+        let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
 
         #expect(output.contains("  Medic — Sources/Lib/Medic.swift:1  (file deleted since last build)\n") || output.hasSuffix("  Medic — Sources/Lib/Medic.swift:1  (file deleted since last build)"), "\(output)")
         #expect(!output.contains("indirect  (file deleted"), "\(output)")
@@ -75,7 +75,7 @@ struct WhereConformerMarkTests {
     @Test
     func aConformerThroughATypealiasIsListedAndMarked() async throws {
         try await Self.fixture().withEngine { engine in
-            let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh())
+            let output = try await engine.lookup(symbol: "Greeter", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
 
             #expect(output.contains("conformers of Greeter (2: 1 direct, 0 indirect, 1 through a typealias — "), "\(output)")
             #expect(output.contains("  Lib.Cadet — struct — Sources/Lib/Ranks.swift:7 — through typealias Lib.Salute"), "\(output)")

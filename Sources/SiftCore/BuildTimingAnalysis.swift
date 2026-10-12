@@ -3,8 +3,6 @@
 //
 
 import Foundation
-import SwiftOperators
-import SwiftSyntax
 
 /// A build's timing lines folded by site and by file, the slowest sites ranked and named by the declaration that encloses them.
 ///
@@ -91,8 +89,7 @@ private extension BuildTimingAnalysis {
     ///
     /// A fresh parse rather than the index's stored ranges: the build just compiled these bytes, and a stored range is the one thing about a just-edited file that can be stale. Only the files of listed rows are parsed, one parse per file giving both the declaration and the tree an expression's shape is read from.
     static func resolving(_ rows: [BuildTimingRow], under treeRoot: URL) -> [BuildTimingRow] {
-        var files: [String: ParsedFile?] = [:]
-        var trees: [String: BuildTimingParsedTree?] = [:]
+        var readings: [String: BuildTimingFileReading] = [:]
         return rows.map { row in
             // A local function holds no declaration of its own in the parsed file's symbol table — only its
             // enclosing declaration does — so `Declaration(enclosing:)` would misname this row with the outer
@@ -101,29 +98,20 @@ private extension BuildTimingAnalysis {
                 let declaration = RunFailureSites.Declaration(name: name, path: row.path, startLine: row.line, endLine: row.line)
                 return row.resolved(to: declaration)
             }
-            let file: ParsedFile?
-            let tree: BuildTimingParsedTree?
-            if let known = files[row.path], let knownTree = trees[row.path] {
-                (file, tree) = (known, knownTree)
-            } else {
-                (file, tree) = Self.parse(row.path, under: treeRoot)
-                files[row.path] = .some(file)
-                trees[row.path] = .some(tree)
-            }
-            guard let file else {
+            let reading = readings[row.path] ?? BuildTimingFileReading(row.path, for: rows.filter { $0.path == row.path }, under: treeRoot)
+            readings[row.path] = reading
+            guard let file = reading.file else {
                 return row
             }
             var declaration = RunFailureSites.Declaration(enclosing: row.line, in: file)
-            if let enclosing = declaration, let tree, let deinitializer = BuildTimingDeinitializers.range(containing: row.line, in: tree.tree, converter: tree.converter) {
+            if let enclosing = declaration, let deinitializer = reading.deinitializers[row.line] {
                 // The enclosing declaration of a line inside a `deinit` is its type, which the row would then read as the type itself.
                 // A local class is no declaration of its own, so what encloses its `deinit` is the function that holds the class: the class is named instead.
                 let isLocalType = deinitializer.owner.map { enclosing.name != $0 && !enclosing.name.hasSuffix("." + $0) } ?? false
                 let typeName = isLocalType ? deinitializer.owner ?? enclosing.name : enclosing.name
                 declaration = RunFailureSites.Declaration(name: typeName + ".deinit", path: row.path, startLine: deinitializer.lines.lowerBound, endLine: deinitializer.lines.upperBound)
             }
-            let shape = row.kind == .expression ? tree.flatMap {
-                BuildTimingExpressionShape.name(atLine: row.line, column: row.column, in: $0.tree, converter: $0.converter)
-            } : nil
+            let shape = row.kind == .expression ? reading.shapes[BuildTimingFileReading.Position(line: row.line, column: row.column)] : nil
             return row.resolved(to: declaration, shape: shape)
         }
     }
@@ -163,20 +151,5 @@ private extension BuildTimingAnalysis {
             return nil
         }
         return String(description[fileMarker.upperBound ..< atSign.lowerBound])
-    }
-
-    /// Reads and parses `path` under the tree root, or `nil` for both when it cannot be read as UTF-8.
-    static func parse(_ path: String, under treeRoot: URL) -> (file: ParsedFile?, tree: BuildTimingParsedTree?) {
-        guard let data = try? Data(contentsOf: treeRoot.appendingPathComponent(path)),
-              let source = String(data: data, encoding: .utf8)
-        else {
-            return (nil, nil)
-        }
-        let (file, extra) = FileParser.parse(source: source, repoRelativePath: path) { tree, converter in (tree, converter) }
-        // Sequence expressions arrive flat, precedence unresolved; folded once here so a `+` chain or a
-        // ternary chain reads as the nested tree it is, rather than a sequence no shape can be read off.
-        let folded = OperatorTable.standardOperators.foldAll(extra.0) { _ in }
-        let tree = folded.as(SourceFileSyntax.self) ?? extra.0
-        return (file, BuildTimingParsedTree(tree: tree, converter: extra.1))
     }
 }

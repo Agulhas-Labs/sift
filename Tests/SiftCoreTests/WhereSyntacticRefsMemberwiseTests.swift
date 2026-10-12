@@ -18,7 +18,7 @@ struct WhereSyntacticRefsMemberwiseTests {
         let engine = try SiftEngine(directory: root)
         let output = try await engine.lookup(symbol: "Gizmo.isReady", freshness: engine.ensureFresh(), options: WhereOptions(includeSemantic: false, includeReferences: true))
 
-        #expect(output.contains("\"isReady\" (no use by name, 1 call passing it as isReady: to the memberwise init, in 1 file):"), "\(output)")
+        #expect(output.contains("\"isReady\" (0 uses by written name, 1 call passing it as isReady: to the memberwise init, in 1 file):"), "\(output)")
         #expect(output.contains("    :2  in stock()  | Gizmo(weight: 2, isReady: true)"), "\(output)")
         #expect(!output.contains("lists them"), "\(output)")
     }

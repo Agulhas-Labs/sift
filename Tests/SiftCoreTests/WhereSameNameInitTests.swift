@@ -168,7 +168,7 @@ struct WhereSameNameInitTests {
         let output = try await Self.lookupScopes("Rack.Part.init")
         let sites = WhereAnswerRepetitionTests.sitesOnePerLine(output)
 
-        #expect(output.contains("(5 call sites by name, 1 of them writes \"Part\" behind a qualifier the index reads as Sources, which declares another \"Part\", so may be that type's rather than this struct's — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file"), "\(output)")
+        #expect(output.contains("(5 call sites by written name, 1 of them writes \"Part\" behind a qualifier the index reads as Sources, which declares another \"Part\", so may be that type's rather than this struct's — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file"), "\(output)")
         #expect(sites.contains("Sources/App/Scopes.swift:14  in stock() (no declared init matches — compiler-written or inherited) (labels fit Sources.Part)"), "\(output)")
         #expect(sites.contains("Sources/App/Scopes.swift:38  in restock() (no declared init matches — compiler-written or inherited)"), "\(output)")
         #expect(!output.contains("of another type named Part dropped"), "\(output)")
@@ -179,7 +179,7 @@ struct WhereSameNameInitTests {
     func aStaticFunctionSpelledLikeTheTypeIsNotedAsMaybeNoInitCall() async throws {
         let output = try await Self.lookup("Gadget.init")
 
-        #expect(output.contains("(2 call sites by name, 1 of them writes \"Gadget\" behind a qualifier the index reads as Space, which declares no \"Gadget\", so may call no Gadget.init — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file):"), "\(output)")
+        #expect(output.contains("(2 call sites by written name, 1 of them writes \"Gadget\" behind a qualifier the index reads as Space, which declares no \"Gadget\", so may call no Gadget.init — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file):"), "\(output)")
         #expect(!output.contains("calling no Gadget.init dropped"), "\(output)")
         #expect(!output.contains("of another type named Gadget"), "\(output)")
     }

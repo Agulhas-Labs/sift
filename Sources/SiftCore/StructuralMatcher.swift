@@ -47,15 +47,16 @@ final class StructuralMatcher: SyntaxVisitor {
 
     /// Parses `source` and returns its matches, with how many declarations each applied term was the first to reject; the tree is local to this call.
     static func scan(_ source: String, path: String, query: StructuralQuery) -> (matches: [StructuralMatch], eliminations: [Int: Int]) {
-        let tree = Parser.parse(source: source)
-        // Imports gate the whole file, mirroring `path:` — a failing file contributes no declarations. Checked after parsing because only the tree knows them, but before the walk, which the gate then saves entirely.
-        if query.hasImportTerms, !query.admitsImports(Self.importedModules(in: tree)) {
-            return ([], [:])
+        NestingGate.parseOrEmpty(source) { tree in
+            // Imports gate the whole file, mirroring `path:` — a failing file contributes no declarations. Checked after parsing because only the tree knows them, but before the walk, which the gate then saves entirely.
+            if query.hasImportTerms, !query.admitsImports(Self.importedModules(in: tree)) {
+                return ([], [:])
+            }
+            let converter = SourceLocationConverter(fileName: path, tree: tree)
+            let matcher = StructuralMatcher(query: query, path: path, converter: converter, sourceBytes: Array(source.utf8))
+            matcher.walk(tree)
+            return (matcher.matches, matcher.eliminations)
         }
-        let converter = SourceLocationConverter(fileName: path, tree: tree)
-        let matcher = StructuralMatcher(query: query, path: path, converter: converter, sourceBytes: Array(source.utf8))
-        matcher.walk(tree)
-        return (matcher.matches, matcher.eliminations)
     }
 
     /// The module names a file imports: each import's first path component plus the full dotted path when they differ, from top-level statements and — both branches, same honesty rule as the indexer — inside `#if` blocks.

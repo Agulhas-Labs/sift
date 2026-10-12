@@ -81,6 +81,15 @@ public extension RunReconciliation {
         /// Where the run's output was read from, repository-relative where it sits under the repository.
         public let logPath: String
 
+        /// The repository-relative directory of the package whose manifest this is, empty for the root; a test declared outside it belongs to another package and is neither judged nor counted outside the scope.
+        public var directory = ""
+
+        /// The repository-relative directories of the packages nested inside this one, whose tests a run of this package never runs and which are therefore left out of its counts altogether.
+        public var nestedPackages: [String] = []
+
+        /// The repository-relative directories this manifest gives its test targets by an explicit literal `path:`: a test under one belongs to this package whatever manifest sits between it and the package's root.
+        public var testTargetDirectories: [String] = []
+
         public init(manifest: String, targets: [String], conditionalTargets: Bool, logPath: String) {
             self.manifest = manifest
             self.targets = targets

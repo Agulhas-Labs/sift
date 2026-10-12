@@ -32,7 +32,14 @@ struct TranscriptWorkingDirectory {
     /// The working directory a transcript was recorded in, read from the first of its opening lines that names one — a queued housekeeping line can open a session before its first real message does, and only a message line carries `cwd`.
     ///
     /// Bounded by line count, not by bytes: a queued line can itself run past a hundred kilobytes, and a fixed byte cap that cut one short would parse as nothing and drop the transcript from a scoped share. Read a chunk at a time instead, so a single long line is never truncated, and stop once the first `cwdProbeLineLimit` lines have been seen — comfortably past the handful of queued lines Claude Code can write before a session's first real message.
+    ///
+    /// Run in a pool of its own: the chunks the file handle reads and the objects the parser makes are autoreleased, and a sweep probes every transcript in the window on one thread that drains no pool until it ends, so without it each probe's reads stay resident for the whole audit.
     static func of(transcriptAt url: URL) -> String? {
+        autoreleasepool { probe(url) }
+    }
+
+    /// The body of ``of(transcriptAt:)``, outside its pool.
+    private static func probe(_ url: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         var buffer = Data()

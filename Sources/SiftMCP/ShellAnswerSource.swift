@@ -16,7 +16,8 @@ public struct ShellAnswerSource: Sendable, Equatable, Codable {
     /// Where `command`'s output was answered from, run in `directory`, or `nil` unless the line is nothing but `sift where`/`sift search` lookups of one repository resolved exactly as the CLI resolves it (``RootResolver``'s enclosing repository).
     public static func of(command: String, cwd directory: String?) -> ShellAnswerSource? {
         // A substitution, subshell, brace group, variable or input redirection: what runs is not what is written.
-        let runnable = ShellSyntax.runnableText(command)
+        // A `tee` ending a lookup's pipeline hands on every line, so the output is the lookup's alone.
+        let runnable = ShellSyntax.runnableText(ShellInspection.withoutPassThroughTees(command))
         guard !ShellSyntax.executableText(of: runnable).contains(where: { "$`(){}<".contains($0) }) else { return nil }
         var roots: Set<String> = []
         var tools: Set<String> = []

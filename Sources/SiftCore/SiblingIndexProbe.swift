@@ -72,11 +72,14 @@ public struct SiblingIndexProbe {
     /// The one file at `root` that declares `target`, or `nil` when no file does, or more than one does — an ambiguous name is not this call's to resolve, and resolving it wrong is worse than not resolving it.
     ///
     /// `target` is judged the way `declares(name:)`/`declares(path:)` judge it: undotted, any labeled form of the bare name; dotted, the final component under the qualifiers written before it.
+    ///
+    /// A store no build has finished (``ReadOnlyIndex/hasUsableIndex(atRoot:)``) answers `nil`: it holds only the files stored so far, so a name it finds once may be declared again in a file it has not reached, and "the one file" would be a guess. The other probes here only ever say yes on a row that exists, which a partial store has right.
     public static func declaringFile(named target: String, atRoot root: String) -> String? {
         let components = QualifiedPath.components(of: target)
         let qualifiers = components.count > 1 ? Array(components.dropLast()) : []
         guard let last = components.last,
               let database = ReadOnlyIndex.open(atRoot: root),
+              ReadOnlyIndex.isUsable(database),
               let candidates = try? database.prepare(SiblingProbeStatement.candidatesByLastComponentWithPath.sql)
         else {
             return nil

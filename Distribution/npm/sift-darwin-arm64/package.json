@@ -6,6 +6,6 @@
   "license": "Apache-2.0",
   "os": ["darwin"],
   "cpu": ["arm64"],
-  "files": ["bin/sift", "LICENSE.txt", "THIRD-PARTY-NOTICES.txt"],
+  "files": ["bin/sift", "bin/Sift.md", "LICENSE.txt", "THIRD-PARTY-NOTICES.txt"],
   "preferUnplugged": true
 }

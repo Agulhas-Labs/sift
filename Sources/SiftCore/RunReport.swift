@@ -10,6 +10,8 @@ import Foundation
 public struct RunReport: Sendable {
     public let errors: [RunDiagnostic]
     public let warnings: [RunDiagnostic]
+    /// The warnings and `error:` lines a tool logged with a timestamp while the build ran (`<date> <time> tool[pid:tid] error: …`), each once: shown under a heading of their own and never read by a verdict, a selector, ``isUsable(exitCode:)`` or a proof, since a tool's log line states no failure of the command.
+    public let toolLog: [RunDiagnostic]
     public let testFailures: [RunTestFailure]
     /// The tool's own summary lines, verbatim and in the order the tool would have printed them.
     public let summaryLines: [String]
@@ -59,6 +61,7 @@ public struct RunReport: Sendable {
     public init(
         errors: [RunDiagnostic],
         warnings: [RunDiagnostic],
+        toolLog: [RunDiagnostic] = [],
         testFailures: [RunTestFailure],
         summaryLines: [String],
         contract: RunVerdict.Contract,
@@ -83,6 +86,7 @@ public struct RunReport: Sendable {
         self.swiftTestingProcessOpenings = swiftTestingProcessOpenings
         self.errors = errors
         self.warnings = warnings
+        self.toolLog = toolLog
         self.testFailures = testFailures
         self.summaryLines = summaryLines
         self.contract = contract

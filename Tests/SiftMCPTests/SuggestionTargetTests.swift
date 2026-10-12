@@ -33,6 +33,8 @@ struct SuggestionTargetTests {
         #expect(IndexSuggestion.forFiles(["Sources/App/View.swift", #"[a-z]+\.swift"#]).call == "digest View")
         #expect(!IndexSuggestion.forFiles([#"[a-z]+\.swift"#, #"(a|b)\.swift"#]).namesATarget)
         #expect(IndexSuggestion.forGlob("Sources/[A-Z]+/*.swift").call == "digest .")
+        // The module is asked for by its explicit spelling, since a bare name serves a type of the same name.
+        #expect(IndexSuggestion.forGlob("Sources/Gizmo/*.swift").call == "digest Gizmo/")
         #expect(ReadAdvice.suggestion(path: #"/x/[A-Za-z0-9_]+\.swift"#, ranged: false, belowFloor: { _ in false }) == nil)
 
         // And the property both ends ask, over every shape a residue has taken and every one a target has.

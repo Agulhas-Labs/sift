@@ -298,12 +298,16 @@ public final class IndexStore: @unchecked Sendable {
     }
 
     public func moduleNames() throws -> [String] {
-        let statement = try database.prepare(StoreStatement.moduleNames.sql)
-        var names: [String] = []
-        while try statement.step() {
-            names.append(statement.columnText(0))
+        try firstColumnTexts(StoreStatement.moduleNames)
+    }
+
+    private func firstColumnTexts(_ statement: StoreStatement) throws -> [String] {
+        let prepared = try database.prepare(statement.sql)
+        var texts: [String] = []
+        while try prepared.step() {
+            texts.append(prepared.columnText(0))
         }
-        return names
+        return texts
     }
 
     /// Per-module file and top-level declaration counts, ordered by module name — the repo overview digest's data.
@@ -318,6 +322,11 @@ public final class IndexStore: @unchecked Sendable {
             ))
         }
         return rows
+    }
+
+    /// The module names that are also the name of a nominal type, from one query — where `digest <Name>` serves the type, not the module.
+    public func modulesNamedLikeTypes() throws -> Set<String> {
+        try Set(firstColumnTexts(StoreStatement.modulesNamedLikeTypes))
     }
 
     /// Whether this store lives in memory only, as it does for a tree that cannot be written (``IndexLocation``).

@@ -12,7 +12,7 @@ struct StringsRenderer {
     }
 
     static func render(answer: StringCatalogSearch.Answer, query: String) -> String {
-        var lines = ["strings \"\(escapedValue(query))\""]
+        var lines: [String] = []
         if answer.catalogsSearched == 0 {
             lines.append("no string catalogs (.xcstrings / .strings) in this repo")
         } else if answer.hits.isEmpty {
@@ -23,7 +23,7 @@ struct StringsRenderer {
         let plain = answer.sourceLiterals.filter { !$0.isAroundInterpolation }
         if !plain.isEmpty {
             lines.append("")
-            lines += sourceLiteralLines(plain, heading: "source literals (Swift string literals holding the wording, not catalog entries):", query: query)
+            lines += sourceLiteralLines(plain, heading: "source literals:", query: query)
         }
         let around = answer.sourceLiterals.filter(\.isAroundInterpolation)
         if plain.isEmpty, answer.hits.isEmpty, !around.contains(where: \.isListable) {
@@ -74,8 +74,8 @@ struct StringsRenderer {
         let names = shortestDistinctSuffixes(shown.map(\.path))
         let named = zip(names, shown).map { "\($0) (\($1.count))" }
         let more = counts.count > testFileCap ? ", …" : ""
-        // The rule is said beside the number, as `where` does: a helper in a test directory importing no framework is production.
-        return "in tests: \(tests.count) site\(tests.count == 1 ? "" : "s") in \(counts.count) file\(counts.count == 1 ? "" : "s") — " + named.joined(separator: ", ") + more + ", split on the XCTest or Testing import, never the path"
+        // The rule that splits them, the XCTest or Testing import and never the path, is said once per session.
+        return "in tests: \(tests.count) site\(tests.count == 1 ? "" : "s") in \(counts.count) file\(counts.count == 1 ? "" : "s") — " + named.joined(separator: ", ") + more
     }
 
     /// Each path's last component, extended by parent directories only as far as it takes to tell it from another path ending the same way.
@@ -207,7 +207,7 @@ struct StringsRenderer {
         guard value.count > valueDisplayCap else {
             return value
         }
-        guard let range = SmartCaseQuery.range(of: query, in: value) else {
+        guard let range = CaseFoldedQuery.range(of: query, in: value) else {
             return truncated(value)
         }
         let matchStart = value.distance(from: value.startIndex, to: range.lowerBound)

@@ -21,19 +21,22 @@ small package from <doc:GettingStarted>, a module called `Stacks` with three tes
 ```text
 $ sift run -- swift test
 ✔ swift test
-totals: ✔ passed · Swift Testing 3 tests in 1 suite
+totals: ✔ passed · Swift Testing 3 tests in 1 suite, 0 skipped
 inventory: 3 declared, 3 reported
-raw: .sift/runs/run-20261005-093443Z-8eb81821.log (18 lines in, 4 out)
+raw: Shelf @ ec26cde (clean) · .sift/runs/run-20261012-114242Z-22220e76.log (20 lines in, 4 out), kept for the next 4 runs
 ```
 
 - The first line is the verdict.
 - `totals:` is the sum of the test tool's own tally lines, across Swift Testing and XCTest. A skipped test is
-  counted as skipped, so a run whose tests all skipped does not read as tests that ran.
+  counted as skipped (`0 skipped` when none was), so a run whose tests all skipped does not read as tests that
+  ran, and each skipped test is named under it as `skipped: Suite.test — reason`.
 - `inventory:` appears on an unfiltered `swift test`. It sets the tests the index declares against the ones
   the run reported, so a test that silently never ran shows up as a difference. Without an index it says it
   was not checked.
-- `raw:` is the complete output, written as it arrived, with the number of lines it stands for and the
-  number shown. Nothing is lost: one file per run under `.sift/runs/`, and the five most recent are kept.
+- `raw:` names the tree and commit the run happened in (`Shelf @ ec26cde (clean)`, as the `tree:` header
+  words them), then the complete output, written as it arrived, with the number of lines it stands for and the
+  number shown. Nothing is lost: one file per run under `.sift/runs/`, kept for the next four runs, and a failed run's
+  log until that run passes or five newer failures follow it.
 
 ### A failing run
 
@@ -46,9 +49,9 @@ $ sift run -- swift test
 ✘ swift test — exit 1
   overdueCountsLongLoans() — Tests/StacksTests/LibraryTests.swift:32 (body :28-33)
     Expectation failed: library.overdue(after: 14).count == 2 → false library.overdue(after: 14).count → 1
-totals: ✘ failed · Swift Testing 3 tests in 1 suite, 1 failure
+totals: ✘ failed · Swift Testing 3 tests in 1 suite, 1 failure, 0 skipped
 inventory: 3 declared, 3 reported
-raw: .sift/runs/run-20261005-093446Z-6fb07068.log (26 lines in, 6 out)
+raw: Shelf @ ec26cde (dirty: 1) · .sift/runs/failed-8dd8a8d4-run-20261012-114245Z-372ad573.log (25 lines in, 6 out), kept until it passes or 5 newer failures
 ```
 
 The heading names the file and line and, where the failure is inside the test's own body, that body's range.
@@ -62,8 +65,8 @@ Name tests the way `swift test` does, with `sift run -- swift test --filter`:
 ```text
 $ sift run -- swift test --filter overdueCountsLongLoans
 ✔ swift test
-totals: ✔ passed · Swift Testing 1 test in 1 suite
-raw: .sift/runs/run-20261005-093444Z-7fb802bf.log (11 lines in, 3 out)
+totals: ✔ passed · Swift Testing 1 test in 1 suite, 0 skipped
+raw: Shelf @ ec26cde (clean) · .sift/runs/run-20261012-114244Z-27c3ca3a.log (10 lines in, 3 out), kept for the next 4 runs
 ```
 
 A filtered run does not print `inventory:`, since it was asked to run fewer tests than are declared. For

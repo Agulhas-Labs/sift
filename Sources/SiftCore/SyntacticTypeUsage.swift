@@ -13,6 +13,10 @@ struct SyntacticTypeUsage {
     let callSites: (([String: CallSiteScanner.SiteShape]) async -> [String: [SyntacticCallSite]])?
     /// Whether any file holds a freestanding macro or a custom attribute at file scope (``BareNameOutsideTypes``); `nil` reads as one may.
     var expandsAtFileScope: (() async -> Bool)?
+    /// The query a plain answer names for the sites, `— where --refs <pointer> lists them`, in place of listing them; `nil` lists them, for `--refs` and for a caller standing the answer in for a search's lines.
+    var pointer: String?
+    /// Whether a guessed file's build file renames its module through a setting this tool cannot read, which a verdict says in place of the module being guessed from the path.
+    var isUnreadablyRenamed: (String) -> Bool = { _ in false }
 
     /// Whether the store's usage verdict is what answers for a declaration of this kind, so the name-matched stand-in for it is this one rather than a scan for calls.
     static func standsIn(for kind: SymbolKind) -> Bool {
@@ -27,8 +31,8 @@ struct SyntacticTypeUsage {
         // An extension written through a dotted path is found by its final component, the one name a type use writes as a token of its own.
         let byName = Dictionary(grouping: rows) { $0.kind == .extensionKind ? DeclaredTypeName.last(ofPath: $0.name) : $0.name }
         let typealiases = try store.everyTypealias()
-        let guessedModulePaths = try Set(store.filesWithGuessedModule().map(\.path))
-        let chains = try byName.mapValues { try AliasChain(of: $0, among: typealiases, store: store, guessedModulePaths: guessedModulePaths) }
+        let guessedModules = try GuessedModuleNotice.reasons(for: store.filesWithGuessedModule(), isUnreadablyRenamed: isUnreadablyRenamed)
+        let chains = try byName.mapValues { try AliasChain(of: $0, among: typealiases, store: store, guessedModules: guessedModules) }
         var shapes = byName.mapValues { _ in CallSiteScanner.SiteShape.typeUse }
         for alias in chains.values.flatMap(\.aliases) {
             shapes[alias.row.name] = .typeUse
@@ -43,11 +47,11 @@ struct SyntacticTypeUsage {
         let resolver = try SameNamedTypes.Resolver(store: store)
         // Read once, and only where a line would be set apart by it: the read walks every file.
         var expands: Bool?
-        var lines = ["", "\(NameMatchedSites.typeUseHeadingOpening) over the working tree, never stale — see sift help answers (call sites)"]
+        var lines: [String] = []
         for name in byName.keys.sorted() {
             let named = byName[name] ?? []
             let owners = try Set(named.map(qualifiedName)).sorted().joined(separator: ", ")
-            let ownerships = try named.map { try ownership(of: $0, guessedModulePaths: guessedModulePaths) }
+            let ownerships = try named.map { try ownership(of: $0, guessedModules: guessedModules) }
             var scope = try scopes[name] ?? BareTypeNameScope(store: store, name: name, asked: named)
             let qualified = try QualifiedTypeNameScope(store: store, resolver: resolver, name: name, asked: named)
             let chain = chains[name] ?? AliasChain()
@@ -111,7 +115,7 @@ struct SyntacticTypeUsage {
     /// Where `row`'s name is written as part of declaring itself, by the store's rule: its declaration, and an extension of a type declaration written with its own path — `Outer.Item`, or `Module.Outer.Item` — in its own module.
     ///
     /// Nothing else is its own. Another module's extension of it breaks when the type goes, so it is a use, tallied for the verdict to say which rule it followed; a type of the same name nested elsewhere is another type, so the lines inside it are not its own either — though one writing the name bare where the type around it declares its own type of the name means that one, and the verdict counts it apart (`BareTypeNameScope`). Nor is an extension the declaration is not visible from — private to another file, or under an `#if` the extension does not share — since it may extend another type of the name, so its lines stay uses.
-    private func ownership(of row: SymbolRow, guessedModulePaths: Set<String>) throws -> Ownership {
+    private func ownership(of row: SymbolRow, guessedModules: [String: GuessedModuleNotice.Reason]) throws -> Ownership {
         // An extension asked of here extends a type the tree does not declare, so every line writing that type's name is a use of it, the extension's own included.
         guard row.kind != .extensionKind else { return Ownership(spans: [:]) }
         let declared = try store.parentChain(of: row) + [row]
@@ -129,9 +133,7 @@ struct SyntacticTypeUsage {
             guard isVisible else { continue }
             guard extended.module == row.module else {
                 own.otherModuleExtensions += 1
-                if guessedModulePaths.contains(extended.path) || guessedModulePaths.contains(row.path) {
-                    own.otherModuleExtensionsGuessed = true
-                }
+                own.otherModuleExtensionsGuessed.formUnion([extended.path, row.path].compactMap { guessedModules[$0] })
                 continue
             }
             own.spans[extended.path, default: []].append(extended.line ... max(extended.line, extended.endLine))
@@ -197,7 +199,7 @@ struct SyntacticTypeUsage {
         return found
     }
 
-    /// The verdict for one name and the files backing it, capped as the store's usage listing is.
+    /// The verdict for one name and the files backing it, capped as the store's usage listing is, or with `pointer` the verdict alone, naming the query that lists them.
     private func verdict(for name: String, tally: Tally, ownerships: [Ownership], owners: String, deleted: Set<String>, paging: SyntacticSweepPaging?) throws -> [String] {
         let used = tally.used
         let ownLines = Tally.count(tally.own, less: [used])
@@ -237,7 +239,7 @@ struct SyntacticTypeUsage {
             clauses.append("\(aliasLines) more line\(aliasLines == 1 ? "" : "s") declaring a typealias of it, which is another name for the type rather than use of it" + listedBelow(aliasLines))
         }
         if ownLines > 0 {
-            clauses.append("\(ownLines) more line\(ownLines == 1 ? "" : "s") inside its own declaration or its extensions in this module, which is not use" + listedBelow(ownLines))
+            clauses.append("\(ownLines) more line\(ownLines == 1 ? "" : "s") inside its own declaration or its extensions in this module" + listedBelow(ownLines))
         }
         // Counted apart, never dropped: the rule that set them aside is said, so a reader who doubts it can check the lines.
         if anotherLines > 0 {
@@ -251,11 +253,11 @@ struct SyntacticTypeUsage {
         }
         // Counted rather than listed a second time: the store resolved these sites, and the answer lists them under the declaration it resolved them to.
         if listedLines > 0 {
-            clauses.append("\(listedLines) more line\(listedLines == 1 ? "" : "s") the index store resolved to another declaration of the name, listed above under it, so not use")
+            clauses.append("\(listedLines) more line\(listedLines == 1 ? "" : "s") the index store resolved to another declaration of the name, \(pointer == nil ? "listed" : "counted") above under it, so not use")
         }
         let otherModuleExtensions = ownerships.reduce(0) { $0 + $1.otherModuleExtensions }
         if otherModuleExtensions > 0 {
-            let guessedNote = ownerships.contains(where: \.otherModuleExtensionsGuessed) ? " (module guessed from the path)" : ""
+            let guessedNote = GuessedModuleNotice.Reason.countNote(for: ownerships.reduce(into: []) { $0.formUnion($1.otherModuleExtensionsGuessed) })
             clauses.append(otherModuleExtensions == 1
                 ? "1 extension in another module counted as use — deleting the type breaks that module\(guessedNote)"
                 : "\(otherModuleExtensions) extensions in other modules counted as uses — deleting the type breaks those modules\(guessedNote)")
@@ -273,9 +275,11 @@ struct SyntacticTypeUsage {
             let paths = used.keys.sorted()
             let count = used.values.reduce(0) { $0 + $1.count }
             let split = try WhereRenderer.usageSplit(sitesByPath: paths.map { ($0, used[$0]?.count ?? 0) }, deleted: deleted) { try store.fileRow(path: $0)?.imports }
-            block = ["\"\(name)\" used by \(count) line\(count == 1 ? "" : "s") in \(paths.count) file\(paths.count == 1 ? "" : "s") — "
-                + split.tally.joined(separator: " · ") + ", split on the XCTest or Testing import, never the path\(ownClause) (for \(owners)):"]
+            block = ["\"\(name)\" (\(count) use\(count == 1 ? "" : "s") by written name in \(paths.count) file\(paths.count == 1 ? "" : "s")) — "
+                + split.tally.joined(separator: " · ") + "\(ownClause) (for \(owners))" + (pointer.map { " — where --refs \($0) lists them" } ?? ":")]
         }
+        // A question about where a type is did not ask for its uses: the count stands alone, and --refs lists them.
+        guard pointer == nil else { return block }
         let paths = listed.keys.sorted()
         let count = listed.values.reduce(0) { $0 + $1.count }
         // Few enough to read in place: one row per line with its source text, every line of every file kept, so the
@@ -326,8 +330,8 @@ private extension SyntacticTypeUsage {
         /// Per file, repo-relative, the line spans of the declaration and of its extensions in its own module.
         var spans: [String: [ClosedRange<Int>]]
         var otherModuleExtensions = 0
-        /// Whether any of `otherModuleExtensions` was told apart only by a module guessed from a path rather than declared.
-        var otherModuleExtensionsGuessed = false
+        /// Why any of `otherModuleExtensions` was told apart only by a module guessed rather than declared.
+        var otherModuleExtensionsGuessed: Set<GuessedModuleNotice.Reason> = []
 
         func owns(_ site: SyntacticCallSite) -> Bool {
             spans[site.path]?.contains { $0.contains(site.line) } ?? false
@@ -367,7 +371,7 @@ private extension SyntacticTypeUsage {
         /// The aliases naming `rows`, where one declared at the top level names a type only by writing its whole path, with or without its module.
         ///
         /// Unqualified lookup at the top level never sees a type nested in another, so a shorter path there names some other type. An alias declared in a type or an extension may name a type nested beside it by any trailing part of its path. One writing the whole path behind a leading name that may be the type's module is kept, unproven, and so is every alias of it.
-        init(of rows: [SymbolRow], among typealiases: [SymbolRow], store: IndexStore, guessedModulePaths: Set<String>) throws {
+        init(of rows: [SymbolRow], among typealiases: [SymbolRow], store: IndexStore, guessedModules: [String: GuessedModuleNotice.Reason]) throws {
             let written = typealiases.compactMap { alias -> Written? in
                 if let target = Self.aliasedPath(of: alias) {
                     return Written(row: alias, targets: [target], built: false)
@@ -376,7 +380,7 @@ private extension SyntacticTypeUsage {
                 return paths.isEmpty ? nil : Written(row: alias, targets: paths, built: true)
             }
             var seen = Set(rows.map(\.id))
-            var frontier = try rows.map { row in try WrittenPath(of: row, store: store, guessedModulePaths: guessedModulePaths, reachedThrough: nil) }
+            var frontier = try rows.map { row in try WrittenPath(of: row, store: store, guessedModules: guessedModules, reachedThrough: nil) }
             var folded = 0
             // An extension of a declared type's bare name that may extend some other type of the name is a path of its own, though the answer counts it as that type's.
             // So is a dotted one (`extension Foundation.JSONDecoder`) beside a type or typealias of the name the bare query found: the one asked may be private, conditional, nested or another name for some other type, and the extension another's.
@@ -384,7 +388,7 @@ private extension SyntacticTypeUsage {
             for row in rows where row.kind.isTypeDeclaration || row.kind == .typealiasKind {
                 for written in try ExtensionPaths.written(endingIn: row.name, in: store) where !seen.contains(written.row.id) {
                     seen.insert(written.row.id)
-                    let path = try WrittenPath(of: written.row, store: store, guessedModulePaths: guessedModulePaths, reachedThrough: nil, mayExtendAnother: written.path != row.name)
+                    let path = try WrittenPath(of: written.row, store: store, guessedModules: guessedModules, reachedThrough: nil, mayExtendAnother: written.path != row.name)
                     if path.unknownModule == .extendedOnly || path.mayExtendAnother {
                         frontier.append(path)
                     }
@@ -408,7 +412,7 @@ private extension SyntacticTypeUsage {
                     }
                     seen.insert(alias.row.id)
                     aliases.append(Alias(row: alias.row, target: (proven ?? first).target, unproven: unproven, ofKept: unproven != nil && folds.allSatisfy(\.fold.throughKept), built: alias.built))
-                    try next.append(WrittenPath(of: alias.row, store: store, guessedModulePaths: guessedModulePaths, reachedThrough: unproven))
+                    try next.append(WrittenPath(of: alias.row, store: store, guessedModules: guessedModules, reachedThrough: unproven))
                 }
                 frontier = next
             }
@@ -422,10 +426,11 @@ private extension SyntacticTypeUsage {
 
         /// Every whole dotted path the right-hand side of `alias` writes, generic arguments followed in, leaving out any led by the alias's own generic parameters, or none where it does not parse as a typealias.
         static func builtPaths(of alias: SymbolRow) -> [String] {
-            let tree = Parser.parse(source: alias.signature)
-            guard let declaration = tree.statements.first.flatMap({ Syntax($0.item).as(TypeAliasDeclSyntax.self) }), !declaration.hasError else { return [] }
-            let parameters = Set(declaration.genericParameterClause?.parameters.map(\.name.text) ?? [])
-            return writtenPaths(in: Syntax(declaration.initializer.value)).filter { !parameters.contains(String($0.prefix { $0 != "." })) }
+            NestingGate.parseOrEmpty(alias.signature) { tree in
+                guard let declaration = tree.statements.first.flatMap({ Syntax($0.item).as(TypeAliasDeclSyntax.self) }), !declaration.hasError else { return [] }
+                let parameters = Set(declaration.genericParameterClause?.parameters.map(\.name.text) ?? [])
+                return writtenPaths(in: Syntax(declaration.initializer.value)).filter { !parameters.contains(String($0.prefix { $0 != "." })) }
+            }
         }
 
         /// The whole dotted paths written in `node`: a member path as one, never its base alone, and the generic arguments at every level of it.
@@ -553,6 +558,8 @@ private extension SyntacticTypeUsage.AliasChain {
     /// Why a typealias is kept as another name for a type rather than folded in as one: the leading name its right-hand side writes before the type's whole path may be the type's module, and nothing in the tree says whether it is.
     enum Unproven: Hashable {
         case guessedModule
+        /// The type's module is the target's name, kept as a guess because the build renames it through a setting this tool cannot read.
+        case renamedModule
         /// The path starts at an extension by a bare name that no type its module visibly declares is proven to be, so which module's type it extends goes unsaid.
         case extendedOnly
         /// The path starts at a dotted extension whose leading name the tree declares no type of, and the alias writes the path without it: that name may be a type of another module (`extension UIView.ContentMode`) rather than the module the alias would have to be reading it past.
@@ -564,6 +571,7 @@ private extension SyntacticTypeUsage.AliasChain {
         var reason: String {
             switch self {
             case .guessedModule: "this type's module is guessed from the path"
+            case .renamedModule: "this type's module is renamed by a setting this tool cannot read"
             case .extendedOnly: "its path starts at an extension of a type its module does not visibly declare, whose module is unknown"
             case .extendsAnotherOfTheName: "its path starts at a dotted extension that may extend another type of the name than the one asked"
             case .leadingNameMayBeAType: "it writes the path of a dotted extension without its leading name, which may be a type rather than a module"
@@ -635,14 +643,14 @@ private extension SyntacticTypeUsage.AliasChain {
         /// The path of `row` through its containers, where an extension's name is the path its declaration wrote.
         ///
         /// The outermost name may be an extension's, whose leading component may be a module (`extension Lib.Net`, `extension Foundation.JSONDecoder`): it is dropped as one unless the tree declares a top-level type of that name. A dotted name further in is no declaration Swift allows, so the path is taken as unaccounted for.
-        init(of row: SymbolRow, store: IndexStore, guessedModulePaths: Set<String>, reachedThrough: Unproven?, mayExtendAnother: Bool = false) throws {
+        init(of row: SymbolRow, store: IndexStore, guessedModules: [String: GuessedModuleNotice.Reason], reachedThrough: Unproven?, mayExtendAnother: Bool = false) throws {
             self.mayExtendAnother = mayExtendAnother
             let chain = try store.parentChain(of: row) + [row]
             // An extension's generic arguments are no part of the path it extends, so `extension Shelf.Box<Int>` is read as `Shelf.Box`.
             let names = chain.map { Self.extendedPath(of: $0) }
             module = row.module
             path = ([module] + names).joined(separator: ".")
-            unknownModule = try Self.extendsUnseenType(chain[0], in: store) ? .extendedOnly : guessedModulePaths.contains(row.path) ? .guessedModule : nil
+            unknownModule = try Self.extendsUnseenType(chain[0], in: store) ? .extendedOnly : guessedModules[row.path].map { $0 == .unreadableRename ? .renamedModule : .guessedModule }
             self.reachedThrough = reachedThrough
             let inner = names.dropFirst()
             guard let outermost = names.first, !inner.contains(where: { $0.contains(".") }) else {

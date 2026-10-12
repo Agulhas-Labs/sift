@@ -47,12 +47,12 @@ struct StringsLowsTests {
     }
 
     @Test
-    func theEchoEscapesABackslashAndAQuote() throws {
+    func aQueryWithABackslashAndAQuoteIsNotEchoed() throws {
         let engine = try Self.makeRepo(files: ["Sources/App/Main.swift": "struct Main {}\n"])
 
         let lines = try Self.lines(engine.strings(query: #"C:\x"y"#))
 
-        #expect(lines.count > 2 && lines[1] == #"strings "C:\\x\"y""#, "\(lines)")
+        #expect(lines.count > 1 && !lines.contains { $0.hasPrefix("strings ") }, "\(lines)")
     }
 
     // MARK: Interpolated spellings through escapes

@@ -44,7 +44,7 @@ struct WhereNoStorePlainMemberwiseTests {
         let calling = "func stock() -> Bool {\n    let gizmo = Gizmo(weight: 2, isReady: true)\n    return gizmo.isReady\n}\n"
         let output = try await Self.answer("Gizmo.isReady", declaring: Self.declaring, calling: calling)
 
-        #expect(output.contains("\"isReady\" (1 use by name, plus 1 call passing it as isReady: to the memberwise init (--refs lists them), in 1 file"), "\(output)")
+        #expect(output.contains("\"isReady\" (1 use by written name, plus 1 call passing it as isReady: to the memberwise init (--refs lists them), in 1 file"), "\(output)")
         #expect(!output.contains("let gizmo = Gizmo(weight: 2, isReady: true)"), "\(output)")
     }
 }

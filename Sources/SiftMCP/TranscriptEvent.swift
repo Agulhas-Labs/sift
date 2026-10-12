@@ -36,13 +36,13 @@ public enum TranscriptEvent: Sendable, Equatable {
     /// Arrives beside the `.lookup(.indexed)` that counts it, because it is the index serving the lookup — never a refusal the context routed around, and never cold. Counted on its own as well so a report can say how many of the index's answers the hook gave rather than the server.
     case answeredInPlace
 
-    /// An in-place answer to a read of one file, with the saving in bytes its closing line claimed for that file.
+    /// An in-place answer to a read of one file.
     ///
     /// Counted beside ``answeredInPlace`` for answers to reads, outlines included, so the audit can set the ones read whole anyway against every one given.
-    case fileAnswer(shape: AnswerShape, saving: Int)
+    case fileAnswer(shape: AnswerShape)
 
-    /// A ``fileAnswer`` whose file the same context then read whole within ``AnswerThenRead/window`` calls, its saving withdrawn.
-    case answerReadAnyway(shape: AnswerShape, saving: Int)
+    /// A ``fileAnswer`` whose file the same context then read whole within ``AnswerThenRead/window`` calls.
+    case answerReadAnyway(shape: AnswerShape)
 
     /// An in-place answer to an alternation that left part of it uncovered, naming how many branches the caveat line names.
     ///

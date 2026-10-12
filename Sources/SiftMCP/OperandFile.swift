@@ -79,11 +79,31 @@ struct OperandFile {
     static func indexed(_ path: String, in directory: String?, engine: SiftEngine) throws -> Indexed? {
         guard let file = absolute(path, in: directory),
               let relative = try ExactAnswer.indexedFile(atPath: file, in: engine),
-              let data = FileManager.default.contents(atPath: file),
-              let text = String(bytes: data, encoding: .utf8)
+              let read = onDisk(file, relative: relative)
         else {
             return nil
         }
+        return read
+    }
+
+    /// How many of the lines of the file at `path` `windows` print together, a line past the file's end printing nothing, and how many lines the file has, both read as ``indexed(_:in:engine:)`` reads them — or `nil` where the file cannot be read or a window's lines cannot be told.
+    static func linesPrinted(by windows: [LineWindow], ofFileAt path: String, in directory: String?) -> (printed: Int, total: Int)? {
+        guard let file = absolute(path, in: directory), let read = onDisk(file, relative: file),
+              let ranges = LineWindow.ranges(of: windows, in: read.lines, byteLengths: read.byteLengths)
+        else {
+            return nil
+        }
+        return (ranges.reduce(0) { $0 + $1.count }, read.lines.count)
+    }
+
+    /// The file a command named as it stands on disk, read as ``indexed(_:in:engine:)`` reads it but without asking any index, or `nil` where it cannot be read.
+    static func onDisk(_ path: String, in directory: String?) -> Indexed? {
+        absolute(path, in: directory).flatMap { onDisk($0, relative: $0) }
+    }
+
+    /// The file at the absolute path `file` as it stands on disk, named `relative`, a newline ending its last line opening no line of its own — or `nil` where it cannot be read as UTF-8.
+    private static func onDisk(_ file: String, relative: String) -> Indexed? {
+        guard let data = FileManager.default.contents(atPath: file), let text = String(bytes: data, encoding: .utf8) else { return nil }
         var lines = Self.lines(of: text)
         var byteLengths = Self.byteLengths(of: data)
         if text.utf8.last == UInt8(ascii: "\n") {

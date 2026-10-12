@@ -30,7 +30,7 @@ struct RunDidNotBuildKeptLogTests {
             try command.run()
         }
         let raw = try #require(recorded.printed.split(separator: "\n").first { $0.hasPrefix("raw: ") })
-        let named = try #require(raw.dropFirst("raw: ".count).split(separator: " ").first).split(separator: "/").last
+        let named = try #require((raw.components(separatedBy: " · ").last ?? "").split(separator: " ").first).split(separator: "/").last
         let runs = SiftPaths.cache(in: directory).appendingPathComponent(RunLog.runsDirectoryName, isDirectory: true)
         for _ in 0 ..< RunLog.keptLogs {
             RunLog.open(inDirectory: directory)?.close()

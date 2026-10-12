@@ -89,7 +89,7 @@ struct AlreadyDigestedReadTests {
         #expect(fixture.verdict(ranged, session: "s3").token == "in-place")
     }
 
-    /// Once the context has been handed the file's digest, a window of it is no lookup at all — let through with nothing noted, where a whole read of the same file is logged `alreadyDigested`.
+    /// Once the context has been handed the file's digest, a window of it is no lookup at all — let through and logged `locatedWindow`, where a whole read of the same file is logged `alreadyDigested`.
     @Test func aWindowOfADigestedFileIsNoLookup() throws {
         let fixture = try Fixture()
         try fixture.lengthen()
@@ -98,7 +98,7 @@ struct AlreadyDigestedReadTests {
         #expect(try fixture.verdict(fixture.classified(command: "sed -n '1,30p' Sources/App/Shell.swift")).line == "allowed\t\tnoLookup")
         #expect(try fixture.verdict(fixture.classified(command: "cat Sources/App/Shell.swift | head -30")).line == "allowed\t\tnoLookup")
         #expect(try fixture.verdict(fixture.classified(rangedReadFrom: 1)).line == "allowed\t\tnoLookup")
-        #expect(!FileManager.default.fileExists(atPath: fixture.stores.appendingPathComponent("suppressions.jsonl").path))
+        #expect(Set(LocatedPassLogTests.rules(in: fixture.stores.appendingPathComponent("suppressions.jsonl"))) == ["locatedWindow"])
     }
 
     /// On a line of windows over two files, the windows of the file this context has located are dropped: the other file's read alone is handed to the answerer, marked as leaving the dropped windows to print, so the line runs with the note naming its call (`HeldWindowLineTests`), and a line of the located file's windows alone is no lookup.
@@ -266,7 +266,7 @@ struct AlreadyDigestedReadTests {
         #expect(verdict.token == "in-place")
     }
 
-    /// A window of a located file is no lookup in a shell shape no answer covers too — a subshell, an environment assignment, output sent to `/dev/null` — let through with nothing noted rather than logged `notAnswerable`.
+    /// A window of a located file is no lookup in a shell shape no answer covers too — a subshell, an environment assignment, output sent to `/dev/null` — let through and logged `locatedWindow` rather than logged `notAnswerable`.
     @Test(arguments: [
         "(sed -n '1,30p' Sources/App/Shell.swift)",
         "LC_ALL=C sed -n '1,30p' Sources/App/Shell.swift",
@@ -279,7 +279,7 @@ struct AlreadyDigestedReadTests {
         fixture.take(tool: IndexToolName.prefix + "digest", input: ["target": "Sources/App/Shell.swift"])
 
         #expect(try fixture.verdict(fixture.classified(command: command)).line == "allowed\t\tnoLookup")
-        #expect(!FileManager.default.fileExists(atPath: fixture.stores.appendingPathComponent("suppressions.jsonl").path))
+        #expect(Set(LocatedPassLogTests.rules(in: fixture.stores.appendingPathComponent("suppressions.jsonl"))) == ["locatedWindow"])
     }
 
     /// A window behind literal `cd`s — relative, one after another, or absolute — is judged as the same window without them: cold, it is answered in place with its file's digest; located, it is no lookup, in an answered shape or in one no answer covers.
@@ -305,7 +305,7 @@ struct AlreadyDigestedReadTests {
             #expect(try fixture.verdict(fixture.classified(command: command)).line == "allowed\t\tnoLookup", "\(command)")
         }
 
-        #expect(!FileManager.default.fileExists(atPath: fixture.stores.appendingPathComponent("suppressions.jsonl").path))
+        #expect(Set(LocatedPassLogTests.rules(in: fixture.stores.appendingPathComponent("suppressions.jsonl"))) == ["locatedWindow"])
     }
 
     /// A move the hook cannot follow — a computed word, `cd -`, a subshell, a `cd` behind `||`, `pushd`, a directory that is not there — leaves a located file's window in a shape no answer covers where it always was: not placed, so let through as a lookup nothing answered.
@@ -354,7 +354,7 @@ struct AlreadyDigestedReadTests {
         #expect(fixture.verdict(unanswered).line == "allowed\t\tnotAnswerable")
     }
 
-    /// A located file's window beside a grep no answer covers is judged by the grep: logged under the rule the grep alone is logged under, where the window alone is still no lookup with nothing noted.
+    /// A located file's window beside a grep no answer covers is judged by the grep: logged under the rule the grep alone is logged under, where the window alone is still no lookup, logged `locatedWindow`.
     @Test func aLocatedFilesWindowBesideAFilteredGrepIsJudgedByTheGrep() throws {
         let fixture = try Fixture()
         try fixture.lengthen()
@@ -370,10 +370,10 @@ struct AlreadyDigestedReadTests {
         #expect(beside.rules == alone.rules)
         #expect(try fixture.verdict(#require(unfiltered.lookup)).line == "allowed\t\tnotAnswerable")
         #expect(only.lookup == nil)
-        #expect(only.rules.isEmpty)
+        #expect(only.rules == ["locatedWindow"])
     }
 
-    /// A window beside a filtered grep is judged by the grep where only the ledger holds the file — digested by a command-line call, whose usage line names no agent, or edited in this context — and the window alone is still let through with nothing noted.
+    /// A window beside a filtered grep is judged by the grep where only the ledger holds the file — digested by a command-line call, whose usage line names no agent, or edited in this context — and the window alone is still let through, logged `locatedWindow`.
     @Test func aWindowOfAFileOnlyTheLedgerHoldsBesideAFilteredGrepIsJudgedByTheGrep() throws {
         let window = "sed -n '1,30p' Sources/App/Shell.swift"
         let grep = "grep -rn part1 Sources | sort"
@@ -394,7 +394,7 @@ struct AlreadyDigestedReadTests {
         let digestedWindow = try digested.judgedThroughTheLedger(window)
         let editedWindow = try edited.judgedThroughTheLedger(window)
         #expect(digestedWindow.line == "allowed\t\tnoLookup")
-        #expect(digestedWindow.rules.isEmpty)
+        #expect(digestedWindow.rules == ["locatedWindow"])
         #expect(editedWindow.line == "allowed\t\twritten")
         #expect(editedWindow.rules.isEmpty)
     }

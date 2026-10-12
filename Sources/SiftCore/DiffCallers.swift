@@ -13,6 +13,8 @@ struct DiffCallers {
     let store: IndexStore
     let repoRoot: URL
     let enumerator: FileEnumerator
+    /// The resolver's project directories (``ModuleResolver/projectDirectories``), which the judge reads a file no store holds a unit for by.
+    let projectDirectories: [String]
 }
 
 extension DiffCallers {
@@ -53,8 +55,10 @@ extension DiffCallers {
         var unassignedWrapperSites: [SyntacticCallSite] = []
         /// The module-qualified path of the wrapper type the unassigned sites are for, which heads their block as `where` does.
         var wrapperTypePath: String?
-        /// The repo-relative files the wrapper sites listing relied on that were written since the build, whose sites are marked so.
-        var staleFiles: Set<String> = []
+        /// The repo-relative files the wrapper sites listing relied on that were written since the build, each under its kind (changed or new), whose sites are marked so.
+        var staleFiles: [String: FileKind] = [:]
+        /// The sites the store set aside for this member, and for its wrapper type's initializers, as recorded only by a build older than their file's last edit, which the section says as `where` does.
+        var setAside = SetAsideSites()
     }
 
     struct Site: Sendable {
@@ -99,11 +103,13 @@ extension DiffCallers {
         var resolved: [Int: [Site]] = [:]
         var reasons: [Int: String] = [:]
         var resolvedRows: [Int: SymbolRow] = [:]
+        var setAside: [Int: SetAsideSites] = [:]
         for (index, target) in targets.enumerated() {
             switch try resolve(target, semantic: semantic) {
-            case let .sites(sites, row):
+            case let .sites(sites, row, aside):
                 resolved[index] = sites
                 resolvedRows[index] = row
+                setAside[index] = aside
             case let .fallback(reason): reasons[index] = reason
             }
         }
@@ -111,6 +117,7 @@ extension DiffCallers {
         var wrapperSites = WrapperAttributeSites()
         var judge: OccurrenceFreshness?
         if case let .active(context) = semantic, !resolvedRows.isEmpty {
+            let fileJudge = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories)
             let scanner = CallSiteScanner(repoRoot: repoRoot, enumerator: enumerator)
             wrapperSites = try await WrapperAttributeSites.find(
                 for: resolvedRows.sorted { $0.key < $1.key }.map(\.value),
@@ -120,15 +127,19 @@ extension DiffCallers {
                     guard let usr = context.store.usr(for: row) else { return nil }
                     return Set(context.store.callers(ofUSR: usr).map { "\(context.relativePath($0.path)):\($0.line):\($0.column)" })
                 },
-                modifiedSinceBuild: { path in ((try? store.fileRow(path: path))?.mtime ?? 0) > context.buildAnchor }
+                setAside: { row in
+                    guard let usr = context.store.usr(for: row) else { return [] }
+                    return Set(context.store.setAsideReferences(ofUSR: usr).flatMap { path, lines in lines.keys.map { "\(context.relativePath(path)):\($0)" } })
+                },
+                modifiedSinceBuild: fileJudge.writtenSinceBuild(file:)
             )
-            judge = OccurrenceFreshness(store: store, buildAnchor: context.buildAnchor, relativePath: context.relativePath)
+            judge = fileJudge
         }
-        /// The files a resolved initializer's wrapper listing relied on that were written since the build.
-        func staleFiles(of row: SymbolRow?) -> Set<String> {
-            guard let judge, let row, let type = wrapperSites.types[row.id] else { return [] }
-            let relied = wrapperSites.reliedOn[type] ?? []
-            return relied.filter { judge.state(of: repoRoot.appendingPathComponent($0).path) == .modifiedSinceBuild }
+        /// The files a resolved initializer's wrapper listing relied on that were written since the build, each under its kind.
+        func staleFiles(of row: SymbolRow?) -> [String: FileKind] {
+            guard let judge, let row, let type = wrapperSites.types[row.id] else { return [:] }
+            let kinds = (wrapperSites.reliedOn[type] ?? []).map { ($0, judge.kind(ofFile: $0)) }
+            return Dictionary(uniqueKeysWithValues: kinds.filter { $0.1.occurrenceState == .modifiedSinceBuild })
         }
         /// A subscript is used as `x[…]`, which spells no name, so it has nothing to scan for: a scan for "subscript" would count zero sites of something used everywhere.
         ///
@@ -150,6 +161,10 @@ extension DiffCallers {
             let base = searchedName(of: target)
             if let sites = resolved[index] {
                 let row = resolvedRows[index]
+                var aside = setAside[index] ?? SetAsideSites()
+                if let type = row.flatMap({ wrapperSites.types[$0.id] }), let own = wrapperSites.setAsideByType[type] {
+                    aside.merge(own)
+                }
                 return Report(
                     target: target,
                     unresolvedBecause: nil,
@@ -158,7 +173,8 @@ extension DiffCallers {
                     wrapperSites: row.flatMap { wrapperSites.assigned[$0.id] } ?? [],
                     unassignedWrapperSites: row.flatMap { wrapperSites.unassigned[$0.id] } ?? [],
                     wrapperTypePath: row.flatMap { wrapperSites.types[$0.id] },
-                    staleFiles: staleFiles(of: row)
+                    staleFiles: staleFiles(of: row),
+                    setAside: aside
                 )
             }
             let owners = Self.owners(of: target)
@@ -177,7 +193,7 @@ extension DiffCallers {
 
 private extension DiffCallers {
     enum Resolution {
-        case sites([Site], row: SymbolRow)
+        case sites([Site], row: SymbolRow, setAside: SetAsideSites)
         case fallback(String)
     }
 
@@ -206,14 +222,22 @@ private extension DiffCallers {
         case let .row(chosen): row = chosen
         case let .fallback(reason): return .fallback(reason)
         }
-        let mtime = try store.fileRow(path: row.path)?.mtime ?? 0
-        if mtime > context.buildAnchor {
-            return .fallback("its file changed since the last build")
+        // A nested package's store answers for that package's files alone, and no build of it covers this one.
+        if let packages = context.packagesPassingOver(file: row.path) {
+            return .fallback("its file lies outside \(packages.count == 1 ? "the store's package" : "the stores' packages"), \(packages.joined(separator: ", "))")
+        }
+        // Judged against the file's own build, so an edit a later build of another target skipped falls back too.
+        let occurrences = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories, citedBy: context.store)
+        switch occurrences.kind(ofFile: row.path, citedBy: context.store) {
+        case .changed, .deleted: return .fallback("its file changed since the last build")
+        case .new: return .fallback("its file is new since the last build")
+        case .notBuilt, .current: break
         }
         guard let usr = context.store.usr(for: row) else {
             return .fallback("no build covers its file")
         }
-        let occurrences = OccurrenceFreshness(store: store, buildAnchor: context.buildAnchor, relativePath: context.relativePath)
+        var setAside = SetAsideSites()
+        setAside.note(ofUSR: usr, inStore: context.store.cache.directory.path, context.store.setAsideReferences(ofUSR: usr), relativePath: context.relativePath)
         // A property or subscript is read and written, never called: its callers are empty however much it is used.
         // An enum case is named, and called only where a payload is built: its callers are a fraction of its uses.
         let hits = if row.kind.isReadAndWritten {
@@ -227,6 +251,6 @@ private extension DiffCallers {
         return .sites(hits.map { hit in
             let marker = (hit.uncalled ? " — referenced, not called" : "") + (occurrences.state(of: hit.path).marker ?? "")
             return Site(path: context.relativePath(hit.path), line: hit.line, enclosing: hit.name, marker: marker, through: hit.through)
-        }, row: row)
+        }, row: row, setAside: setAside)
     }
 }

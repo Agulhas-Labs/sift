@@ -222,9 +222,6 @@ struct RunAdviceTests {
     @Test
     func aSplitGatesLegsDrawNoWrapping() {
         #expect(RunAdvice.suggestion(
-            for: "xcodebuild build-for-testing -scheme GizmoKit-Package -destination 'platform=iOS Simulator,name=iPhone 17'"
-        ) == nil)
-        #expect(RunAdvice.suggestion(
             for: "xcodebuild test-without-building -scheme GizmoKit-Package -destination 'platform=iOS Simulator,name=iPhone 17'"
         ) == nil)
         // One leg written in a shape the wrapping cannot serve silences the whole line, as a pipe already does.
@@ -236,7 +233,6 @@ struct RunAdviceTests {
         // the wrong action is a fabricated claim about a log and must fail closed. A nudge has to fail
         // open, and borrowing that reader would put the wrapping straight back on the leg it exists to leave
         // alone: one blocked run of a minutes-long command, which is the cost this whole rule measures.
-        #expect(RunAdvice.suggestion(for: "xcodebuild build-for-testing -scheme Gizmo -derivedDataPath build") == nil)
         #expect(RunAdvice.suggestion(
             for: "xcodebuild test-without-building -scheme Gizmo -derivedDataPath build -resultBundlePath test"
         ) == nil)

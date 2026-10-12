@@ -50,7 +50,8 @@ public extension RunOutcome {
     /// - Parameter accessibility: What re-arming the accessibility preference did on each simulator this run named, in argv order — one line per device that owes one, and one qualification on its headline. Empty prints nothing about a device.
     /// - Parameter testBundles: How many test bundles this run was owed a count from, which its own log cannot say — taken as a value, since it is read from the package rather than from the run and the caller holds the argv that decides whether it can be read at all. The default is that nobody asked, and the answer then says nothing about a bundle that never reported.
     /// - Parameter inventory: What ``RunInventoryCheck`` said about the run, placed under its totals line; empty says nothing.
-    func filteredAnswer(workingDirectory: URL, accessibility: [SimulatorAccessibility.Restoration] = [], testBundles: RunTestBundles = .undetermined, selector: RunTestSelector? = nil, inventory: [String] = []) -> Answer? {
+    /// - Parameter stamped: Whether the `raw:` line opens with the tree and commit the run happened in, which costs two `git` processes; the faces that serve a person ask for it, the internal callers that read the answer back do not.
+    func filteredAnswer(workingDirectory: URL, accessibility: [SimulatorAccessibility.Restoration] = [], testBundles: RunTestBundles = .undetermined, selector: RunTestSelector? = nil, inventory: [String] = [], stamped: Bool = false) -> Answer? {
         guard let report, report.isUsable(exitCode: exitCode) else {
             return nil
         }
@@ -62,13 +63,25 @@ public extension RunOutcome {
             accessibility: accessibility,
             testBundles: testBundles,
             selector: selector,
-            inventory: inventory
+            inventory: inventory,
+            treeStamp: stamped ? treeStamp(workingDirectory: workingDirectory) : nil
         )
         .render(report, exitCode: exitCode, logURL: log?.url)
         // An identity rather than a measurement: the renderer joined its lines with newlines, so splitting
         // them back apart returns the count its receipt has already stated. Taken here so the caller that
         // files this run has the answer's own size to record and never a number worked out beside it.
         return Answer(text: text, lines: text.split(separator: "\n", omittingEmptySubsequences: false).count)
+    }
+
+    /// The tree and commit this run happened in, for the `raw:` line: the repository's name and, where git answers, its HEAD and whether the tree had moved from it.
+    private func treeStamp(workingDirectory: URL) -> String {
+        guard let repositoryRoot else {
+            return WorkingTree.describing(workingDirectory).rendered
+        }
+        let git = GitContext(repoRoot: repositoryRoot)
+        let head = (try? git.head())?.prefix(7).description ?? Freshness.unbornHead
+        let dirty = (try? git.dirtySwiftFiles())?.count
+        return Freshness.stamp(of: WorkingTree.describing(repositoryRoot), headShort: head, dirtyCount: dirty)
     }
 
     /// The did-not-build headline the raw-output fallback owes, when ``filteredAnswer`` has refused to answer and this selected run's own exit code is nonetheless the one ``RunTestSelector/didNotBuild(_:exitCode:)`` names.

@@ -63,7 +63,7 @@ struct SyntacticCallerPinnedSelfCallTests {
         #expect(lidRows.contains("  Sources/App/Maker.swift:2  in Maker.make()"), "\(lid)")
         #expect(lidRows.contains("  Sources/App/Maker.swift:3  in Maker.again()"), "\(lid)")
         #expect(lid.contains("but Self(…) in an extension is called 2 times with those labels on a type the scan cannot tell, any of which may be Lid's"), "\(lid)")
-        #expect(box.contains("\"Box.init\" (1 call site in 1 file):"), "\(box)")
+        #expect(box.contains("\"Box.init\" (1 call site by written name in 1 file):"), "\(box)")
         #expect(box.contains("but Self(…) in an extension is called 3 times with those labels on a type the scan cannot tell, any of which may be Box's"), "\(box)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(box).contains("  Sources/App/Maker.swift:2  in Maker.make()"), "\(box)")
     }

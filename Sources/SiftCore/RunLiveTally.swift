@@ -126,8 +126,9 @@ extension RunLiveTally {
         }
     }
 
+    /// A tool's timestamped log line is not counted: it is shown in the answer under a heading of its own and is no error or warning of the build's.
     private mutating func count(_ diagnostic: RunDiagnostic?) {
-        guard let diagnostic, !diagnostic.isXCTestAssertion else {
+        guard let diagnostic, !diagnostic.isXCTestAssertion, diagnostic.source == nil else {
             return
         }
         switch diagnostic.severity {

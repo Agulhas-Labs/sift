@@ -101,6 +101,18 @@ public struct EditParseCheck: Sendable {
             && !GitContext(repoRoot: rootURL).ignores(relativePath: relative)
     }
 
+    /// Whether `file` is a build input of the repository at `root` that an edit changes the build of: ``TreeKey/isBuildInput(_:)`` accepts its path, no directory the enumerator never reads (hidden, build output, vendored) lies above it, and git does not ignore it.
+    ///
+    /// The index covers Swift sources only, so this is the rule for what it leaves out: a build setting, a resource, a C source, a package manifest. Unlike ``indexCovers(_:under:)``, it counts an edit made through a symlink, since the build compiles what the link points at.
+    public static func buildInputCovers(_ file: String, under root: String) -> Bool {
+        guard let relative = ReuseNudge.relativePath(of: file, under: root), TreeKey.isBuildInput(relative),
+              !relative.split(separator: "/").dropLast().contains(where: { SiftConfig.isExcludedPathComponent($0) })
+        else {
+            return false
+        }
+        return !GitContext(repoRoot: URL(fileURLWithPath: root)).ignores(relativePath: relative)
+    }
+
     /// The feedback the model is handed on its edit: each error as `path:line:col message`, capped, then what the broken file costs until it is fixed.
     ///
     /// The index is not held back at the last good parse: a reindex stores what the parser recovered from the broken file and flags it, which is what the last sentence says where an index is there to say it about.

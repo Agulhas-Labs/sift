@@ -19,12 +19,23 @@ struct SemanticRefusal {
 }
 
 extension SemanticRefusal {
-    /// The refusal for `row`, a declaration no store in `context` resolves: its reason by `Reason.unowned`, from whether its file was `modified` since the build, whether any store has a unit for it, and the `#if` it sits under as `IfConfigLabel` names it from `source`; with the primary store's rebuild.
-    static func unowned(_ row: SymbolRow, symbol: String, imports: [String], modified: Bool, context: SemanticContext, source: ((String) -> String?)?) -> SemanticRefusal {
+    /// The refusal for `row`, a declaration no store in `context` resolves: its reason by `Reason.unowned`, from what its indexed `file` is against its own build (`kind`), whether any store has a unit for it, and the `#if` it sits under as `IfConfigLabel` names it from `source`; with the primary store's rebuild, or, for a changed file a later build of a store other than SwiftPM's skipped, the module it left out.
+    static func unowned(_ row: SymbolRow, symbol: String, file: FileRow?, kind fileKind: FileKind, context: SemanticContext, source: ((String) -> String?)?) -> SemanticRefusal {
         let fileHasUnit = context.anyStoreHasUnit(forFile: row.path)
         let condition = fileHasUnit ? IfConfigLabel.label(for: row, source: source) : nil
-        let reason = Reason.unowned(modified: modified, fileHasUnit: fileHasUnit, condition: condition)
-        return SemanticRefusal(path: row.path, reason: reason, symbol: symbol, kind: row.kind, rebuild: Rebuild(provenance: context.store.provenance, imports: imports))
+        let reason = Reason.unowned(outside: context.packagesPassingOver(file: row.path), file: fileKind, fileHasUnit: fileHasUnit, condition: condition)
+        let holder = reason == .modifiedSinceBuild ? context.storeHoldingUnit(forFile: row.path) : nil
+        let skipped = holder.flatMap { Rebuild.skipping(row.module, changedAt: file?.mtime ?? 0, holder: $0) }
+        let rebuild = skipped ?? Rebuild(provenance: context.store.provenance, package: context.store.package, imports: file?.imports ?? [])
+        return SemanticRefusal(path: row.path, reason: reason, symbol: symbol, kind: row.kind, rebuild: rebuild)
+    }
+
+    /// The refusal for `row`, a declaration `holder` resolves in its indexed `file`, where that file is changed or gone since its own build (`kind`); `nil` where it is not.
+    static func changed(_ row: SymbolRow, symbol: String, file: FileRow?, kind fileKind: FileKind, holder: SemanticStore) -> SemanticRefusal? {
+        guard fileKind == .changed || fileKind == .deleted else { return nil }
+        let rebuild = Rebuild.skipping(row.module, changedAt: file?.mtime ?? 0, holder: holder)
+            ?? Rebuild(provenance: holder.provenance, package: holder.package, imports: file?.imports ?? [])
+        return SemanticRefusal(path: row.path, reason: .modifiedSinceBuild, symbol: symbol, kind: row.kind, rebuild: rebuild)
     }
 }
 
@@ -34,23 +45,39 @@ extension SemanticRefusal {
         /// An in-tree `xcodebuild` store, by its build directory.
         case derivedDataPath(String)
         /// SwiftPM's `.build`, with `--build-tests` where a refused file is a test file: a plain `swift build` never rebuilds a test target.
-        case swiftPM(buildTests: Bool)
+        case swiftPM(buildTests: Bool, package: String)
+        /// Any store but SwiftPM's whose newest build left out the refused file's module, by that module: rebuilding what was just built would refuse again.
+        case skippedModule(String)
 
         /// The rebuild for a file importing `imports` in the store `provenance` names, or `nil` where no one command is known.
-        init?(provenance: DiscoveredStore.Provenance, imports: [String]) {
+        init?(provenance: DiscoveredStore.Provenance, package: String = "", imports: [String]) {
             switch provenance {
             case let .inTree(directory): self = .derivedDataPath(directory)
-            case .swiftPMBuild: self = .swiftPM(buildTests: TestFileRecognition.isTestFile(imports: imports))
+            case .swiftPMBuild: self = .swiftPM(buildTests: TestFileRecognition.isTestFile(imports: imports), package: package)
             case .config, .buildServerJSON, .derivedData: return nil
             }
+        }
+
+        /// The rebuild naming `module` where its file changed, at the moment given, before the newest unit of `holder`, the store holding its unit, which is not SwiftPM's: a later build of that store skipped the file; `nil` otherwise, SwiftPM's command building every target.
+        static func skipping(_ module: String, changedAt mtime: Double, holder: SemanticStore) -> Rebuild? {
+            if case .swiftPMBuild = holder.provenance {
+                return nil
+            }
+            return mtime > SemanticContext.buildAnchor(newestUnit: holder.newestUnitDate) ? nil : .skippedModule(module)
         }
 
         /// One rebuild covering every refusal in `refusals`, or `nil` where they need different ones or any has none known; SwiftPM's with `--build-tests` covers its plain form, which it builds too.
         static func covering(_ refusals: [SemanticRefusal]) -> Rebuild? {
             let rebuilds = Set(refusals.map(\.rebuild))
             guard !rebuilds.isEmpty, !rebuilds.contains(nil) else { return nil }
-            if rebuilds.isSubset(of: [.swiftPM(buildTests: false), .swiftPM(buildTests: true)]) {
-                return .swiftPM(buildTests: rebuilds.contains(.swiftPM(buildTests: true)))
+            let swiftPM = rebuilds.compactMap { rebuild -> (buildTests: Bool, package: String)? in
+                switch rebuild {
+                case let .swiftPM(buildTests, package): (buildTests, package)
+                default: nil
+                }
+            }
+            if swiftPM.count == rebuilds.count, let package = swiftPM.first?.package, swiftPM.allSatisfy({ $0.package == package }) {
+                return .swiftPM(buildTests: swiftPM.contains { $0.buildTests }, package: package)
             }
             guard rebuilds.count == 1, let only = rebuilds.first else { return nil }
             return only
@@ -62,14 +89,24 @@ extension SemanticRefusal {
     /// Why the store cannot answer for this declaration — never healed by reindexing, since this axis moves only on a build.
     enum Reason: Hashable, Comparable {
         case modifiedSinceBuild
+        /// The file has no unit in any store, its module is one a build of the store's project compiles, and it changed after the store's newest unit: the build that adds it answers.
+        case newSinceBuild
         case noCoveringUnit
         /// The file has a unit in the store, yet no occurrence of the declaration is recorded, and it sits under the `#if` this labels: the build may not have compiled that branch, so no build is named as the fix.
         case unrecordedUnderCondition(String)
+        /// The file lies outside the package of every store, named by this clause (`the store's package (Kit)`): a nested package's build describes that package alone, so no build of it is named as the fix.
+        case outsidePackage(String)
 
-        /// The reason a declaration no store owns is refused for: an edit since the build first, since a rebuild certainly fixes that; then a file the store compiled with the declaration under `#if`; then a file no unit covers.
-        static func unowned(modified: Bool, fileHasUnit: Bool, condition: String?) -> Reason {
-            if modified {
-                return .modifiedSinceBuild
+        /// The reason a declaration no store owns is refused for: a file outside every store's package (`outside`, its packages) first, since no build of those stores can answer for it; then a file changed or new since its own build (`file`), since a rebuild certainly fixes that; then a file the store compiled with the declaration under `#if`; then a file no unit covers.
+        static func unowned(outside: [String]? = nil, file: FileKind, fileHasUnit: Bool, condition: String?) -> Reason {
+            if let outside, !outside.isEmpty {
+                let clause = outside.count == 1 ? "the store's package" : "the stores' packages"
+                return .outsidePackage("\(clause) (\(outside.joined(separator: ", ")))")
+            }
+            switch file {
+            case .changed, .deleted: return .modifiedSinceBuild
+            case .new: return .newSinceBuild
+            case .notBuilt, .current: break
             }
             if fileHasUnit, let condition {
                 return .unrecordedUnderCondition(condition)
@@ -81,27 +118,37 @@ extension SemanticRefusal {
         var rawValue: String {
             switch self {
             case .modifiedSinceBuild: "was changed since the last build"
+            case .newSinceBuild: "is new since the last build"
             case .noCoveringUnit: "has no unit in the store covering this declaration"
             case let .unrecordedUnderCondition(condition): "has " + Self.unrecorded(under: condition, declarationCount: 1)
+            case let .outsidePackage(packages): "lies outside \(packages)"
             }
+        }
+
+        /// Whether the file differs from its own build, which a rebuild certainly fixes and the header counts stale.
+        var isStale: Bool {
+            self == .modifiedSinceBuild || self == .newSinceBuild
         }
 
         /// What the reader should actually do, which differs by cause: an edited file is certainly fixed by a rebuild, a missing unit only might be — and where the store owning the stale file says which build refreshes it, that command rather than the generic advice.
         func instruction(rebuild: Rebuild?) -> String {
             switch self {
-            case .modifiedSinceBuild:
+            case .modifiedSinceBuild, .newSinceBuild:
                 switch rebuild {
                 case let .derivedDataPath(directory): "; rebuild with -derivedDataPath \(directory)"
-                case let .swiftPM(buildTests): "; rebuild with `sift run -- swift build\(buildTests ? " --build-tests" : "")`, then retry"
+                case let .skippedModule(module): "; the last build did not compile \(module) — build a scheme or target that does, then retry"
+                case let .swiftPM(buildTests, package): "; rebuild with `\(DiscoveredStore.swiftPMBuildCommand(package: package, buildTests: buildTests))`, then retry"
                 case nil: "; build the project, then retry"
                 }
             case .noCoveringUnit:
                 // Only a test file gets a command: a plain `swift build` never builds a test target, while a non-test file SwiftPM's own build left without a unit is usually compiled out, which no build fixes.
-                rebuild == .swiftPM(buildTests: true)
-                    ? "; build with `sift run -- swift build --build-tests`, then retry — it may be in a target the last build skipped"
-                    : "; build this target, then retry — it may be in a target the last build skipped"
-            case .unrecordedUnderCondition:
-                // A branch this build's conditions leave out is compiled by no build of the same configuration, so none is named.
+                if case let .swiftPM(true, package) = rebuild {
+                    "; build with `\(DiscoveredStore.swiftPMBuildCommand(package: package, buildTests: true))`, then retry — it may be in a target the last build skipped"
+                } else {
+                    "; build this target, then retry — it may be in a target the last build skipped"
+                }
+            case .unrecordedUnderCondition, .outsidePackage:
+                // A branch this build's conditions leave out is compiled by no build of the same configuration, and a file outside a nested package by no build of that package, so none is named.
                 ""
             }
         }
@@ -110,8 +157,10 @@ extension SemanticRefusal {
         var filesClause: String {
             switch self {
             case .modifiedSinceBuild: "were changed since the last build"
+            case .newSinceBuild: "are new since the last build"
             case .noCoveringUnit: "have no unit in the store covering them"
             case let .unrecordedUnderCondition(condition): "hold " + Self.unrecorded(under: condition, declarationCount: 2)
+            case let .outsidePackage(packages): "lie outside \(packages)"
             }
         }
 
@@ -119,8 +168,10 @@ extension SemanticRefusal {
         func shortClause(declarationCount: Int) -> String {
             switch self {
             case .modifiedSinceBuild: "changed since the last build"
+            case .newSinceBuild: "new since the last build"
             case .noCoveringUnit: declarationCount == 1 ? "no unit in the store covers it" : "no unit in the store covers them"
             case let .unrecordedUnderCondition(condition): Self.unrecorded(under: condition, declarationCount: declarationCount)
+            case let .outsidePackage(packages): "outside \(packages)"
             }
         }
 
@@ -129,8 +180,10 @@ extension SemanticRefusal {
             switch self {
             // The file is the subject, so an edit to it is singular however many declarations it holds.
             case .modifiedSinceBuild: "was changed since the last build"
+            case .newSinceBuild: "is new since the last build"
             case .noCoveringUnit: declarationCount == 1 ? "has no unit in the store covering this declaration" : "has no unit in the store covering these declarations"
             case let .unrecordedUnderCondition(condition): "has " + Self.unrecorded(under: condition, declarationCount: declarationCount)
+            case let .outsidePackage(packages): "lies outside \(packages)"
             }
         }
 

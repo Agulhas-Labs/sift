@@ -28,7 +28,7 @@ struct NoStoreExtensionPathTests {
 
         #expect(!output.contains("no exact match"), "\(output)")
         #expect(output.contains("declarations (1):"), "\(output)")
-        #expect(output.contains("references: all sites by written name, paged by file"), "\(output)")
+        #expect(output.contains("no store for uses; sites by written name"), "\(output)")
         #expect(output.contains(":1  | extension Depot.Gizmo {"), "\(output)")
         #expect(output.contains(":1  | let gizmo: Depot.Gizmo? = nil"), "\(output)")
     }

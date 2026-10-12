@@ -233,7 +233,7 @@ struct CompoundLineTests {
         #expect(try await Self.outcome("\(grep); \(grep)", in: root).isAnswered)
     }
 
-    /// A compound line's own withholding stands even where it has an ordinary reading, because that reading itself always leaves the grep's lines out and would only replace the real reason with ``InPlaceAnswerer/Withholding/otherStatementsRun``: here a name grep with no store to answer it from, beside a read.
+    /// A compound line's own withholding stands even where it has an ordinary reading, because that reading itself always leaves the grep's lines out and would only replace the real reason with ``InPlaceAnswerer/Withholding/otherStatementsRun``: here a name grep of a tree with a Swift file named beside it, whose lines nothing can check, beside a read.
     @Test
     func aWithheldLineKeepsItsOwnOutcomeOverAnOrdinaryReadingThatRunsOtherStatements() async throws {
         let root = try await InPlaceAnswerTests.indexedRepository()
@@ -249,7 +249,7 @@ struct CompoundLineTests {
         let answer: @Sendable (InPlaceShape.Match) -> InPlaceAnswerer.Outcome = { InPlaceAnswerer.answer($0, timeBudget: InPlaceAnswerTests.roomy, backoff: backoff) }
         let (reading, outcome) = await InPlaceAnswerTests.onItsOwnThread { InPlaceAnswerer.firstAnswered(match) { match, _ in answer(match) } }
         #expect(reading == match)
-        #expect(outcome == .withheld(.noStore))
+        #expect(outcome == .withheld(.unchecked))
     }
 
     /// A compound line answered normally never reaches the ordinary reading at all: the match's own outcome is the one `firstAnswered` returns.
@@ -304,8 +304,12 @@ struct CompoundLineTests {
     /// A package whose `Depot` has a member and a use, built so `where` has the index store it lists references from.
     private static func builtPackage() async throws -> URL {
         let root = try MCPTestRepo.make(declaring: "Alpha")
+        let pallets = (1 ... 26).map { "func pallet\($0)(first: Depot = Depot(), second: Depot = Depot()) {}" }.joined(separator: "\n")
+        let spares = (1 ... 26).map { "func spare\($0)(first: Gizmo = Gizmo(), second: Gizmo = Gizmo()) {}" }.joined(separator: "\n")
         try MCPTestRepo.add([
             "Package.swift": "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"App\", targets: [.target(name: \"App\")])\n",
+            "Sources/App/Stock/Aisles/Bays/Racks/Shelves/Pallets.swift": "\(pallets)\n",
+            "Sources/App/Stock/Aisles/Bays/Racks/Shelves/Spares.swift": "\(spares)\n",
             "Sources/App/Depot.swift": "public struct Depot {\n    public init() {}\n    func count() -> Int {\n        3\n    }\n}\n",
             "Sources/App/Gizmo.swift": "public struct Gizmo {\n    public init() {}\n}\n",
             "Sources/App/Uses.swift": "struct Holder {\n    var depot = Depot()\n    var second = Gizmo()\n}\n",
@@ -372,9 +376,9 @@ struct CompoundLineTests {
 
         // Each sweep under its own header, and no shared one where no part stands under it.
         #expect(headers(both.reason).count == 2)
-        #expect(both.reason.contains("\nwhere Depot\n"))
+        #expect(both.reason.contains("\n  App.Depot — struct"))
         let dashes = try #require(both.reason.range(of: "\n\n---\n"))
-        let gizmo = try #require(both.reason.range(of: "\nwhere Gizmo\n"))
+        let gizmo = try #require(both.reason.range(of: "\n  App.Gizmo — struct"))
         #expect(dashes.lowerBound < gizmo.lowerBound)
         // The shared header over the member, and the sweep's own beside it.
         #expect(headers(beside.reason).count == 2)

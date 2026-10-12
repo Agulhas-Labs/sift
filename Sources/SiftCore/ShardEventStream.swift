@@ -47,6 +47,7 @@ public struct ShardEventStream: Sendable, Equatable {
         var messages: [String: String] = [:]
         var ends: [String: Double] = [:]
         var skipped: Set<String> = []
+        var skipReasons: [String: String] = [:]
         var endings: [(id: String, iteration: Int)] = []
         var sites: [DeclaredTestSource.Site] = []
         var running: [String: String] = [:]
@@ -99,6 +100,11 @@ public struct ShardEventStream: Sendable, Equatable {
                 iterations.forEach { running[key(id, $0)] = nil }
             case "testSkipped":
                 skipped.formUnion(iterations.map { key(id, $0) })
+                if let reason = (payload["_comments"] as? [String])?.first, !reason.isEmpty {
+                    for iteration in iterations {
+                        skipReasons[key(id, iteration)] = reason
+                    }
+                }
                 endings += iterations.map { (id: id, iteration: $0) }
                 iterations.forEach { running[key(id, $0)] = nil }
             default:
@@ -135,7 +141,7 @@ public struct ShardEventStream: Sendable, Equatable {
             if outcome != .skipped, let start = starts[key], let end = ends[key] {
                 seconds = max(0, end - start)
             }
-            read.attempts[test, default: []].append(RunTestOutcomes.Attempt(ending: outcome, seconds: seconds, iteration: ending.iteration))
+            read.attempts[test, default: []].append(RunTestOutcomes.Attempt(ending: outcome, seconds: seconds, iteration: ending.iteration, skipReason: outcome == .skipped ? skipReasons[key] : nil))
         }
         return read
     }

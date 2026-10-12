@@ -33,10 +33,14 @@ struct DigestMissAnswer {
         // Each local extension set aside, by the qualified name of the declaration it extends.
         var ownedHere: [String: Int] = [:]
         var all: [SymbolRow] = []
-        for row in try renderer.store.extensions(ofTypeNamed: name) {
-            if let owner = try declaredHere.first(where: { try renderer.owns(extension: row, primary: $0) }) {
+        // An extension the code places as another declaration's is that one's alone; one it cannot place is counted under every declaration it may extend, as each one's type digest counts it.
+        let owned = try declaredHere.map { try Set(DigestOwnedExtensions.of($0, renderer: renderer).map(\.row.id)) }
+        for row in try ExtensionPaths.extensions(ofTypeNamed: name, in: renderer.store) {
+            let owners = zip(declaredHere, owned).filter { $0.1.contains(row.id) }.map(\.0)
+            for owner in owners {
                 try ownedHere[renderer.qualifiedTarget(of: owner), default: 0] += 1
-            } else {
+            }
+            if owners.isEmpty {
                 all.append(row)
             }
         }

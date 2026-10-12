@@ -20,8 +20,8 @@ struct InPlaceAnswerTests {
         try InPlaceBackoff(directory: TemporaryDirectory.make("backoff").appendingPathComponent("backoff"))
     }
 
-    /// The padding of ``indexedRepository(padding:)`` that adds the floor and a quarter again across the depot's forty members, for a test whose window over most of them is answered with members that do not show its lines.
-    static let pastTheFloor = InPlaceAnswer.windowSavingFloor / 32
+    /// The padding of ``indexedRepository(padding:)`` that adds the floor twice over across the depot's forty members, for a test whose window over most of them is answered with members that do not show its lines.
+    static let pastTheFloor = InPlaceAnswer.windowSavingFloor / 20
 
     /// A repository indexed as a session would have left it: `Alpha` from the shared fixture, and a `Depot` long enough that its digest compresses.
     ///
@@ -415,26 +415,27 @@ struct InPlaceAnswerTests {
         let other = try MCPTestRepo.make(declaring: "Alpha")
         let worktree = try MCPTestRepo.worktree(of: root, named: "sweep-\(UUID().uuidString.prefix(6))")
 
-        // Neither carries a build's index store, and that is what a sweep's references come from — so neither
-        // is answered from the caller's, whatever indexing on demand would do for a digest there.
-        #expect(try await Self.outcome("grep -rnw Alpha \(other.path)/Sources", in: root) == .withheld(.noStore))
-        #expect(try await Self.outcome("grep -rnw Alpha \(worktree.path)/Sources", in: root) == .withheld(.noStore))
+        // Neither carries a build's index store, so each is answered from its own syntactic `where`, and never
+        // from the caller's index: each with enough uses that its answer is smaller than what its grep prints.
+        for tree in [other, worktree] {
+            try MCPTestRepo.add(["\(NoStoreSweepTests.shelf)/Shop.swift": NoStoreSweepTests.shop(using: "Alpha")], to: tree)
+        }
+        let fromOther = try #require(try await Self.answered("grep -rnw Alpha \(other.path)/Sources", in: root))
+        let fromWorktree = try #require(try await Self.answered("grep -rnw Alpha \(worktree.path)/Sources", in: root))
+
+        #expect(CanonicalPath.of(fromOther.root) == CanonicalPath.of(other.path))
+        #expect(CanonicalPath.of(fromWorktree.root) == CanonicalPath.of(worktree.path))
         #expect(try await Self.outcome("grep -rnw Alpha Sources \(other.path)/Sources", in: root) == .withheld(.outsideRoot))
     }
 
-    /// Every doubt resolves to the refusal: no repository, a sweep with no index store to list references from, a search that cannot be reproduced, a query past the time budget, an answer past the size budget.
+    /// Every doubt resolves to the refusal: no repository, a search that cannot be reproduced, a query past the time budget, an answer past the size budget.
     @Test
     func everyDoubtResolvesToTheRefusal() async throws {
         let root = try await Self.indexedRepository()
-        let unindexed = try MCPTestRepo.make(declaring: "Alpha")
         let outside = try TemporaryDirectory.make("outside")
         let digest = InPlaceCall.fileDigest(path: "Sources/App/Depot.swift")
 
         #expect(try await Self.outcome("grep -rnw Alpha Sources", in: outside) == .withheld(.noRepository))
-        // A sweep is refused before the engine opens, so nothing is built to find that out — the one place
-        // indexing on demand still buys nothing, since no `where` answer would list a reference anyway.
-        #expect(try await Self.outcome("grep -rnw Alpha Sources", in: unindexed) == .withheld(.noStore))
-        #expect(!FileManager.default.fileExists(atPath: unindexed.appendingPathComponent(".sift").path))
         // A `$` before an alternation is an anchor to some implementations and a literal to others.
         #expect(try await Self.outcome(#"grep -n 'func$\|case' Sources/App/Depot.swift"#, in: root) == .withheld(.unchecked))
         #expect(try await Self.answer(digest, from: root.path, timeBudget: 0, backoff: Self.backoff()) == .withheld(.overTime))
@@ -478,7 +479,7 @@ struct InPlaceAnswerTests {
         }
     }
 
-    /// Whatever can be refused without the engine is refused before it is opened: a sweep where there is no index store, a search that cannot be reproduced, and one that prints nothing all leave the index exactly as they found it, where an answer brings it up to date.
+    /// Whatever can be refused without the engine is refused before it is opened: a search that cannot be reproduced and one that prints nothing both leave the index exactly as they found it, where an answer brings it up to date.
     @Test
     func aRefusalTheCheapChecksDecideNeverOpensTheEngine() async throws {
         let root = try await Self.indexedRepository()
@@ -486,7 +487,6 @@ struct InPlaceAnswerTests {
         try "struct Newcomer {}\n".write(to: root.appendingPathComponent("Sources/App/Newcomer.swift"), atomically: true, encoding: .utf8)
         let before = try #require(ReadOnlyIndex.snapshot(atRoot: root.path)).files
 
-        #expect(try await Self.outcome("grep -rnw Alpha Sources", in: root) == .withheld(.noStore))
         #expect(try await Self.outcome(#"grep -n 'func$\|case' Sources/App/Depot.swift"#, in: root) == .withheld(.unchecked))
         #expect(try await Self.outcome("grep -n 'func absent' Sources/App/Depot.swift", in: root) == .withheld(.notExact))
         #expect(ReadOnlyIndex.snapshot(atRoot: root.path)?.files == before)

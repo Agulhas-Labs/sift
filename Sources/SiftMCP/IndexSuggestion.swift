@@ -61,35 +61,6 @@ public struct IndexSuggestion: Equatable, Sendable {
     public static var lookupOfferSuffix: String {
         "answers this without opening the file:"
     }
-
-    /// What a lookup held back with a pointer opens with — the part the transcript scan recognises it by, which no answered refusal's opening line and no refusal's offer line contains.
-    public static var heldBackStem: String {
-        "sift held this lookup back — already called in this context:"
-    }
-
-    /// What a lookup held back at calls the hook alone made opens with: they were answered in place beside the lookup, never called by the context.
-    public static var answeredBesideStem: String {
-        "sift held this lookup back — already answered beside this:"
-    }
-
-    /// The reason a lookup is held back with, naming the calls already made: each in backticks, joined by `, `.
-    ///
-    /// The calls' answers are not in it. They arrive in the same batch of results, which is why the pointer costs no round trip.
-    ///
-    /// `hookMade` is the subset of `calls` the hook made itself. Where every call is one, the line opens with ``answeredBesideStem``; where none is, with ``heldBackStem``; where some are, the context's own calls are named under ``heldBackStem`` and the hook's follow in a second sentence, so the line never says the context called what it did not.
-    public static func heldBackReason(calls: [String], hookMade: Set<String> = []) -> String {
-        func named(_ calls: [String]) -> String {
-            calls.map { "`\($0)`" }.joined(separator: ", ")
-        }
-        let own = calls.filter { !hookMade.contains($0) }
-        let hooks = calls.filter { hookMade.contains($0) }
-        let tail = "Re-run the identical command for the raw output."
-        if own.isEmpty {
-            return "\(answeredBesideStem) \(named(hooks)), whose answer covers it. \(tail)"
-        }
-        let beside = hooks.isEmpty ? "" : " Also answered beside this: \(named(hooks))."
-        return "\(heldBackStem) \(named(own)), whose answer covers it.\(beside) \(tail)"
-    }
 }
 
 public extension IndexSuggestion {
@@ -287,7 +258,7 @@ public extension IndexSuggestion {
             )
         }
         return IndexSuggestion(
-            call: "digest \(module)",
+            call: "digest \(module)/",
             yields: "every declaration in the module the glob reads, with its file and line range"
         )
     }
@@ -421,7 +392,7 @@ public extension IndexSuggestion {
     static func isCallable(_ target: String, by tool: String) -> Bool {
         switch tool {
         case "digest":
-            target == "." || isName(target) || target.wholeMatch(of: swiftFileName) != nil
+            target == "." || isName(target) || isModuleSpelling(target) || target.wholeMatch(of: swiftFileName) != nil
                 || target.wholeMatch(of: swiftFilePath) != nil || target.wholeMatch(of: markdownFilePath) != nil
         case "where":
             isName(target)
@@ -430,6 +401,11 @@ public extension IndexSuggestion {
         default:
             false
         }
+    }
+
+    /// Whether `target` is the explicit module spelling `Name/`, the one `digest` serves as the module even where a type shares its name.
+    private static func isModuleSpelling(_ target: String) -> Bool {
+        target.hasSuffix("/") && isName(String(target.dropLast()))
     }
 
     /// Whether `target` names a file by its path — the form `digest` answers by reading that exact path under a root, rather than by a name it resolves out of the index.

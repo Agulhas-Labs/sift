@@ -2,27 +2,38 @@
 // Copyright © Agulhas Labs
 //
 
-/// What a `where` answer says about the stores beside the primary: the mode line naming each that answered, and the line naming the project that builds a file none covers.
+/// What a `where` answer says about the stores beside the primary: the `stores:` note naming each that answered, and the line naming the project that builds a file none covers.
 struct WhereStoreLines {
-    /// The mode line of an answer read from an open store, naming the primary store, each in-tree store that answered, each one still loading or failed, and any setting passed over.
-    static func modeLine(_ context: SemanticContext, answeredBy inTree: [String]) -> String {
+    /// How the `stores:` note opens.
+    static var storesOpening: String {
+        "stores: "
+    }
+
+    /// The note of an answer read from an open store that has something to say about its stores: each in-tree store that answered beside the primary, each one still loading or failed, and any setting passed over; `nil` where one store answered and nothing was passed over, since `semantic:` in the header already says the store answered (Docs/Design.md §2, *The degraded note*).
+    static func storesNote(_ context: SemanticContext, answeredBy inTree: [String]) -> String? {
+        guard !inTree.isEmpty || !context.pendingInTree.isEmpty || !context.rejectedSettings.isEmpty else { return nil }
         // With no primary store, the first in-tree store stands in its place and is named as what it is.
         let primary = if case .inTree = context.store.provenance {
             "in-tree store"
         } else {
             "index store"
         }
-        let sources = ["\(primary) via \(context.store.provenance.name)"] + inTree.map { "in-tree store via \($0)" }
+        let sources = ["\(primary) via \(DiscoveredStore.label(provenance: context.store.provenance, package: context.store.package))"] + inTree.map { "in-tree store via \($0)" }
         let pending = context.pendingInTree.map { "; " + $0 }.joined()
         let passedOver = context.rejectedSettings.isEmpty ? "" : "; passed over: " + context.rejectedSettings.joined(separator: "; ")
-        return "mode: syntactic + semantic (\(sources.joined(separator: "; ")))\(pending)\(passedOver)"
+        return "\(storesOpening)\(sources.joined(separator: "; "))\(pending)\(passedOver)"
     }
 
-    /// The `--refs` line of an answer with no index store at all, whose name-matched sites below it are then the whole sweep, paged by file rather than cut to a sample.
-    ///
-    /// Says what a written-name match cannot be trusted for, since it stands where resolved references would: a sweep that reads the list as complete would miss a use under another name and rename a same-named symbol's site. A type's block folds in the uses written through its typealiases and says so, so the line says a typealias is missed only where no block folded it in. Kept to one short line: the mode line above already names the missing store, and the whole reasoning is in the `worktree-index` help topic.
-    static let syntacticSweepLine = "references: all sites by written name, paged by file — may add same-named symbols'; "
-        + "may miss protocol, closure, unfolded-typealias uses; skips comments, strings"
+    /// Puts the `stores:` note for `inTree` at the top of `lines`, in place of the one already there; whether it added a line, so the caller can move the slots it holds below it.
+    static func placeStoresNote(_ context: SemanticContext, answeredBy inTree: [String], in lines: inout [String]) -> Bool {
+        guard let note = storesNote(context, answeredBy: inTree) else { return false }
+        if lines.first?.hasPrefix(storesOpening) == true {
+            lines[0] = note
+            return false
+        }
+        lines.insert(note, at: 0)
+        return true
+    }
 
     /// One line per Xcode project that builds a file among `rows` no store covers, in the order the files first appear, after a blank line.
     static func projectHints(for rows: [SymbolRow], owner: ((String) -> String?)?) -> [String] {
@@ -42,14 +53,11 @@ struct WhereStoreLines {
         lines.append(contentsOf: projectHints(for: rows, owner: owner))
     }
 
-    /// Appends the project-build hint for `rows`, folding its generic build command out of the mode line first when a hint is going to print beside it — one piece of build advice rather than two that can disagree.
+    /// Appends the project-build hint for `rows`, taking the degraded note's build remedy out first when a hint is going to print beside it: one piece of build advice rather than two that can disagree.
     static func appendNoStoreProjectHints(to lines: inout [String], for rows: [SymbolRow], owner: ((String) -> String?)?) {
         let hints = projectHints(for: rows, owner: owner)
-        if !hints.isEmpty, let modeIndex = lines.firstIndex(where: { $0.hasPrefix("mode: ") }) {
-            lines[modeIndex] = lines[modeIndex].replacingOccurrences(
-                of: "build one: \(SiftEngine.buildCommandNote). \(SiftEngine.nestedStoreNote). ",
-                with: ""
-            )
+        if !hints.isEmpty, let noteIndex = lines.firstIndex(where: { DegradedNote.withoutRemedy($0) != $0 }) {
+            lines[noteIndex] = DegradedNote.withoutRemedy(lines[noteIndex])
         }
         lines.append(contentsOf: hints)
     }

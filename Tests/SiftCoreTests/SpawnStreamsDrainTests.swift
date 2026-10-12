@@ -97,12 +97,18 @@ struct SpawnStreamsDrainTests {
     /// A child that answers the polite signal by saying something and exiting has that last word in what a timed-out spawn returns.
     ///
     /// This is a smoke test and pins nothing of the final read, which the exit of the child usually delivers through an ordinary event anyway; the real pin is the case above that holds the reading queue while the sources are cancelled.
+    ///
+    /// Nothing here depends on the speed of the machine. The deadline starts only once the child says its trap is in place, and the child's handler is slower than the ordinary grace on purpose while the grace given here is far longer, so the polite signal is the one that ends the child and its last word is always the handler's.
     @Test
     func whatAChildSaysAsItIsEndedComesBack() throws {
-        let script = "trap 'echo bye; kill $!; exit 0' TERM; sleep 5 >/dev/null 2>&1 & wait"
-        let output = try SimulatorAccessibility.spawn("/bin/sh", ["-c", script], deadline: 0.2)
+        let script = "trap 'sleep 0.5; echo bye; kill $!; exit 0' TERM; sleep 60 >/dev/null 2>&1 & echo ready; wait"
+        let grace: TimeInterval = 30
+        let started = ContinuousClock.now
+        let output = try SimulatorAccessibility.spawn("/bin/sh", ["-c", script], deadline: 0.2, grace: grace, ready: "ready")
+        let elapsed = ContinuousClock.now - started
 
         #expect(output.standardError.contains("timed out"), "\(output.standardError)")
         #expect(output.standardOutput.contains("bye"), "\(output.standardOutput)")
+        #expect(elapsed < .seconds(grace - 5), "the child was ended only after \(elapsed)")
     }
 }

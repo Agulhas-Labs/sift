@@ -49,7 +49,7 @@ struct StoreImplicitTwinContainerTests {
         defer { try? FileManager.default.removeItem(at: cacheRoot) }
         let discovered = try #require(IndexStoreDiscovery(repoRoot: fixture.root, config: SiftConfig()).discover(), sourceLocation: sourceLocation)
         let cache = try #require(SemanticCache(store: discovered.path, in: cacheRoot), sourceLocation: sourceLocation)
-        let store = try SemanticStore(discovered: discovered, newestUnitDate: Date(), cache: cache)
+        let store = try SemanticStore(discovered: discovered, repoRoot: fixture.root, newestUnitDate: Date(), cache: cache)
         return store.semanticConformers(ofUSR: Self.baseUSR).map(\.name).sorted()
     }
 

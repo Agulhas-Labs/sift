@@ -270,28 +270,26 @@ def write_wrapper(sift_binary: str):
     WRAPPER.chmod(0o755)
 
 
-def install_sift(env: dict, sift_binary: str, rule: Path):
-    """sift at project scope inside the corpus, as `sift install-hook` writes it, plus `rule` as the rule:
-    arm B's install, and arm A's too when --rule-a is given.
+def register_wrapped(env: dict, sift_binary: str, settings: Path, cwd: Path) -> dict:
+    """`sift install-hook` through the wrapper into `settings`, every command in it repointed at the wrapper
+    and then asserted to be the wrapper's, so no hook can run with the user's own home. Returns the settings.
 
     install-hook's --command repoints only the primer: every other hook and the status line name the
-    binary the install ran as, which the wrapper's exec makes the real one. Those are repointed at the
-    wrapper here, and every command is then asserted to be the wrapper's, so no hook can run with the
-    user's own home."""
-    SCRATCH_HOME.mkdir(parents=True)
-    settings = RUN / ".claude" / "settings.json"
+    binary the install ran as, which the wrapper's exec makes the real one. A command's first word is the
+    binary when it resolves (realpath) to `sift_binary`, whichever way the path is spelled."""
     settings.parent.mkdir(parents=True, exist_ok=True)
     checked([WRAPPER, "install-hook", "--settings", settings, "--command", "%s session-start" % WRAPPER,
-             "--no-allow-run"], env=env, cwd=str(RUN), stdin=subprocess.DEVNULL)
+             "--no-allow-run"], env=env, cwd=str(cwd), stdin=subprocess.DEVNULL)
     registered = json.loads(settings.read_text())
     commands = []
+    real_binary = os.path.realpath(sift_binary)
 
     def repoint(node):
         if isinstance(node, dict):
             for key, value in node.items():
                 if key == "command" and isinstance(value, str):
                     word, _, rest = value.partition(" ")
-                    if word.strip("'\"") == sift_binary:
+                    if os.path.realpath(word.strip("'\"")) == real_binary:
                         value = "%s %s" % (WRAPPER, rest) if rest else str(WRAPPER)
                     node[key] = value
                     commands.append(value)
@@ -305,6 +303,27 @@ def install_sift(env: dict, sift_binary: str, rule: Path):
     strays = [c for c in commands if not c.startswith(str(WRAPPER) + " ")]
     if not commands or strays:
         raise Halt("arm B's settings register commands that are not the wrapper's: %s" % strays)
+    return registered
+
+
+def preflight_install(env: dict, sift_binary: str):
+    """The install check on a throwaway settings file, before the corpus build, so a binary whose hooks
+    cannot be pointed at the wrapper stops the run in seconds. Nothing it makes outlives it."""
+    probe = WORK / "preflight"
+    SCRATCH_HOME.mkdir(parents=True)
+    try:
+        register_wrapped(env, sift_binary, probe / "settings.json", probe)
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
+        shutil.rmtree(SCRATCH_HOME, ignore_errors=True)
+
+
+def install_sift(env: dict, sift_binary: str, rule: Path):
+    """sift at project scope inside the corpus, as `sift install-hook` writes it, plus `rule` as the rule:
+    arm B's install, and arm A's too when --rule-a is given."""
+    SCRATCH_HOME.mkdir(parents=True)
+    settings = RUN / ".claude" / "settings.json"
+    registered = register_wrapped(env, sift_binary, settings, RUN)
     settings.write_text(json.dumps(registered, indent=2) + "\n")
     rules = RUN / ".claude" / "rules"
     rules.mkdir(parents=True, exist_ok=True)
@@ -1001,6 +1020,7 @@ def command_run(options):
     try:
         WORK.mkdir(parents=True)
         write_wrapper(sift_binary)
+        preflight_install(clean_env(str(WRAPPER_DIR) + os.pathsep + base_path), sift_binary)
         record.update(materialise(tasks, source, env, WORK / "warm.log"))
         record.update(probe_hook(base_path, sift_binary, options.rule_b))
         write_record()
@@ -1226,7 +1246,7 @@ def analyse(directory: Path) -> str:
     for arm in ARMS:
         count = sum(1 for s in summaries if s["arm"] == arm and s["valid"])
         lines.append("| %s | %d | %s |" % (arm, count, " | ".join(plain(arm_values[arm][key], key == "cost_usd") for key, _ in DELTA_METRICS)))
-    if mod_vs_none:
+    if sift_on_a(record):
         lines += ["", "Voluntary use, summed over valid runs: sift calls against Swift lookups made with built-in tools "
                   "(a Read of a .swift file, a Grep or Bash grep that names swift; a search that never names swift is "
                   "not counted):", "", "| arm | sift MCP | sift Bash | built-in Swift lookups | sift share |",

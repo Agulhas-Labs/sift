@@ -28,7 +28,7 @@ struct ReadOnlyTreeTests {
         #expect(!FileManager.default.fileExists(atPath: SiftPaths.cache(in: root).path))
         for answer in answers {
             #expect(answer.hasPrefix("tree: "), "\(answer)")
-            #expect(answer.contains("source: working tree, read live"), "\(answer)")
+            #expect(answer.contains("source: live"), "\(answer)")
         }
     }
 

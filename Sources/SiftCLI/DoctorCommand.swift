@@ -15,7 +15,7 @@ struct DoctorCommand: ParsableCommand {
             commandName: "doctor",
             abstract: "Check that each agent sift is installed into really runs it: registration, binary, hooks, MCP server, version.",
             discussion: """
-            One line per check. With no --agent, only the agents found on this machine are checked; one not found is named on a line and skipped, neither counted nor failed. An agent found without sift installed still fails. --agent names the agents to check, found or not. Exits 1 when any check failed.
+            One line per check. With no --agent, only the agents found on this machine are checked; one not found is named on a line and skipped, neither counted nor failed. An agent found with nothing of sift's in it is named on a line and not counted; one with some of sift's installed but broken still fails. --agent names the agents to check, found or not. Exits 1 when any check failed, or when no agent has sift installed.
             """
         )
     }
@@ -61,14 +61,14 @@ struct DoctorCommand: ParsableCommand {
                 output.emit(line)
             }
         }
-        if !report.failed.isEmpty {
+        if report.failsTheRun {
             throw ExitCode(1)
         }
     }
 
     /// Every check of every agent asked about: the agents found with no `--agent`, those named with it.
     ///
-    /// The skipped are the agents left out for not being found.
+    /// The skipped are the agents left out for not being found; the not installed are those found with nothing of sift's in them, left out of the checks and the verdict unless named.
     func diagnose() throws -> DoctorReport {
         let detection = AgentDetection.detect(machine)
         let asked = agents.isEmpty ? InstallAgent.allCases : InstallAgent.allCases.filter { agent in agents.contains { $0.rawValue == agent.rawValue } }
@@ -76,24 +76,41 @@ struct DoctorCommand: ParsableCommand {
         defer { probe.close() }
         var checks: [DoctorCheck] = []
         var skipped: [(agent: InstallAgent, lookedFor: [String])] = []
+        var notInstalled: [InstallAgent] = []
         for agent in asked {
             let finding = detection.finding(agent)
             guard finding.isDetected || !agents.isEmpty || (agent == .cursor && cursorDirectory != nil) || (agent == .codex && codexDirectory != nil) else {
                 skipped.append((agent, finding.lookedFor))
                 continue
             }
+            let named = !agents.isEmpty || (agent == .cursor && cursorDirectory != nil) || (agent == .codex && codexDirectory != nil)
             switch agent {
             case .claude:
-                checks += DoctorClaude(environment: machine.environment, probe: probe).checks()
+                let doctor = DoctorClaude(environment: machine.environment, probe: probe)
+                if !named, doctor.hasNothingOfSift {
+                    notInstalled.append(agent)
+                    continue
+                }
+                checks += doctor.checks()
             case .cursor:
                 let directory = cursorDirectory.map { URL(fileURLWithPath: $0) } ?? SiftPaths.cursorDirectory(environment: machine.environment)
-                checks += DoctorCursor(directory: directory, probe: probe).checks()
+                let doctor = DoctorCursor(directory: directory, probe: probe)
+                if !named, doctor.hasNothingOfSift {
+                    notInstalled.append(agent)
+                    continue
+                }
+                checks += doctor.checks()
             case .codex:
                 let home = CodexInstall.home(flag: codexDirectory, environment: machine.environment)
-                checks += DoctorCodex(home: home, runner: codex ?? CodexCLI(environment: machine.environment), probe: probe).checks()
+                let doctor = DoctorCodex(home: home, runner: codex ?? CodexCLI(environment: machine.environment), probe: probe)
+                if !named, doctor.hasNothingOfSift {
+                    notInstalled.append(agent)
+                    continue
+                }
+                checks += doctor.checks()
             }
         }
-        return DoctorReport(checks: checks, skipped: skipped)
+        return DoctorReport(checks: checks, skipped: skipped, notInstalled: notInstalled)
     }
 }
 

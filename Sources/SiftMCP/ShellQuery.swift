@@ -428,7 +428,7 @@ public extension ShellQuery {
     ///
     /// The wider of the two readings of what may follow a read, and the one ``TextSearch/Reason/filteredOutput`` asks: a stage that is not one of these drops lines or reorders them — a `sort`, a `cut`, a second `grep`, an `awk` printing a field — and what it keeps is something no index answer prints. A stage that only passes the lines on keeps the read refusable, because the answer offered in its place is the answer the caller would have seen.
     ///
-    /// A `tee` is a pass-through too and is deliberately not listed: a command that tees is read as a write (`ShellInspection.writes`), so it is no lookup at all and never reaches this question.
+    /// A `tee` is a pass-through too and is deliberately not listed: one that ends a lookup's pipeline is taken out of the line before it is read (`ShellInspection.withoutPassThroughTees`), and any other is read as a write (`ShellInspection.writes`), so it is no lookup at all and never reaches this question.
     var passesOnWhatItIsHanded: Bool {
         guard !searches, readPaths.isEmpty else { return false }
         return windowsLines || Self.passThroughVerbs.contains { Self.isCommandWord($0, in: executableText) }

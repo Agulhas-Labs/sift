@@ -60,6 +60,10 @@ chmod +x "$OUT_DIR/sift/bin/sift.js"
 cp "$REPO/Distribution/npm/sift/README.md" "$OUT_DIR/sift/README.md"
 cp "$REPO/CHANGELOG.md" "$OUT_DIR/sift/CHANGELOG.md"
 cp "$BIN" "$OUT_DIR/sift-darwin-arm64/bin/sift"
+# The agent rule `sift install` copies in. The binary looks for it beside itself, and the launcher runs
+# the platform package's own binary, so it goes in that package's bin/ (the same Sift.md the bundle and
+# Homebrew carry).
+cp "$REPO/Sift.md" "$OUT_DIR/sift-darwin-arm64/bin/Sift.md"
 chmod +x "$OUT_DIR/sift-darwin-arm64/bin/sift"
 # From this build's checkouts, under SCRATCH, for the reason `make-dist.sh` gives: the generator's
 # default is the plain `.build/checkouts`, which a build with a scratch path of its own never fills.
@@ -121,6 +125,23 @@ echo "$RESPONSE" | grep -q "\"version\":\"$VERSION\"" || {
     exit 1
 }
 echo "installed from the packed tarballs and answered: $VERSION"
+
+# The rule has to survive packing too: a `files` list that omits it ships a binary whose `sift install`
+# skips the rule while the docs say only a source build does. Checked in the tarball and then through
+# the installed binary, writing nothing (HOME points into the scratch install directory).
+tar -tzf "$OUT_DIR/sift-darwin-arm64/$PLATFORM_TARBALL" | grep -q '^package/bin/Sift\.md$' || {
+    echo "error: the platform tarball does not carry bin/Sift.md"
+    exit 1
+}
+DRY_RUN="$(HOME="$INSTALL_DIR/home" "$INSTALLED" install --dry-run --agent claude 2>&1)" || {
+    echo "error: 'sift install --dry-run --agent claude' failed through the installed package — got: $DRY_RUN"
+    exit 1
+}
+if echo "$DRY_RUN" | grep -q 'no Sift.md ships'; then
+    echo "error: the installed package ships no Sift.md — got: $DRY_RUN"
+    exit 1
+fi
+echo "installed package finds its Sift.md"
 
 echo
 echo "staged: $OUT_DIR"

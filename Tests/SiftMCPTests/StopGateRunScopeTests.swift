@@ -123,15 +123,15 @@ struct StopGateRunScopeTests {
         ("echo 'sift run -- swift build'", []),
     ])
     func theDirectoriesAGreenCallVouchesFor(command: String, directories: [String]) {
-        #expect(SwiftEditsSinceGreenRun.validatedDirectories(of: command, cwd: "/w/repo") == directories)
+        #expect(BuildInputEditsSinceGreenRun.validatedDirectories(of: command, cwd: "/w/repo") == directories)
     }
 
     /// With no directory for the call, only an absolute `cd` places the run.
     @Test
     func aCallWithNoDirectoryPlacesOnlyAnAbsoluteRun() {
-        #expect(SwiftEditsSinceGreenRun.validatedDirectories(of: "sift run -- swift build", cwd: nil).isEmpty)
-        #expect(SwiftEditsSinceGreenRun.validatedDirectories(of: "cd xc && sift run -- swift build", cwd: nil).isEmpty)
-        #expect(SwiftEditsSinceGreenRun.validatedDirectories(of: "cd /w/xc && sift run -- swift build", cwd: nil) == ["/w/xc"])
+        #expect(BuildInputEditsSinceGreenRun.validatedDirectories(of: "sift run -- swift build", cwd: nil).isEmpty)
+        #expect(BuildInputEditsSinceGreenRun.validatedDirectories(of: "cd xc && sift run -- swift build", cwd: nil).isEmpty)
+        #expect(BuildInputEditsSinceGreenRun.validatedDirectories(of: "cd /w/xc && sift run -- swift build", cwd: nil) == ["/w/xc"])
     }
 
     /// The forms most real runs take — piped into `tail`, or logged with `; echo exit=$?` after — prove nothing through the call's result, but the run recorded the tree it saw itself, and that record clears the edit.

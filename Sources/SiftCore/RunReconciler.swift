@@ -88,7 +88,14 @@ private extension RunReconciler {
         let admitted = Set(scope.targets)
         var outside: [String: Int] = [:]
 
-        for test in inventory.tests {
+        let nested = scope.nestedPackages.map { $0 + "/" }
+        let declaredDirectories = scope.testTargetDirectories.map { $0 + "/" }
+        for test in inventory.tests where scope.directory.isEmpty || test.path.hasPrefix(scope.directory + "/") {
+            // The manifest decides first: a test whose target it declares, by name or by the directory it gives the target, is this package's whatever manifests sit below it; only a test it does not admit is left out of the count for belonging to a nested package.
+            let declared = admitted.contains(test.target) || declaredDirectories.contains(where: test.path.hasPrefix)
+            if !declared, nested.contains(where: test.path.hasPrefix) {
+                continue
+            }
             guard admitted.contains(test.target) else {
                 outside[test.target, default: 0] += 1
                 continue

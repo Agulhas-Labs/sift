@@ -130,16 +130,17 @@ struct InPlaceReadsTests {
         #expect(try await Self.outcome(command, in: root, sizeBudget: 400) == .withheld(.overSize))
     }
 
-    /// A digest long enough to page ends with the cursor spelled for the face the opening line names its calls in, alone or beside another read.
+    /// A digest over the size budget, read alone, ends with the cursor spelled for the face the opening line names its calls in; beside another read it is the sixty-line page, with its cursor.
     @Test(arguments: [false, true])
     func aPagedDigestSpellsItsCursorForTheFaceThatAsked(serverGone: Bool) async throws {
         let root = try await InPlaceAnswerTests.indexedRepository()
-        let members = (1 ... 70).map { "    func take\($0)() -> Int {\n        let count = \($0)\n        return count * 2\n    }" }
+        let summary = "Takes the crate out of the stack and weighs it against the others the depot is holding for the harbour, number"
+        let members = (1 ... 120).map { "    /// \(summary) \($0).\n    func take\($0)() -> Int {\n        let count = \($0)\n        return count * 2\n    }" }
         try ("/// A crate.\nstruct Crate {\n" + members.joined(separator: "\n") + "\n}\n")
             .write(to: root.appendingPathComponent("Sources/App/Crate.swift"), atomically: true, encoding: .utf8)
         try await SiftEngine(directory: root).ensureFresh()
         let backoff = try InPlaceAnswerTests.backoff()
-        let cursor = serverGone ? "pass --offset 60" : "pass offset: 60"
+        let cursor = serverGone ? "pass --offset " : "pass offset: "
 
         for command in ["cat Sources/App/Crate.swift", "cat Sources/App/Crate.swift && cat Sources/App/Alpha.swift"] {
             let match = try #require(InPlaceShape.match(forShell: command, in: root.path))
@@ -150,7 +151,8 @@ struct InPlaceReadsTests {
                 Issue.record("expected an answer to \(command), got \(outcome)")
                 continue
             }
-            #expect(answered.reason.contains("more member lines — \(cursor)"), "\(command)")
+            // Beside another read the digest is the sixty-line page, as on any face; alone it is the page cut to fit the budget.
+            #expect(answered.reason.contains("more member lines — \(cursor)" + (command.contains("&&") ? "60" : "")), "\(command)")
         }
     }
 }

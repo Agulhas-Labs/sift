@@ -111,7 +111,8 @@ struct UgrepModelTests {
         let root = try Self.directory(["\(name)/Depot.swift": "let Depot = 1\n", "\(name)/sub/Depot.swift": "let Depot = 2\n"])
 
         #expect(try Self.run(["-rn", "Depot", name], in: root) == .undecided("ignored"))
-        #expect(try Self.run(["-rn", "Depot", "."], in: root) == .undecided("ignored"))
+        // The walk never enters a version-control directory, so a search below `.` finds no file at all and prints nothing, as `ugrep` does.
+        #expect(try Self.run(["-rn", "Depot", "."], in: root) == .printed([]))
         #expect(try Self.lines(Self.run(["-rn", "Depot", "\(name)/sub"], in: root), in: root) == ["\(name)/sub/Depot.swift:1"])
     }
 

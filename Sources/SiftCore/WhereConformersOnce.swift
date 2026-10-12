@@ -205,7 +205,7 @@ extension WhereRenderer {
 
     /// The rows of a class's store block, `listed`, with each subclass written through one of its own typealiases marked with the alias, one the store holds no row for added after them.
     ///
-    /// The store records such a clause against the alias, and a row for the class only as an implicit occurrence, which ``SemanticStore/written(_:inheritanceClauses:)`` keeps in a class's subclass rows, since a clause another type writes beside it is no macro expansion's copy of it. A held row, matched by file and line, takes the mark where it has none, and a subclass the store holds no row for, one in an inactive `#if` branch, is added after them; and a clause that writes the class itself is never marked, the store holding no reference to an alias at its head. A row the store holds is only ever marked, never changed.
+    /// The store records such a clause against the alias, and a row for the class only as an implicit occurrence, which ``SemanticStore/written(_:)`` keeps in a class's subclass rows, since a clause another type writes beside it is no macro expansion's copy of it. A held row, matched by file and line, takes the mark where it has none, and a subclass the store holds no row for, one in an inactive `#if` branch, is added after them; and a clause that writes the class itself is never marked, the store holding no reference to an alias at its head. A row the store holds is only ever marked, never changed.
     ///
     /// The aliases are `folded`, the ones the class's fold accepts, and a row is the store's reference to the alias at a head of the subclass's own inheritance clause, read from a parse of the file.
     func aliasSubclassRows(

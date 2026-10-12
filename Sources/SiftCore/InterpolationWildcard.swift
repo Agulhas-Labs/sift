@@ -6,7 +6,7 @@ import Foundation
 
 /// Matches a query against a literal's segments with each interpolation between them read as some of the query's text, or none.
 ///
-/// The wording a program prints is often assembled — `"truncated: \(remaining) more \(unit)"` prints "more member lines" — so no single segment holds it. Here the query is read as a suffix of one segment, then a wildcard for each interpolation crossed, with every segment between them in full, then a prefix of the segment after the last; the query may also end inside a wildcard. A wildcard is a run of the query, possibly empty since an interpolation can print nothing; a non-empty one starts and ends on a non-space; each ends on a word boundary of the query, or between a digit and a letter so `\(n)ms` matches "42ms", and starts on one unless it continues a word the literal text before it began, so `key\(s)` matches "key" and "keys" while `\(verb)ing` is matched only by a query that does not cut through that word. Some piece of literal text matched must hold a word of at least ``minimumWordLength`` letters or digits, so interpolations, spacing and short words alone never match. Case follows ``SmartCaseQuery``: any uppercase letter in the query makes it case-sensitive.
+/// The wording a program prints is often assembled — `"truncated: \(remaining) more \(unit)"` prints "more member lines" — so no single segment holds it. Here the query is read as a suffix of one segment, then a wildcard for each interpolation crossed, with every segment between them in full, then a prefix of the segment after the last; the query may also end inside a wildcard. A wildcard is a run of the query, possibly empty since an interpolation can print nothing; a non-empty one starts and ends on a non-space; each ends on a word boundary of the query, or between a digit and a letter so `\(n)ms` matches "42ms", and starts on one unless it continues a word the literal text before it began, so `key\(s)` matches "key" and "keys" while `\(verb)ing` is matched only by a query that does not cut through that word. Some piece of literal text matched must hold a word of at least ``minimumWordLength`` letters or digits, so interpolations, spacing and short words alone never match. Case is ignored, as ``CaseFoldedQuery`` does.
 ///
 /// A match is listed only when its literal text holds part of at least ``listedWordCount`` words of the query, a piece holding part of a word only on ``minimumWordLength`` of its characters or the whole of a shorter word, so a letter glued to an interpolation is not part of the query's word: one shared word is what most interpolated literals have with any query, so such a match is only counted. The search prefers an alignment that lists.
 ///
@@ -26,7 +26,7 @@ struct InterpolationWildcard {
         }
         var matcher = InterpolationWildcard(
             query: query,
-            segments: segments.map { Array(query.folds ? $0.lowercased() : $0) }
+            segments: segments.map { Array($0.lowercased()) }
         )
         return matcher.match()
     }
@@ -123,18 +123,16 @@ struct InterpolationWildcard {
 }
 
 extension InterpolationWildcard {
-    /// A query prepared once for every literal it is matched against: its characters, lowercased when it matches case-insensitively under ``SmartCaseQuery``, and the word each character falls in.
+    /// A query prepared once for every literal it is matched against: its characters, lowercased since it matches ignoring case (``CaseFoldedQuery``), and the word each character falls in.
     struct Query {
         let characters: [Character]
-        let folds: Bool
         /// For each character, the index of the run of letters or digits holding it, `nil` between words.
         let words: [Int?]
         /// Each word's text, in query order, as ``characters`` spells it.
         let wordTexts: [String]
 
         init(_ text: String) {
-            folds = !SmartCaseQuery.isCaseSensitive(text)
-            characters = Array(folds ? text.lowercased() : text)
+            characters = Array(text.lowercased())
             var words: [Int?] = []
             var count = 0
             for character in characters {
@@ -164,7 +162,7 @@ extension InterpolationWildcard {
 
     /// How a query matched a literal around its interpolations.
     struct Match: Equatable {
-        /// The longest piece of literal text matched, as the literal prints it, which a display window centres on since the query itself is not in the literal's text; lowercased for a case-insensitive query, which the window's own smart-case search still finds.
+        /// The longest piece of literal text matched, as the literal prints it, which a display window centres on since the query itself is not in the literal's text; lowercased, which the window's own case-insensitive search still finds.
         let anchor: String
         /// The index of the segment ``anchor`` came from.
         let segment: Int

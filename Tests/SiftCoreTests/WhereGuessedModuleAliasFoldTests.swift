@@ -46,7 +46,7 @@ struct WhereGuessedModuleAliasFoldTests {
         #expect(output.contains(":10  | _ = Link()"), "\(output)")
         #expect(output.contains(":7  | typealias Link = App.Net.URL"), "\(output)")
         #expect(output.contains(
-            "2 lines in 1 file — 2 production · 0 tests, split on the XCTest or Testing import, never the path; 1 written as Sources.Link (App.Net.URL), a typealias of its path behind a leading name that may be its module, kept as a use though not proven to name it, as this type's module is guessed from the path"
+            "2 uses by written name in 1 file) — 2 production · 0 tests; 1 written as Sources.Link (App.Net.URL), a typealias of its path behind a leading name that may be its module, kept as a use though not proven to name it, as this type's module is guessed from the path"
         ), "\(output)")
         #expect(!output.contains("folded in here"), "\(output)")
     }

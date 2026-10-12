@@ -134,9 +134,11 @@ public struct MarkdownOutline {
     }
 
     /// The text inside a `**bold**` run at the start of `text`, or `nil` where it opens with none.
+    ///
+    /// Bold further along the line is not a title: it is emphasis within a sentence, or markers inside a code span.
     private static func boldRun(in text: String) -> String? {
-        guard let opensAt = text.range(of: "**") else { return nil }
-        let rest = text[opensAt.upperBound...]
+        guard text.hasPrefix("**") else { return nil }
+        let rest = text.dropFirst(2)
         guard let closesAt = rest.range(of: "**") else { return nil }
         let inner = rest[rest.startIndex ..< closesAt.lowerBound].trimmingCharacters(in: .whitespaces)
         return inner.isEmpty ? nil : inner

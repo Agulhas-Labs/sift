@@ -10,8 +10,10 @@ import Testing
 ///
 /// A paired benchmark measured the fixed start at about 1.1k tokens for the primer before this budget; the habits it exists to name fit in a fraction of that, and the reasons behind them arrive with the rule at the first `.swift` file.
 struct SessionPrimerBudgetTests {
-    /// Bytes, not tokens: about four bytes a token in this prose, so 900 bytes holds the primer near 200 tokens.
-    static let budget = 900
+    /// Bytes, not tokens: about four bytes a token in this prose.
+    ///
+    /// 900 bytes held the primer near 200 tokens until the standing caveats moved into it from every `where` and `search` answer (Docs/Design.md §2): their bullet adds about 540 bytes, said once per context in place of on each answer; the longest primer, a subagent's pointing at the CLI, is about 1.44 kB.
+    static let budget = 1550
 
     @Test(arguments: [SessionPrimer.Audience.session, .subagent])
     func thePrimerInsideAnIndexedRootFitsTheBudget(audience: SessionPrimer.Audience) throws {
@@ -58,5 +60,17 @@ struct SessionPrimerBudgetTests {
         let rule = try String(contentsOf: root.appendingPathComponent("Sift.md"), encoding: .utf8)
 
         #expect(rule.hasPrefix("---\npaths:\n  - \"**/*.swift\"\n---\n"))
+    }
+
+    /// The rule is re-sent as context on every request once loaded, so its size is a budget too: the depth lives behind `sift help <topic>`.
+    @Test
+    func theShippedRuleStaysUnderItsSizeBudget() throws {
+        let root = URL(filePath: #filePath)
+            .deletingLastPathComponent() // SiftCoreTests
+            .deletingLastPathComponent() // Tests
+            .deletingLastPathComponent() // the repository root
+        let rule = try String(contentsOf: root.appendingPathComponent("Sift.md"), encoding: .utf8)
+
+        #expect(rule.utf8.count <= 2600, "\(rule.utf8.count) bytes")
     }
 }

@@ -39,6 +39,7 @@ import Testing
         let entry: [String: Any] = [
             "ts": "2026-10-01T10:00:00Z", "tool": "digest", "target": relative, "root": "/repo", "ms": 4, "ok": true,
             "session": "parent-session", "agent": logAgent, "outBytes": answer.utf8.count, "srcBytes": source.utf8.count,
+            "via": "hook", "intercepted": "window",
         ]
         let log = directory.appendingPathComponent("usage.jsonl")
         let data = try JSONSerialization.data(withJSONObject: entry)
@@ -54,7 +55,7 @@ import Testing
 
         let report = TranscriptAudit.render(projectsDirectory: fixture.projects, transcript: fixture.transcript.path, usageLog: fixture.log)
 
-        #expect(report.contains("    saving    \(TokenEstimate.saved(bytes: gross)), \(TokenEstimate.basis(bytes: gross)): every measured call the usage log holds for this session"))
+        #expect(report.contains("    saving    \(TokenEstimate.saved(bytes: gross)), \(TokenEstimate.basis(bytes: gross)): the 1 intercepted read the usage log priced for this session"))
     }
 
     /// A log with no call under this agent id gets a one-line reason where the row would be.
@@ -64,7 +65,7 @@ import Testing
 
         let report = TranscriptAudit.render(projectsDirectory: fixture.projects, transcript: fixture.transcript.path, usageLog: fixture.log)
 
-        #expect(report.contains("    saving    none: the usage log holds no measured call for subagent abc123 of session parent-session"))
+        #expect(report.contains("    saving    none: the usage log prices no call for subagent abc123 of session parent-session"))
     }
 }
 

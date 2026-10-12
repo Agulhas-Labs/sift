@@ -66,7 +66,7 @@ struct DoctorCursorTests {
     func aCursorDirectoryWithNothingRegisteredSaysToInstall() throws {
         let home = try TemporaryDirectory.make("doctor-cursor-bare")
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".cursor", isDirectory: true), withIntermediateDirectories: true)
-        let run = try Self.doctor(Self.machine(home: home))
+        let run = try Self.doctor(Self.machine(home: home), ["--agent", "cursor"])
 
         #expect(run.status == 1)
         #expect(run.printed.contains("cursor hooks: fail — not registered for sessionStart, preToolUse, postToolUse in "), "\(run.printed)")

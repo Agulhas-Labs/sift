@@ -154,7 +154,7 @@ struct TranscriptAnswerCreditTests {
 
             syntactic call sites — by written name over the working tree, never stale; a name is not a symbol, so verify a hit — see sift help answers (call sites)
 
-            "signedTrend" (2 uses in 2 files — for App.Trend.signedTrend):
+            "signedTrend" (2 uses by written name in 2 files — for App.Trend.signedTrend):
               Sources/App/SummaryCard.swift:42  in SummaryCard.body
               Sources/App/Trend.swift:30  in Trend.render()
             """),
@@ -177,7 +177,7 @@ struct TranscriptAnswerCreditTests {
             TranscriptFixture.indexAnswer(id: "w1", text: """
             syntactic call sites — by written name over the working tree, never stale; a name is not a symbol.
 
-            "Gizmo" (1 call site in 1 file — for App.Gizmo):
+            "Gizmo" (1 call site by written name in 1 file — for App.Gizmo):
               Sources/App/SummaryCard.swift:42  in SummaryCard.body
 
             extensions of Gizmo (1):

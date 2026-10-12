@@ -6,7 +6,7 @@ import Foundation
 
 /// The block of name-matched sites a `where` answer falls back to where the store cannot answer, as it is written and as it is read back.
 ///
-/// Its sites are leads, not locations: a name is not a symbol, so they take in same-named members of unrelated types and same-named locals and parameters. A reader of a finished answer — the transcript scan — has to tell them apart from what the answer resolved, and the heading that opens the block is how. Kept here, beside the wording, so the writer and the reader cannot drift.
+/// Its sites are leads, not locations: a name is not a symbol, so they take in same-named members of unrelated types and same-named locals and parameters. A reader of a finished answer — the transcript scan — has to tell them apart from what the answer resolved, and the line that opens the block — its heading, or a name's count line saying `by written name` — is how. Kept here, beside the wording, so the writer and the reader cannot drift.
 public struct NameMatchedSites {
     /// How the block's heading opens.
     static var headingOpening: String {
@@ -73,24 +73,32 @@ public struct NameMatchedSites {
         return collapsed.prefix(sourceTextLimit).trimmingCharacters(in: .whitespaces) + "…"
     }
 
-    /// The lines of a finished answer that sit outside its name-matched block, which are everything it resolved.
-    ///
-    /// The block runs from its heading through the lines it writes — blank lines, a name's own heading in quotes, indented sites and truncation counts, a line saying no site was found — and ends at the first line of any other shape, which is where the answer's next section opens: every section heading `where` writes starts at the margin with a word.
+    /// The lines of a finished answer that sit outside its name-matched block, which are everything it resolved (``partition(answer:)``).
     public static func linesOutside(answer: String) -> [Substring] {
-        var outside: [Substring] = []
-        var inBlock = false
-        for line in answer.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
-            if headingOpenings.contains(where: { line.hasPrefix($0) }) {
-                inBlock = true
-                continue
+        partition(answer: answer).outside
+    }
+
+    /// Every line of a file the block shows by its path and number: each row under a file's path, and each line a row of a type's uses lists — never one only counted (`+3 more`).
+    ///
+    /// Such a line accounts for the grep line it shows, since the reader sees that very line, but it locates nothing: ``ExactAnswer/locations(inWhereAnswer:)`` never reads the block, so the audit credits no file only these name.
+    public static func shownLines(inAnswer answer: String) -> Set<ExactAnswer.Location> {
+        var shown = Set<ExactAnswer.Location>()
+        var heading: (indent: Int, path: String)?
+        for line in partition(answer: answer).inside {
+            if let match = line.wholeMatch(of: siteRow), let heading, match.output.1.count == heading.indent + 2, let number = Int(match.output.2) {
+                shown.insert(ExactAnswer.Location(path: heading.path, line: number))
+            } else if let match = line.wholeMatch(of: ExactAnswer.referenceLine) {
+                heading = nil
+                for number in match.output.2.split(separator: ",") {
+                    if let value = Int(number.trimmingCharacters(in: .whitespaces)) {
+                        shown.insert(ExactAnswer.Location(path: String(match.output.1), line: value))
+                    }
+                }
+            } else {
+                heading = line.wholeMatch(of: fileHeading).map { ($0.output.1.count, String($0.output.2)) }
             }
-            if inBlock, line.isEmpty || line.hasPrefix("\"") || line.first?.isWhitespace == true || line.hasPrefix("no ") {
-                continue
-            }
-            inBlock = false
-            outside.append(line)
         }
-        return outside
+        return shown
     }
 }
 
@@ -98,5 +106,44 @@ private extension NameMatchedSites {
     struct SiteRow: Hashable {
         let line: Int
         let detail: String
+    }
+
+    /// A file's path as ``rows(_:detail:)`` heads its sites, `  path.swift:`, or with a count before the colon — or two spaces deeper, as a sub-heading's own sites are listed under it (those reaching another initializer by their labels).
+    nonisolated(unsafe) static let fileHeading = #/( {2}| {4})(\S.*\.swift)(?: \(\d+\))?:/#
+
+    /// A site row two spaces deeper than its ``fileHeading``, `    :12  detail  | text`, a line several sites share counted after it, `    :12 (×2)  …`.
+    nonisolated(unsafe) static let siteRow = #/( {4}| {6}):(\d+)(?: \(×\d+\))?(?:  .*)?/#
+
+    /// A name's count line that opens the block with no heading above it, `"save" (19 call sites by written name in 13 files):`, or `uses` for a type.
+    nonisolated(unsafe) static let countLineOpening = #/"[^"]*" \(\d+ (?:call sites?|uses?) by written name/#
+
+    /// How a name's verdict that it lists no site opens, `no call spelled "save" anywhere in the working tree`: with no heading above it, it opens the block as a count line does, since the sites it counts without listing may be indented under it.
+    static var absentVerdictOpenings: [String] {
+        ["no call spelled \"", "no use spelled \"", "every call spelled \"", "every use spelled \"", "nothing spelled \""]
+    }
+
+    /// A finished answer's lines split at its name-matched block: those inside it, and every other.
+    ///
+    /// The block opens at its heading, or where no heading is written at a name's count line saying `by written name` or at its verdict that it lists no site (``absentVerdictOpenings``); either way it runs through the lines it writes — blank lines, a name's own count line in quotes, indented sites and truncation counts, a line saying no site was found — and ends at the first line of any other shape, which is where the answer's next section opens: every section heading `where` writes starts at the margin with a word.
+    static func partition(answer: String) -> (inside: [Substring], outside: [Substring]) {
+        var (inside, outside): ([Substring], [Substring]) = ([], [])
+        var inBlock = false
+        for line in answer.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            if headingOpenings.contains(where: { line.hasPrefix($0) }) {
+                inBlock = true
+                continue
+            }
+            let opens = line.prefixMatch(of: countLineOpening) != nil || absentVerdictOpenings.contains { line.hasPrefix($0) }
+            if opens {
+                inBlock = true
+            }
+            if inBlock, opens || line.isEmpty || line.hasPrefix("\"") || line.first?.isWhitespace == true || line.hasPrefix("no ") {
+                inside.append(line)
+                continue
+            }
+            inBlock = false
+            outside.append(line)
+        }
+        return (inside, outside)
     }
 }

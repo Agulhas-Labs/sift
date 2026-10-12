@@ -12,15 +12,29 @@ import Foundation
 struct XcodeProjectTargets {
     /// The prefix → module map one project contributes, already collapsed to directories where a directory is unanimous.
     static func mappings(projectPath: URL, repoRoot: URL) -> [String: String] {
-        guard let objects = objects(inProjectAt: projectPath) else { return [:] }
+        read(projectPath: projectPath, repoRoot: repoRoot).mappings
+    }
+
+    /// What one project contributes to module resolution.
+    static func read(projectPath: URL, repoRoot: URL) -> Reading {
+        guard let objects = objects(inProjectAt: projectPath) else { return Reading() }
         let sourceRoot = projectPath.deletingLastPathComponent()
         let parents = parentGroups(in: objects)
 
         var perFile: [String: String] = [:]
+        var undeclared: Set<String> = []
+        var configFiles: Set<URL> = []
         for value in objects.values {
             guard let target = value as? [String: Any], target["isa"] as? String == "PBXNativeTarget" else { continue }
-            let module = moduleName(of: target, objects: objects)
+            let (module, isDeclared) = moduleName(
+                of: target,
+                context: Context(objects: objects, parents: parents, sourceRoot: sourceRoot),
+                configFiles: &configFiles
+            )
             guard !module.isEmpty else { continue }
+            if !isDeclared {
+                undeclared.insert(module)
+            }
             for path in sourcePaths(of: target, objects: objects, parents: parents, sourceRoot: sourceRoot, repoRoot: repoRoot) {
                 // First target wins on a shared file. A file compiled into two targets has two module names and the
                 // index stores one, so the tie is arbitrary either way — but it must be *stable*, and dictionary
@@ -31,7 +45,7 @@ struct XcodeProjectTargets {
                 perFile[path.key] = module
             }
         }
-        return collapsed(perFile)
+        return Reading(mappings: collapsed(perFile), undeclaredModules: undeclared, configFiles: configFiles.sorted { $0.path < $1.path })
     }
 
     /// A digest of what the projects *mean*, not of their bytes.
@@ -70,26 +84,55 @@ struct XcodeProjectTargets {
         return parents
     }
 
-    /// The Swift module a target produces: `PRODUCT_MODULE_NAME` when set, else the target name with the characters a module name cannot carry replaced, as the compiler itself does.
-    private static func moduleName(of target: [String: Any], objects: [String: Any]) -> String {
+    /// The Swift module a target produces, as its configurations' `PRODUCT_MODULE_NAME` and `PRODUCT_NAME` settings name it, else the target name with the characters a module name cannot carry replaced, as the compiler itself does.
+    ///
+    /// `isDeclared` is false where a setting renames the module through a reference this tool cannot expand, or the configurations disagree: the target's name is kept as the likeliest module, but its files count as guessed.
+    private static func moduleName(of target: [String: Any], context: Context, configFiles: inout Set<URL>) -> (name: String, isDeclared: Bool) {
+        let objects = context.objects
         let name = target["name"] as? String ?? ""
         guard let listID = target["buildConfigurationList"] as? String,
               let list = objects[listID] as? [String: Any],
               let configurations = list["buildConfigurations"] as? [Any]
-        else { return sanitized(name) }
-        // Any configuration will do — a target that renamed its module per configuration is not a shape worth
-        // guessing at, and the first by name keeps the answer stable across dictionary ordering.
-        let declared = configurations
+        else { return (C99ExtendedIdentifier.spelling(of: name), true) }
+        // Highest precedence first: the target's settings, its xcconfig, then the project's configuration of the same
+        // name and its xcconfig — an xcconfig's `PRODUCT_MODULE_NAME` outranks nothing the target sets itself.
+        let projectConfigurations = objects.values
+            .compactMap { $0 as? [String: Any] }
+            .first { $0["isa"] as? String == "PBXProject" }
+            .flatMap { ($0["buildConfigurationList"] as? String).flatMap { objects[$0] as? [String: Any] } }?["buildConfigurations"] as? [Any] ?? []
+        let projectByName = Dictionary(
+            projectConfigurations.compactMap { $0 as? String }.compactMap { objects[$0] as? [String: Any] }.map { ($0["name"] as? String ?? "", $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let levels = configurations
             .compactMap { $0 as? String }
             .compactMap { objects[$0] as? [String: Any] }
-            .sorted { ($0["name"] as? String ?? "") < ($1["name"] as? String ?? "") }
-            .compactMap { ($0["buildSettings"] as? [String: Any])?["PRODUCT_MODULE_NAME"] as? String }
-            .first { !$0.contains("$") }
-        return sanitized(declared ?? name)
+            .map { configuration in
+                let project = projectByName[configuration["name"] as? String ?? ""] ?? [:]
+                return [configuration, project].flatMap { level in
+                    [level["buildSettings"] as? [String: Any] ?? [:], xcconfigLevel(of: level, context: context, configFiles: &configFiles)]
+                }
+            }
+        return switch ModuleNameSetting.outcome(target: name, configurations: levels) {
+        case .unset:
+            (C99ExtendedIdentifier.spelling(of: name), true)
+        case let .named(module):
+            (module, true)
+        case .unknown:
+            (C99ExtendedIdentifier.spelling(of: name), false)
+        }
     }
 
-    private static func sanitized(_ name: String) -> String {
-        String(name.map { $0.isLetter || $0.isNumber || $0 == "_" ? $0 : "_" })
+    /// A configuration's `baseConfigurationReference` xcconfig as a level: `[:]` where it names none, `nil` where it names one this tool cannot place or read.
+    ///
+    /// A file it places joins `configFiles` whether or not it reads, since creating or editing it changes the answer.
+    private static func xcconfigLevel(of configuration: [String: Any], context: Context, configFiles: inout Set<URL>) -> [String: Any]? {
+        guard let id = configuration["baseConfigurationReference"] as? String else { return [:] }
+        guard let reference = context.objects[id] as? [String: Any],
+              let file = resolve(node: reference, id: id, objects: context.objects, parents: context.parents, sourceRoot: context.sourceRoot)
+        else { return nil }
+        configFiles.insert(file.standardizedFileURL)
+        return ModuleNameSetting.xcconfigLevel(at: file)
     }
 
     /// Every repo-relative Swift source path a target compiles, from its sources phase and from any folder it synchronizes.
@@ -185,13 +228,15 @@ struct XcodeProjectTargets {
     /// Per-file mappings reduced to the fewest prefixes that mean the same thing.
     ///
     /// The resolver matches by longest prefix with a linear scan per file, so leaving one entry per source file would make attribution quadratic on exactly the repositories this exists for. A directory whose mapped files all name one module becomes one entry; a directory that compiles into two targets keeps its files.
-    private static func collapsed(_ perFile: [String: String]) -> [String: String] {
+    static func collapsed(_ perFile: [String: String]) -> [String: String] {
         var modulesByDirectory: [String: Set<String>] = [:]
         for (path, module) in perFile {
             modulesByDirectory[directory(of: path), default: []].insert(module)
         }
         var result: [String: String] = [:]
-        for (path, module) in perFile {
+        // In key order: a mixed directory can hold a path both as a mapped key and as the parent of mapped files, and
+        // the later write wins, so dictionary order would pick the module and differ from one process to the next.
+        for (path, module) in perFile.sorted(by: { $0.key < $1.key }) {
             let parent = directory(of: path)
             if modulesByDirectory[parent]?.count == 1, !parent.isEmpty {
                 result[parent] = module
@@ -211,7 +256,9 @@ struct XcodeProjectTargets {
             guard !parent.isEmpty else { continue }
             childrenByParent[parent, default: []].append(prefix)
         }
-        for (parent, children) in childrenByParent where children.count > 1 {
+        // In a fixed order: a parent lifted here can itself be a child lifted away by its own parent, so the outcome
+        // hangs on which comes first, and dictionary order differs from one process to the next.
+        for (parent, children) in childrenByParent.sorted(by: { $0.key < $1.key }) where children.count > 1 {
             let modules = Set(children.compactMap { result[$0] })
             guard modules.count == 1, let module = modules.first else { continue }
             for child in children {
@@ -225,5 +272,23 @@ struct XcodeProjectTargets {
     private static func directory(of path: String) -> String {
         guard let index = path.lastIndex(of: "/") else { return "" }
         return String(path[path.startIndex ..< index])
+    }
+}
+
+extension XcodeProjectTargets {
+    /// The prefix → module map one project contributes, the modules in it named after their target only because the target's build settings rename it in a way this tool cannot read, and every xcconfig a module name was read from, there or not.
+    struct Reading {
+        var mappings: [String: String] = [:]
+        var undeclaredModules: Set<String> = []
+        var configFiles: [URL] = []
+    }
+}
+
+private extension XcodeProjectTargets {
+    /// What resolving a file reference needs: the project's objects, each child's group, and the directory holding the project.
+    struct Context {
+        var objects: [String: Any]
+        var parents: [String: String]
+        var sourceRoot: URL
     }
 }

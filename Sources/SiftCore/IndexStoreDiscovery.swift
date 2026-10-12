@@ -6,7 +6,7 @@ import Foundation
 
 /// Locates the repo's index store without opening it — discovery is filesystem probing only (Docs/Design.md §2).
 ///
-/// Probe order: explicit config → `buildServer.json` (its `indexStorePath`, else its `workspace` matched into DerivedData) → SwiftPM's `.build`, in either layout (Swift Build's `.build/out`, the native build system's `index/store` directories), the newest unit winning between them, and across a `--scratch-path` directory directly under `.build` (`.build/<name>/out`, `.build/<name>/<triple>/<config>/index/store`) → a DerivedData scan for an `info.plist` whose `WorkspacePath` sits inside the repo. The scan passes over three kinds of entry, each of which describes some other tree than this one: a workspace that no longer exists (a removed worktree's entry outlives it), one under a directory the index never covers (a hidden one such as `.claude/worktrees`, or a vendored one), and one inside a *nested* checkout (a live linked worktree, say). When several entries remain, the one with the newest unit wins.
+/// Probe order: explicit config → `buildServer.json` (its `indexStorePath`, else its `workspace` matched into DerivedData) → SwiftPM's `.build`, in either layout (Swift Build's `.build/out`, the native build system's `index/store` directories), the newest unit winning between them, and across a `--scratch-path` directory directly under `.build` (`.build/<name>/out`, `.build/<name>/<triple>/<config>/index/store`) → a DerivedData scan for an `info.plist` whose `WorkspacePath` sits inside the repo. The scan passes over three kinds of entry, each of which describes some other tree than this one: a workspace that no longer exists (a removed worktree's entry outlives it), one under a directory the index never covers (a hidden one such as `.claude/worktrees`, or a vendored one), and one inside a *nested* checkout (a live linked worktree, say). When several entries remain, the one with the newest unit wins. Last, an `xcodebuild -derivedDataPath <Pkg>/.build/DerivedData` build, for the root and each SwiftPM package in ``packageDirectories``: one fixed path probed in each, never a walk of `.build`.
 struct IndexStoreDiscovery {
     let repoRoot: URL
     let config: SiftConfig
@@ -14,6 +14,8 @@ struct IndexStoreDiscovery {
     var derivedDataRoot: URL
     /// Whether several matching DerivedData stores are weighed against each other by their newest unit, or the first found is taken — the choice matters only to which store is opened, never to whether one exists.
     var weighsCandidates = true
+    /// The repo-relative directories of the SwiftPM packages in the tree (``ModuleResolver/packageDirectories``), each of whose own `.build` is checked for a `-derivedDataPath` store; the root's is checked whatever this holds.
+    var packageDirectories: [String] = []
 
     init(repoRoot: URL, config: SiftConfig, derivedDataRoot: URL? = nil) {
         self.repoRoot = repoRoot
@@ -40,7 +42,7 @@ struct IndexStoreDiscovery {
         // the path as the filesystem spells it, while a root can arrive through a symlink (`/tmp`) or in a
         // shell's case-insensitive spelling, and a raw prefix match then misses this repository's own store.
         let rootPath = CanonicalPath.of(repoRoot.path)
-        return probeDerivedData(anchorCanonical: rootPath) { workspacePath in
+        let fromDerivedData = probeDerivedData(anchorCanonical: rootPath) { workspacePath in
             // Component-boundary prefix: /Dev/GizmoTools must never supply /Dev/Gizmo's store.
             guard workspacePath == rootPath || workspacePath.hasPrefix(rootPath + "/") else { return false }
             // Only the path *below* this root is judged: a worktree's own root sits under `.claude/worktrees`,
@@ -57,6 +59,7 @@ struct IndexStoreDiscovery {
             // excludes ancestors strictly between the workspace and this repoRoot, never repoRoot itself.
             return !Self.liesInsideNestedCheckout(workspacePath, under: rootPath)
         }
+        return fromDerivedData ?? probeNestedSwiftPMBuilds(rootPath: rootPath) ?? probeInPackageDerivedData(rootPath: rootPath)
     }
 
     /// How far below the root an in-tree build directory may sit, in path components (`.build/runner-dd` is two).
@@ -78,9 +81,16 @@ struct IndexStoreDiscovery {
         let stores = walk.candidates.compactMap { directory -> DiscoveredStore? in
             let store = repoRoot.appendingPathComponent(directory).appendingPathComponent("Index.noindex/DataStore")
             guard Self.isStore(store), CanonicalPath.of(store.path) != primaryPath else { return nil }
-            return DiscoveredStore(path: store, provenance: .inTree(directory))
+            return DiscoveredStore(path: store, provenance: .inTree(directory), package: package(holdingBuildDirectory: directory))
         }
         return (stores, walk)
+    }
+
+    /// The nested package among ``packageDirectories`` whose own `.build` holds the repo-relative build `directory`, the deepest where several do; empty for a directory under no nested package's `.build`.
+    ///
+    /// A build there is that package's, so its store answers for that package's files alone (``DiscoveredStore/answers(package:forFile:)``).
+    func package(holdingBuildDirectory directory: String) -> String {
+        packageDirectories.filter { !$0.isEmpty && (directory == $0 + "/.build" || directory.hasPrefix($0 + "/.build/")) }.max { $0.count < $1.count } ?? ""
     }
 
     /// Each `indexStorePath` this repository sets that was read and passed over because it is not an index store, as a clause naming the value and the file it came from.
@@ -161,19 +171,64 @@ struct IndexStoreDiscovery {
     /// The stores a `--scratch-path` directory inside `.build` leaves, relative to the repository root: for each immediate child `<name>` of `.build`, `<name>/out` (Swift Build) and `<name>/<triple>/<config>/index/store` (the native build system).
     ///
     /// One level of children and one of triples, never a walk of the tree. A child holding a `.git` is another checkout, and a hidden triple (such as that checkout's `.build`) is skipped. A candidate that is no store is skipped by ``newestStore(among:)``, which weighs these against the default locations by newest unit.
-    private func scratchPathCandidates() -> [String] {
+    ///
+    /// `package` is the repo-relative directory of the package whose `.build` is read, empty for the repository's own, and the candidates carry it as a prefix.
+    private func scratchPathCandidates(in package: String = "") -> [String] {
         let fileManager = FileManager.default
+        let prefix = package.isEmpty ? "" : package + "/"
         func children(_ directory: String) -> [String] {
-            ((try? fileManager.contentsOfDirectory(atPath: repoRoot.appendingPathComponent(directory).path)) ?? []).sorted()
+            ((try? fileManager.contentsOfDirectory(atPath: repoRoot.appendingPathComponent(prefix + directory).path)) ?? []).sorted()
         }
         return children(".build").filter { name in
             // Another checkout's own `.build` is not a scratch path: its store describes that checkout.
-            !fileManager.fileExists(atPath: repoRoot.appendingPathComponent(".build/\(name)/.git").path)
+            !fileManager.fileExists(atPath: repoRoot.appendingPathComponent("\(prefix).build/\(name)/.git").path)
         }.flatMap { name in
-            [".build/\(name)/out"] + children(".build/\(name)").filter { !$0.hasPrefix(".") }.flatMap { triple in
-                children(".build/\(name)/\(triple)").map { ".build/\(name)/\(triple)/\($0)/index/store" }
+            ["\(prefix).build/\(name)/out"] + children(".build/\(name)").filter { !$0.hasPrefix(".") }.flatMap { triple in
+                children(".build/\(name)/\(triple)").map { "\(prefix).build/\(name)/\(triple)/\($0)/index/store" }
             }
         }
+    }
+
+    /// The store a SwiftPM build of a package nested below the root left in that package's own `.build`, at the paths ``swiftPMCandidates`` and the scratch-path scan probe for the root package, the newest unit winning between packages and between layouts.
+    ///
+    /// Probed after DerivedData and before the in-package DerivedData probe, so a tree that finds a store today keeps it, and only where the root's own `.build` holds none. Packages are read in sorted order, so a tie goes to the earlier. A package inside a nested checkout is passed over, as in ``probeInPackageDerivedData(rootPath:)``. The store is checked before that test, which costs a stat per level.
+    private func probeNestedSwiftPMBuilds(rootPath: String) -> DiscoveredStore? {
+        var packageOf: [URL: String] = [:]
+        let candidates = Set(packageDirectories).filter { !$0.isEmpty }.sorted().flatMap { package -> [URL] in
+            let paths = (Self.swiftPMCandidates.map { package + "/" + $0 } + scratchPathCandidates(in: package)).map { repoRoot.appendingPathComponent($0) }
+            let stores = paths.filter(Self.isStore)
+            guard !stores.isEmpty else { return [] }
+            let packagePath = CanonicalPath.of(repoRoot.appendingPathComponent(package).path)
+            guard !Self.liesInsideNestedCheckout(packagePath, under: rootPath) else { return [] }
+            for store in stores {
+                packageOf[store] = package
+            }
+            return stores
+        }
+        return Self.newestStore(among: candidates)
+            .map { DiscoveredStore(path: $0.store, provenance: .swiftPMBuild, newestUnit: $0.newestUnit, package: packageOf[$0.store] ?? "") }
+    }
+
+    /// Where an `xcodebuild -derivedDataPath` build into a package's own `.build` puts its build directory, relative to the package.
+    static var inPackageDerivedData: String {
+        ".build/DerivedData"
+    }
+
+    /// The store an `xcodebuild -derivedDataPath <Pkg>/.build/DerivedData` build left, for the root and each of ``packageDirectories``, the newest unit winning between them.
+    ///
+    /// Probed last, so it stands in only where no other probe found a store: the in-tree walk already reads such a store beside a primary found anywhere else, and every tree that finds a store today keeps the one it finds. Named by its build directory, as the in-tree walk names one, so a staleness refusal gives that build's own rebuild. One fixed path per package, never a walk: `.build` holds SwiftPM's own output, and Xcode makes no `<Project-hash>` entry under a `-derivedDataPath`. A package inside a nested checkout is passed over, as the DerivedData scan passes over a workspace inside one.
+    private func probeInPackageDerivedData(rootPath: String) -> DiscoveredStore? {
+        let candidates = Set([""] + packageDirectories).sorted().compactMap { package -> (directory: String, store: URL)? in
+            let directory = package.isEmpty ? Self.inPackageDerivedData : package + "/" + Self.inPackageDerivedData
+            let store = repoRoot.appendingPathComponent(directory).appendingPathComponent("Index.noindex/DataStore")
+            // The store first: most packages have none, and the nested-checkout check costs a stat per level.
+            guard Self.isStore(store) else { return nil }
+            let packagePath = CanonicalPath.of(repoRoot.appendingPathComponent(package).path)
+            return package.isEmpty || !Self.liesInsideNestedCheckout(packagePath, under: rootPath) ? (directory, store) : nil
+        }
+        guard let found = Self.newestStore(among: candidates.map(\.store)),
+              let directory = candidates.first(where: { $0.store == found.store })?.directory else { return nil }
+        return DiscoveredStore(path: found.store, provenance: .inTree(directory), newestUnit: found.newestUnit, package: package(holdingBuildDirectory: directory))
     }
 
     /// Of `candidates`, the store whose newest unit is newest — discovery's one rule wherever several stores could answer for the same tree.

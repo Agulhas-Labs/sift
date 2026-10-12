@@ -59,11 +59,11 @@ struct WhereTypeSyntacticUsageTests {
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
 
-        let output = try await engine.lookup(symbol: "Gizmo", freshness: freshness)
+        let output = try await engine.lookup(symbol: "Gizmo", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
         #expect(!output.contains("no call spelled"), "\(output)")
         #expect(!output.contains("no use spelled"), "\(output)")
-        #expect(output.contains("\"Gizmo\" used by 4 lines in 2 files — 3 production · 1 test, split on the XCTest or Testing import, never the path; 3 more lines inside its own declaration or its extensions in this module, which is not use (for "), "\(output)")
+        #expect(output.contains("\"Gizmo\" (4 uses by written name in 2 files) — 3 production · 1 test; 3 more lines inside its own declaration or its extensions in this module (for "), "\(output)")
         #expect(output.contains("\n  Sources/App/Holder.swift (3):\n    :2  | let gizmo: Gizmo\n    :3  | func build() -> [Gizmo] { [Gizmo.make()] }\n    :4  | func check(_ value: Any) -> Bool { value is Gizmo }\n"), "\(output)")
         #expect(output.contains("\n  Tests/AppTests/Checks.swift (1):\n    :4  | @Test func build() { _ = Gizmo.self }"), "\(output)")
         // Leads, not resolved locations: every row stays inside the name-matched block a reader of the answer skips.
@@ -110,7 +110,7 @@ struct WhereTypeSyntacticUsageTests {
         )
 
         #expect(!output.contains("no use spelled"), "\(output)")
-        #expect(output.contains("\"Item\" used by 3 lines in 1 file — "), "\(output)")
+        #expect(output.contains("\"Item\" (3 uses by written name in 1 file) — "), "\(output)")
         #expect(output.contains("; 1 extension in another module counted as use — deleting the type breaks that module"), "\(output)")
         #expect(output.contains("\n  Sources/Other/Ext.swift (3):\n    :7  | let base: [Item] = []; let top: Lib.Item? = nil\n    :11  | extension Holder.Item { func convert() -> Item { Item() } }\n    :13  | extension Item: CustomStringConvertible { public var description: String { \"\" } }"), "\(output)")
     }
@@ -132,7 +132,7 @@ struct WhereTypeSyntacticUsageTests {
             """
         )
 
-        #expect(output.contains("\"Shadowed\" used by 2 lines in 1 file — "), "\(output)")
+        #expect(output.contains("\"Shadowed\" (2 uses by written name in 1 file) — "), "\(output)")
         #expect(output.contains("\n  Sources/Other/Ext.swift (2):\n    :6  | let real: Shadowed? = nil\n    :7  | func qualified<Shadowed>(_ x: Shadowed) -> Lib.Shadowed? { nil }"), "\(output)")
     }
 
@@ -152,7 +152,7 @@ struct WhereTypeSyntacticUsageTests {
         let output = try await Self.lookUp("Gizmo", lib: declaration + "\n", other: "import Lib\n\n" + use + "\n")
 
         #expect(!output.contains("no use spelled"), "\(output)")
-        #expect(output.contains("\"Gizmo\" used by 1 line in 1 file — "), "\(output)")
+        #expect(output.contains("\"Gizmo\" (1 use by written name in 1 file) — "), "\(output)")
         #expect(output.contains("\n  Sources/Other/Ext.swift (1):\n    :3  | \(use)"), "\(output)")
     }
 
@@ -174,6 +174,6 @@ struct WhereTypeSyntacticUsageTests {
         try TestSources.commitAll(in: root, message: "two-target fixture, unbuilt")
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()
-        return try await engine.lookup(symbol: symbol, freshness: freshness)
+        return try await engine.lookup(symbol: symbol, freshness: freshness, options: WhereOptions(standsInForSearch: true))
     }
 }

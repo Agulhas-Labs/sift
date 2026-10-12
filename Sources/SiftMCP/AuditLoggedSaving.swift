@@ -6,14 +6,16 @@ import Foundation
 
 /// The usage log's saving as `audit` states it beside the share: gross, over the audit's own window and repository.
 struct AuditLoggedSaving {
-    /// The usage log's saving over the audit's window and repository, stated gross: what every measured call in the log at `fileURL` claimed, or `nil` where the log holds none.
+    /// The usage log narrowed to the audit's window and repository, whose ``UsageScan/savings`` is the saving stated gross (the reads the hook intercepted and answered in place) and whose ``UsageScan/markdown`` is the outlines beside it, or `nil` where the log cannot be read.
     ///
     /// Gross because it is: the log prices each answer when it is served and never sees what the context read next, and a join between a transcript's call and its log line was tried and could not be shown right (Docs/Design.md). The whole reads after a digest are counted beside it instead, never priced.
     ///
+    /// `includeScratch` is as it is for `usage`: with it `false` the calls against scratch roots are not in the saving.
+    ///
     /// `transcript` is the one session transcript an audit was narrowed to: the saving is then that session's own calls, matched on the log's `session` field by the transcript's file name, never the whole log under a figure the audit labels as its own.
-    static func of(_ fileURL: URL, since: Date?, until: Date?, root: String?, transcript: String? = nil) -> UsageScan.Savings? {
+    static func of(_ fileURL: URL, since: Date?, until: Date?, root: String?, transcript: String? = nil, includeScratch: Bool = true) -> UsageScan? {
         guard case let .success(scope) = LogScope.resolve(root, inLogsAt: [fileURL]),
-              case let .success(scan) = UsageScan.load(fileURL: fileURL, scope: scope)
+              case let .success(scan) = UsageScan.load(fileURL: fileURL, scope: scope, includeScratch: includeScratch)
         else {
             return nil
         }
@@ -34,18 +36,28 @@ struct AuditLoggedSaving {
             sweptSubtree: scan.sweptSubtree,
             scratchCalls: 0,
             cliLoggedSince: scan.cliLoggedSince
-        ).savings
+        )
     }
 
-    /// The audit's `saving` row for the same figure: the gross saving, its baseline, and whether it is the window's or the one session's, or `nil` where the log holds none.
-    static func line(_ fileURL: URL, since: Date?, until: Date?, root: String?, transcript: String? = nil) -> String? {
-        guard let saving = of(fileURL, since: since, until: until, root: root, transcript: transcript),
-              let savedText = saving.savedText, let savedBasis = saving.savedBasis
-        else {
-            guard let identity = transcript.map(Identity.init), let agent = identity.agent else { return nil }
-            return "    saving    none: the usage log holds no measured call for subagent \(agent) of session \(identity.session)"
+    /// The audit's `saving` row for the same figure: the gross saving, its baseline, and whether it is the window's or the one session's, then a row for the Markdown outlines the saving leaves out, or `nil` where the log holds neither.
+    static func line(_ fileURL: URL, since: Date?, until: Date?, root: String?, transcript: String? = nil, includeScratch: Bool = true) -> String? {
+        let scan = of(fileURL, since: since, until: until, root: root, transcript: transcript, includeScratch: includeScratch)
+        let identity = transcript.map(Identity.init)
+        let subject = transcript == nil ? "window" : "session"
+        let markdown = scan?.markdown.map { "    markdown  \($0.note)" }
+        let saving: String
+        if let savings = scan?.savings, let savedText = savings.savedText, let savedBasis = savings.savedBasis {
+            saving = "    saving    \(savedText), \(savedBasis): the \(savings.measured) intercepted read\(savings.measured == 1 ? "" : "s") the usage log priced for this \(subject)"
+                + (markdown == nil ? "" : ", Markdown outlines apart")
+        } else if markdown != nil {
+            let whose = identity?.agent.map { "subagent \($0) of session \(identity?.session ?? "")" } ?? "this \(subject)"
+            saving = "    saving    none: the usage log prices no call for \(whose), and holds Markdown outlines beside"
+        } else if let identity, let agent = identity.agent {
+            saving = "    saving    none: the usage log prices no call for subagent \(agent) of session \(identity.session)"
+        } else {
+            return nil
         }
-        return "    saving    \(savedText), \(savedBasis): every measured call the usage log holds for this \(transcript == nil ? "window" : "session")"
+        return [saving, markdown].compactMap(\.self).joined(separator: "\n")
     }
 }
 

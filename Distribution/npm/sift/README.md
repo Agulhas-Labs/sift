@@ -14,7 +14,7 @@ claude mcp add --transport stdio --scope local sift -- npx -y @agulhas-labs/sift
 ```
 
 Its tools load up front only where Swift is in view, so `--scope user` works too; the
-[README](https://github.com/Agulhas-Labs/sift#use-it-with-claude-code) covers the scopes, including a
+[guide](https://github.com/Agulhas-Labs/sift/blob/main/Docs/Guide.md#3-register-with-claude-code) covers the scopes, including a
 committed `.mcp.json` with `--scope project`.
 
 `npx` fetches the package when the server starts, so you're always on the latest release. Flags go

@@ -12,6 +12,8 @@ struct FileEnumerator {
     let config: SiftConfig
     /// Produces the git-visible `.swift` list; injected so tests can fake it and non-engine callers can omit it.
     var gitListing: (() throws -> [String])?
+    /// Produces the git-visible `.md` list, as ``gitListing`` does the `.swift` one; with none, or where it throws, the tree is walked.
+    var markdownListing: (() throws -> [String])?
 
     /// All indexable files, sorted for determinism; `includingManifests` adds the build manifests the index itself never stores, for `init`'s counted-apart report.
     func swiftFiles(includingManifests: Bool = false) -> [String] {
@@ -20,7 +22,31 @@ struct FileEnumerator {
                 .filter { isIndexable(relativePath: $0) || (includingManifests && isCountableManifest($0)) }
                 .sorted()
         }
-        return walkedFiles(includingManifests: includingManifests)
+        return walkedFiles(withExtension: "swift") { isIndexable(relativePath: $0) || (includingManifests && isCountableManifest($0)) }
+    }
+
+    /// The `.md` files under the rules that narrow ``swiftFiles(includingManifests:)``: git-visible, outside the excluded directories, inside what `.sift.json` asks for, and never a symbolic link; sorted.
+    func markdownFiles() -> [String] {
+        if let listing = try? markdownListing?() {
+            return listing.filter(isListableMarkdown).sorted()
+        }
+        return walkedFiles(withExtension: "md", skipping: Self.skipsForMarkdown, keeping: isListableMarkdown)
+    }
+
+    /// The hidden directories whose Markdown is still never read: version-control data, build output and the tools' own state.
+    ///
+    /// None of it is a document a rename touches. Every other hidden directory (`.agents`, `.github`, `.claude`) keeps notes that name the symbols.
+    private static let unreadHiddenDirectories: Set<String> = [".git", ".build", ".swiftpm", ".sift"]
+
+    /// Whether a directory is left unread by the Markdown scan: the vendored and build directories the index leaves out, and the few hidden ones in ``unreadHiddenDirectories``; any other hidden directory is read.
+    private static func skipsForMarkdown(_ name: some StringProtocol) -> Bool {
+        name.hasPrefix(".") ? unreadHiddenDirectories.contains(String(name)) : SiftConfig.isExcludedPathComponent(name)
+    }
+
+    private func isListableMarkdown(_ relativePath: String) -> Bool {
+        relativePath.hasSuffix(".md")
+            && !relativePath.split(separator: "/").dropLast().contains(where: Self.skipsForMarkdown)
+            && (userConfigExclusion(relativePath) ?? symbolicLinkExclusion(relativePath, modes: .workingTree)) == nil
     }
 
     /// `true` when the path should be indexed at all (used to filter git-status output through the same rules).
@@ -109,7 +135,7 @@ struct FileEnumerator {
 
     // MARK: Fallback walk
 
-    private func walkedFiles(includingManifests: Bool) -> [String] {
+    private func walkedFiles(withExtension pathExtension: String, skipping skipsDirectory: (String) -> Bool = SiftConfig.isExcludedPathComponent, keeping keep: (String) -> Bool) -> [String] {
         let rootURLs: [URL] = if config.roots.isEmpty {
             [repoRoot]
         } else {
@@ -117,12 +143,12 @@ struct FileEnumerator {
         }
         var paths: Set<String> = []
         for rootURL in rootURLs {
-            collect(under: rootURL, includingManifests: includingManifests, into: &paths)
+            collect(under: rootURL, withExtension: pathExtension, skipping: skipsDirectory, keeping: keep, into: &paths)
         }
         return paths.sorted()
     }
 
-    private func collect(under rootURL: URL, includingManifests: Bool, into paths: inout Set<String>) {
+    private func collect(under rootURL: URL, withExtension pathExtension: String, skipping skipsDirectory: (String) -> Bool, keeping keep: (String) -> Bool, into paths: inout Set<String>) {
         let fileManager = FileManager.default
         guard let enumerator = fileManager.enumerator(
             at: rootURL,
@@ -134,16 +160,16 @@ struct FileEnumerator {
             let name = url.lastPathComponent
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             if isDirectory {
-                if SiftConfig.isExcludedPathComponent(name) {
+                if skipsDirectory(name) {
                     enumerator.skipDescendants()
                 }
                 continue
             }
-            guard url.pathExtension == "swift" else { continue }
+            guard url.pathExtension == pathExtension else { continue }
             let standardized = url.standardizedFileURL.path
             guard standardized.hasPrefix(rootPath + "/") else { continue }
             let relative = String(standardized.dropFirst(rootPath.count + 1))
-            if isIndexable(relativePath: relative) || (includingManifests && isCountableManifest(relative)) {
+            if keep(relative) {
                 paths.insert(relative)
             }
         }

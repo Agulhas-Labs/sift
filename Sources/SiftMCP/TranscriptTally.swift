@@ -64,6 +64,9 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
     /// Of `cold`, the Swift reads on a compound line the hook let run whole for its other statements (``SwiftLookup/batched(file:)``): a miss the agent could have avoided by putting the index call on the line in the read's place.
     public var batched: Int
 
+    /// Of `cold`, the lookups the hook let run while backing off, or after its answer ran out of time (``SwiftLookup/stoodAside(file:missed:why:)``): misses still, named for the cause so a report points at the hook's budget rather than at the agent.
+    public var stoodAside: StoodAsideCauses
+
     /// Index calls that came back as errors, which are the only entries worth interrupting anyone about.
     public var failed: Int
     /// Index calls the harness answered itself because the tool was not there to deliver them to — the server absent from the context.
@@ -156,6 +159,7 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
         textSearchCauses: TextSearchCauses = TextSearchCauses(),
         withheldOnWorthCauses: WithholdOnWorthCauses = WithholdOnWorthCauses(),
         batched: Int = 0,
+        stoodAside: StoodAsideCauses = StoodAsideCauses(),
         failed: Int = 0,
         unavailable: Int = 0,
         declined: Int = 0,
@@ -193,6 +197,7 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
         self.textSearchCauses = textSearchCauses
         self.withheldOnWorthCauses = withheldOnWorthCauses
         self.batched = batched
+        self.stoodAside = stoodAside
         self.failed = failed
         self.unavailable = unavailable
         self.declined = declined
@@ -243,6 +248,7 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
         scored.unreachable += scored.cold
         scored.cold = 0
         scored.batched = 0
+        scored.stoodAside = StoodAsideCauses()
         return scored
     }
 
@@ -342,6 +348,7 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
         lhs.textSearchCauses += rhs.textSearchCauses
         lhs.withheldOnWorthCauses += rhs.withheldOnWorthCauses
         lhs.batched += rhs.batched
+        lhs.stoodAside += rhs.stoodAside
         lhs.failed += rhs.failed
         lhs.unavailable += rhs.unavailable
         lhs.declined += rhs.declined
@@ -385,12 +392,10 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
             partialAnswers += uncovered > 0 ? 1 : 0
         case .partialAnswerSwept:
             partialAnswersSwept += 1
-        case let .fileAnswer(shape, saving):
+        case let .fileAnswer(shape):
             answerMisses.answers[shape, default: 0] += 1
-            answerMisses.claimed += saving
-        case let .answerReadAnyway(shape, saving):
+        case let .answerReadAnyway(shape):
             answerMisses.misses[shape, default: 0] += 1
-            answerMisses.withdrawn += saving
         case let .refusalRoundTrip(cost):
             soloRefusals += 1
             resentCost += cost
@@ -428,6 +433,9 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
         case .lookup(.batched):
             cold += 1
             batched += 1
+        case let .lookup(.stoodAside(_, _, why)):
+            cold += 1
+            stoodAside[why] += 1
         case let .lookupRetracted(lookup):
             switch lookup {
             case .indexed:
@@ -449,6 +457,9 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
             case .batched:
                 cold -= 1
                 batched -= 1
+            case let .stoodAside(_, _, why):
+                cold -= 1
+                stoodAside[why] -= 1
             }
         }
     }

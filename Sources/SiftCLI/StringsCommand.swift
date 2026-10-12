@@ -14,7 +14,7 @@ struct StringsCommand: AsyncParsableCommand {
         )
     }
 
-    @Argument(help: "Display text (matched case-insensitively across all languages) or a key (matched exactly or by substring); Swift string literals match with smart case — any uppercase letter in the query makes that match case-sensitive.")
+    @Argument(help: "Display text (matched case-insensitively across all languages) or a key (matched exactly or by substring); Swift string literals match case-insensitively too.")
     var query: String
 
     @OptionGroup var rootOptions: RootOptions

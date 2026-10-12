@@ -3,6 +3,22 @@
 Everything about installing, running and trusting `sift`, in one place. The [README](../README.md) is
 the short version; this is the one to search when something surprises you.
 
+### Why it exists
+
+An agent working in Swift spends its time reading code and running the toolchain, and both go wrong in
+predictable ways:
+
+- **grep doesn't understand Swift.** It can't tell a call from a comment or follow a protocol to its
+  conformers, so the agent falls back to reading a whole 600-line file to find one method.
+- **Build logs are huge.** One `xcodebuild` prints hundreds of lines of plan and argument dump around one
+  result, and the agent reads all of them, every time it checks its work.
+- **Green can mean nothing ran.** A `--filter` with a typo, a test target that didn't build, a suite that was
+  never discovered: the exit code is 0 and the agent reports success.
+- **A passing test may pin nothing.** It can pass just as well without the fix it was written for.
+
+Sift answers each of these with a command that says exactly what it checked: the lookups (§6–§8),
+`sift run` and its exit codes (§12), and `sift run --without` (§12).
+
 ---
 
 ## 1. Requirements
@@ -17,8 +33,11 @@ It makes **no network calls**, ever. See [§10](#10-what-it-touches) for everyth
 
 ## 2. Install
 
-Today you build it from source, which needs Swift 6.2 or later. Put `~/.local/bin` on your `PATH` first:
-agents run `sift` from the shell, and `sift install` registers the binary you run it from.
+Sift installs from Homebrew, from npm, from a release bundle, or from source; the routes are below. Whichever
+you use, `sift` must be on your `PATH`: agents run it from the shell, and `sift install` registers the binary
+you run it from.
+
+To build from source you need Swift 6.2 or later, and `~/.local/bin` on your `PATH`:
 
 ```sh
 git clone https://github.com/Agulhas-Labs/sift.git
@@ -40,7 +59,8 @@ sift --version
 ```
 
 Give the full name: homebrew-core has an unrelated formula called `sift` (a grep alternative), so
-asking Homebrew for plain `sift` installs the wrong tool.
+asking Homebrew for plain `sift` installs the wrong tool. `npm install -g @agulhas-labs/sift` puts the same
+binary on your `PATH` through npm, and a downloaded release bundle has its own `install.sh` (below).
 
 npm is the other half, and the better one for the MCP server: `npx` resolves the package when the
 server starts, so it is always the current release and there is no upgrade to remember.
@@ -57,7 +77,7 @@ the launch.
 With `sift` on your `PATH`, one command sets it up in every agent you use:
 
 ```sh
-sift install [--agent claude|cursor|codex]… [--all] [--yes] [--dry-run]
+sift install [--agent claude|cursor|codex]… [--all] [--yes] [--dry-run] [--allow-run] [--allow-lookups]
 ```
 
 It detects Claude Code (`claude` on the `PATH`, or `~/.claude`), Cursor (`~/.cursor`, or Cursor.app) and Codex
@@ -89,7 +109,7 @@ it rebuilds it up front.
 `install.sh` in the tarball copies the binary, installs the agent rule, registers the hooks,
 re-registers the MCP server and removes a legacy sift status line and band plugin if an older install left one. It is safe to re-run, which is how it upgrades.
 
-**It removes the old binary before copying** — never `cp` over one in place, or the new code is SIGKILLed on launch (exit 137, no message).
+**It copies to a temporary name and renames it over the old binary** — never `cp` over one in place, or the new code is SIGKILLed on launch (exit 137, no message).
 
 </details>
 
@@ -101,7 +121,11 @@ sift doctor [--agent claude|cursor|codex]… [--cursor-dir D] [--codex-dir D] [-
 
 Proves each agent found runs what the install wrote, one line per check, and exits 1 when any check failed.
 With no `--agent`, only the agents found on this machine (the detection `sift install` uses) are checked; one not
-found prints a skipped line and is neither counted nor failed, while one found without sift installed still fails.
+found prints a skipped line and is neither counted nor failed. One found with nothing of sift's in it (no hook and no
+server registered, as after the bundle's `sh install.sh`, which registers Claude Code only) prints
+`<agent>: found, sift not installed — sift install --agent <agent> adds it` and is likewise neither counted nor
+failed; one found with any piece of sift's present but something missing or broken still fails. When no agent found
+has sift installed at all, the run fails: `doctor: failed — no agent has sift installed; sift install adds it`.
 `--agent` names the agents to check, and checks each whether or not it was found. For every agent it reads the registration
 from the files the install writes, resolved from the same paths, then: the registered binary runs and prints its
 version (a version other than this binary's is said, never a failure); each hook, fed a canned payload in that
@@ -117,7 +141,7 @@ MCP server starts and lists every tool. A registration missing says which `sift 
 - **Codex**: the same shape over the Codex home's `hooks.json` and `config.toml`, with the hooks' trust where it
   is readable.
 
-`--json` prints the same answer as one object: the verdict, every check with its line, and the agents skipped.
+`--json` prints the same answer as one object: the verdict, every check with its line, the agents found without sift installed, and the agents skipped.
 
 ## 3. Register with Claude Code
 
@@ -227,7 +251,10 @@ A read is only interrupted when interrupting it could save something. A **ranged
 whose digest the same context already holds passes untouched, and so does any file below the compression
 floor and a whole read of a file the same context has already had digested. Any other window (a ranged
 `Read`, `sed -n 95,215p`) is answered only where the answer saves at least 4 KiB against the lines it
-asks for; when that answer leaves out the lines you needed, the identical re-run goes through. A Read that is really the precondition for an Edit or Write is answered
+asks for; when that answer leaves out the lines you needed, the identical re-run goes through. A whole-file
+`Read` is answered with the file's whole digest, every member and no `offset` cursor (only a digest past the
+10 kB answer budget is cut to fit), and only where that whole digest saves the 4 KiB; `sift digest` itself still
+pages at sixty member lines. A Read that is really the precondition for an Edit or Write is answered
 like any other Read, and the identical re-run the answer invites is allowed: it costs a round trip and the file it reads.
 A `grep -n` for a name in files it names is answered with that name's `where` only where every line the grep
 prints spells the name in code; a line spelling it only in a comment or a string literal, a file holding a lone
@@ -238,6 +265,8 @@ the agent rather than name. Where no permission prompt can follow, it is **rewri
 `sift run --` wrapping and runs, filtered, in the same turn: in a session whose permission mode is `auto`
 or `bypassPermissions`, or where the allow rules in your settings already cover `sift run -- …` for every
 statement the wrapping prefixes (a `Bash(swift test:*)` rule does not cover `sift run -- swift test`).
+The answer then opens with a line saying the hook ran it as `sift run -- …`, and naming the ways to the raw
+output: a piped re-run (`… 2>&1 | cat`), which the hook lets through as written, or the log on the `raw:` line.
 Everywhere else — and wherever an ask or deny rule matches a wrapped statement — the build is refused once
 with the wrapped form named, and the identical re-run goes through. Where an ask or deny rule of yours
 matches anything on the line as you wrote it, the hook stands aside, and it stands aside from a line the shell
@@ -292,8 +321,9 @@ counts what the hook rightly declined (rationale: Design.md §4). Every silencin
   prose branches named as left out; a read of several files is a `digest` of each. Only a phrase of
   ordinary words, or an alternation whose every branch is prose, is left alone and scored out of the
   share with the text searches.
-- **A gate leg** — `xcodebuild build-for-testing`, `test-without-building`, or any command already
-  redirecting to a log of its own draws no `sift run --` wrapping.
+- **A gate leg** — `xcodebuild test-without-building`, a `build-for-testing` on the same line as one, or
+  any command already redirecting to a log of its own draws no `sift run --` wrapping. A `build-for-testing`
+  alone is wrapped like any other build.
 - **A quiet linter** — `swiftlint --quiet` draws no wrapping; another toolchain command on the same line
   keeps its own.
 
@@ -457,35 +487,38 @@ A `post-tool-use` line may suggest `sift similar` when a declaration you added r
 - **An unfamiliar repo, cold** — `digest .`, the repo overview; `digest <Module>` then opens the module
   that matters. Start there instead of a directory listing.
 - **A type's shape, a view's structure, or where in a file something lives** — `digest`, which takes a
-  type, a repo-relative file path, or a module. Digest to locate, then a *ranged* Read of only the members
+  type, a repo-relative file path, or a module (a bare name that is both a module and a type serves the
+  type; `digest Name/` serves the module). Digest to locate, then a *ranged* Read of only the members
   that matter. **A cited location is not already located**: a `File.swift:120` or `:95-135` handed over by
   an issue, a review or a build error goes to `digest File.swift:120` (or `:95-135`), which returns the
   members that line or range falls in — not a guessed `sed -n '95,135p'` window. Already making a Bash call
   for `git` or `gh`? `sift digest …` and `sift where …` go in the same line. A `some View` member comes back
   with an outline of what it builds. Never judge the size first: below about 60 lines `digest` returns the
-  source itself, and for a larger file the digest is usually the smaller answer. Reaching for Read because a file "looks small" is the one case that is always wasted.
+  source, and for a larger file the digest is usually the smaller answer. Reaching for Read because a file "looks small" is the one case that is always wasted.
 - **One member you can already name** — `digest Type.member` (or `Type.save(_:to:)`) returns its current
   source; a long body truncates with the ranged Read that finishes it.
 - **A large document** — `digest <file>.md` (exact path, `Docs/Design.md`, not `Design.md`) gives a
   heading outline with line ranges and sizes; then a ranged Read of the section.
-- **"Where is X defined, who conforms, what calls or overrides it"** — `where`, not Grep. `where refs`
-  lists every reference site for a rename or delete sweep, code occurrences only, so grep for a doc
-  comment or string literal too.
+- **"Where is X defined, who conforms, what calls or overrides it"** — `where`, not Grep; a type's uses are counted on one line that names `where --refs`. `where --refs`
+  lists every reference site for a rename or delete sweep, then the comments, strings, Markdown lines and
+  file names that write the name, under `not code`.
 - **Code by shape rather than name** — `search`; Grep cannot answer these reliably because the pattern
   spans nesting and line breaks: "every `@Test` function that wraps a call in an unstructured `Task`".
 - **About to write a helper** — `search` first, by the callee it cannot avoid (`kind:func calls:rename`;
   one callee per query, terms are ANDed). `sift similar Type.member` and `sift dupes [path …]` from Bash
   rank near-duplicate bodies; a lower bound, never a verdict. `sift help queries` has more.
 - **Tracing UI text** — `strings`, from wording to a localization key, or to the Swift literal holding it
-  (or the literals a `+` joins, shown as `"the build did " + "not complete"`).
+  (or the literals a `+` joins, shown as `"the build did " + "not complete"`). Matching ignores case, so
+  `"Warnings"` finds the literals `"WARNINGS"` and `"Many warnings"` alike.
 - **Building or testing** — wrap `swift build` / `swift test` / `xcodebuild` in `sift run --` from Bash:
   failures without the noise, raw log in `.sift/runs/`, exit code passed through, except 4 (a
   `--filter` run that executed no test) and 5 (such a run that did not build), which are sift's; 4 too
   where one of several `--filter`s matched no test, named on the `totals:` line, and for an unfiltered
   `swift test` that executed no test in a package declaring test targets.
   `sift help run-output` reads a red block. `inventory: N declared, M reported`, not
-  `swift test list | grep -c`, is discovered vs run; only an unfiltered, serial root-package `swift test`
-  prints it (`inventory: not checked — …` is another outcome).
+  `swift test list | grep -c`, is discovered vs run; only an unfiltered, serial `swift test`, root or nested
+  package, or an `xcodebuild` test of its `<Name>-Package` scheme, prints it (`inventory: not checked — …` is
+  another outcome, as for any other unnarrowed `xcodebuild` test).
 - **A slow simulator suite** — `sift test --scheme … --device "iPhone 17" --shards N` from Bash;
   `sift help test-output` reads the answer.
 - **"Is anything not being run?"** — `sift test --analyse` reads the index and `.xctestplan` files, builds
@@ -498,7 +531,9 @@ A `post-tool-use` line may suggest `sift similar` when a declaration you added r
   still compiles.
 - **"Which tests could my change have broken?"** — `sift affected` from Bash, over the working tree or
   `--from`/`--to`, with `--filter` arguments ready to run. **A lower bound, never a green light**: a test
-  can depend on your change by routes the index cannot see.
+  can depend on your change by routes the index cannot see. Right after an edit, before a rebuild, it walks
+  from the declarations your diff touched to their call sites (`syntactic, lower bound`), and says so where
+  that still cannot narrow below a whole target rather than listing it.
 
 #### In a git worktree
 
@@ -551,11 +586,13 @@ How it stays current, and why there's no daemon:
 
 ## 6. What an answer promises
 
+[AnswerContract.md](AnswerContract.md) is the full contract; this section is what you meet in practice.
+
 Every answer from the query tools — `digest`, `where`, `search` and `strings`, on the CLI and over MCP —
 opens with a header, and so do `sift status` and `sift affected`; any note the answer carries, such as
 the root it picked, sits on the line under it. The header never claims more than it knows. `search` and
-`strings` read the working tree live, so theirs names the tree and says so (`source: working tree, read
-live — nothing stored to go stale`) instead of carrying the freshness fields below. `sift index` and `sift
+`strings` read the working tree live, so theirs names the tree and says so (`source: live`: nothing stored,
+so nothing to go stale) instead of carrying the freshness fields below. `sift index` and `sift
 reconcile` say which repository they picked before they start work, and put the header after it; the
 reports (`usage`, `audit`, `run`, `servers`, `flakes`, `report`) open with lines of their own. `sift
 uninstall` describes no tree, so it opens with its verdict instead.
@@ -592,15 +629,15 @@ short list as "no call of that name was found", never "nothing uses this"; a ren
 `where --refs` and a built store.
 
 **`semantic:` is the mode that produced *this* answer, not a property of the tree**, so two commands can
-differ on one tree without either being wrong. `digest` never opens the store and says `syntactic-only`;
-`status` judges from file timestamps and may say `stale (2 files changed since last build)`; `where`
-consults the store and may say `fresh`. Run all three after editing two files and you can see exactly
-that: `status` stale, `digest` syntactic-only, `where` fresh, because the symbol you asked it about lives
-in a file neither edit touched. In a tree with no index store yet, such as a fresh worktree, `digest` still
-says `syntactic-only` and `where` says `none (no index store — see note)`: `digest` never asked for the
-store, `where` asked and found none. Read the header on the answer you are about to act on.
+differ on one tree without either being wrong. `digest` never opens the store, so its header carries no
+`semantic:` field; `status` judges from file timestamps and may say `stale (2 files changed since last
+build)`; `where` consults the store and may say `fresh`. Run both after editing two files and you can see
+exactly that: `status` stale, `where` fresh, because the symbol you asked it about lives in a file neither
+edit touched. In a tree with no index store yet, `where` says `none (no index store for this tree yet)`,
+and in a fresh worktree `none (no index store in this worktree)`: it asked and found none. Read the header
+on the answer you are about to act on.
 
-On `semantic: stale (2 files changed since last build)` and a refusal, take it literally: **build the
+On `semantic: stale since last build (2 files changed)` and a refusal, take it literally: **build the
 project, then retry.** A file counts as changed when its contents or its file status moved past the build, so a copy that
 preserves modification times still reads as changed. Re-running the query won't help and neither will `sift index`. Symbols in
 untouched files still answer normally, and `parse_errors` in the header means some answer came from a
@@ -615,7 +652,7 @@ holding many repos — `digest`, `where` and `search` resolve the target name ag
 
 ```
 $ sift digest RecordDetailView          # run from ~/Developer, which is not a repo
-tree: app  head: 3f2a91c  clean  semantic: syntactic-only
+tree: app  head: 3f2a91c  clean
 (no repository encloses /Users/you/Developer — resolved to /Users/you/Developer/Orchard/app, the only
  indexed repository declaring RecordDetailView)
 …
@@ -633,7 +670,7 @@ written since the last index, and a name no indexed root has:
 
 ```
 $ sift digest .                         # run from ~/Developer/Orchard, which is not a repo
-tree: app  head: 3f2a91c  clean  semantic: syntactic-only
+tree: app  head: 3f2a91c  clean
 (no repository encloses /Users/you/Developer/Orchard — resolved to
  /Users/you/Developer/Orchard/app, the only indexed repository under it)
 …
@@ -665,12 +702,14 @@ costs as much as the code, and on the smallest types more, so where a digest wou
 
 ```
 AxisRail — Lib — …/AxisRail.swift:10-52
-(43 lines; a digest would cost 54% of the source, so the source itself follows)
+(43 lines; a digest would cost 54% of the source, so the declaration's source follows)
 ```
 
 Below the crossover a short file dense with code keeps its digest. The comparison is against the type's
-own declaration sites (primary plus extensions), and it never serves more than 200 lines. `--offset` and
-`--signatures-only` keep the digest.
+own declaration sites (primary plus extensions), each counted with its doc comment and attributes, and it
+never serves more than 200 lines. What is served is those declarations with their doc comments, not the file
+around them (no header or imports), which is why the note says "the declaration's source". A digest of a
+whole file that is served keeps "the source itself". `--offset` and `--signatures-only` keep the digest.
 
 ### Digests of views
 
@@ -706,19 +745,29 @@ this order:
    `.build/index/store` and `.build/{debug,release}/index/store` (`--build-system native`, and older
    toolchains) — whichever of these holds the newest unit wins, since the others are left from earlier
    builds, and that includes a release store indexed after the last debug build. The newest unit is one
-   file, so a partial build (`--target`) into a store left behind makes it win with older units beside it
+   file, so a partial build (`--target`) into a store left behind makes it win with older units beside it.
+   The same paths are read under each nested package (a directory holding a `Package.swift`), only where the
+   root's own `.build` holds none, and passed over inside a nested checkout; that package's store is found
+   after DerivedData and before step 5
 4. `~/Library/Developer/Xcode/DerivedData/*/info.plist` matched to this repo, then `Index.noindex/DataStore`
    — passing over an entry whose workspace no longer exists, one under a hidden or vendored directory,
    and one inside a nested checkout such as a linked worktree, since each of those describes another tree
+5. an `xcodebuild -derivedDataPath <Pkg>/.build/DerivedData` build, where `<Pkg>` is the repo root or a
+   directory holding a `Package.swift`: `<Pkg>/.build/DerivedData/Index.noindex/DataStore`, the newest unit
+   winning between packages. One fixed path per package, never a walk of `.build`, and passed over inside a
+   nested checkout
 
 A candidate counts only if it has a store's shape — a `v<N>` directory holding `units`. `status` prints
-which one it found, and names an `indexStorePath` it read and rejected. If none exists, semantic queries
-say so plainly, and `where --syntactic` skips the store; `digest` is unaffected either way.
+which one it found, and names an `indexStorePath` it read and rejected. A store anywhere else — any other
+`-derivedDataPath` — needs `indexStorePath`, relative to the repo
+root, such as `{"indexStorePath": "Build/Index.noindex/DataStore"}` for `-derivedDataPath Build`. If none
+exists, semantic queries say so plainly, and `where --syntactic` skips the store; `digest` is unaffected
+either way.
 
-**One store holding two configurations can answer for the one built earlier, and nothing marks it.**
-Native builds of both configurations that pass one `-index-store-path` write debug and release units into
-the same store, so a call a later debug build no longer makes can still answer `fresh`. Build the other
-configuration again, or delete the store and build once.
+**A store holding several builds of one file answers from those that match the file.** Builds for two
+architectures, or debug and release builds passing one `-index-store-path`, each leave a unit for the file;
+one built before the file's last edit is set aside, so its old lines never answer, while every build made
+since the edit answers together.
 
 **Opening a large store is slow the first time, and `where` will not wait for it.** The first semantic
 query against a cold store answers with declarations and reports the store as *still warming*; the read
@@ -773,7 +822,8 @@ follow. An operator's own name (`name:==`, `name:||`) is literal and works.
 
 Two things to know about what a hit means. `calls:`/`uses:` match **written names, not resolved
 symbols**, so confirm a specific hit with `where`. And a body term on a *container* covers everything
-it holds — `kind:class calls:fetch` matches a class one of whose methods calls `fetch`.
+it holds — `kind:class calls:fetch` matches a class one of whose methods calls `fetch` — but not what an
+`extension` of it holds: a call written there matches the extension, or the member, never the type.
 
 ## 9. Configuration — `.sift.json`
 
@@ -805,7 +855,7 @@ Worth knowing before pointing it at a codebase that isn't yours:
 
 - **No network calls at all** — a hard scope constraint, not a default.
 - **Inside the repo:** `.sift/` (the index database, the semantic cache, and `runs/` once you use
-  `sift run`), one line appended to `.git/info/exclude`, and `.sift.json` only if you create one or run
+  `sift run`, always at the repository root, even when you run from a nested package directory), one line appended to `.git/info/exclude`, and `.sift.json` only if you create one or run
   `sift init --write`. It never modifies a committed file on its own. The one command that touches your
   working tree is `sift run --without`, which takes your uncommitted changes under a pathspec out for one
   test run and puts every byte back, checked by content hash, keeping a record and copies under
@@ -825,6 +875,7 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `advice/suppressions.jsonl` | each nudge the hook withheld and the rule that withheld it |
 | `advice/answered.jsonl`, `advice/answers/` | each call the hook answered in place, by `tool_use_id`, and a marker per call, kept for a day |
 | `callers/<session>.json` | a short-lived note the `PreToolUse` hook leaves naming the context about to make an index call; the server reads and deletes it |
+| `deploys.jsonl` | one line per bundle install (`install.sh`): timestamp, version, commit, tree, binary size; read by `sift report --deploys` |
 | `server.jsonl` | one line when an MCP server starts and one when it stops |
 | `redaction-salt` | keeps report pseudonyms stable |
 | `report.html` | written by `sift report`, overwritten each run; self-contained, fetches nothing |
@@ -850,8 +901,8 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `sift status` | Freshness, counts, module map, index-store discovery; names any agent definition whose `tools:` allowlist shuts these tools out |
 | `sift help [<topic>]` | Reference for rare moments, in seven topics: `run-output` (reading a red `run` block, what `flakes` counts), `answers` (the parse-error banners, semantic staleness, root resolution), `queries` (per-tool depth), `refusals` (the hook's accounting rules), `test-output` (reading `sift test`), `worktree-index` (a store in a linked worktree) and `build-output` (reading `build --analyse`); a name that is a subcommand instead prints that subcommand's usage; omit the topic to list them |
 | `sift digest <target>… [--all] [--signatures-only, or --signaturesOnly] [--offset N] [--at <rev>]` | Declaration surface of a type, file, or module, one member's source given `Type.member`, or a `File.swift:12-40` line range; several targets each answer in one call. A `.md` path answers with its heading outline and line ranges, read live. `--at` answers as of a commit, branch or tag from a syntactic parse of that revision read through git (never the index or the working tree; a module, `.` or `.md` is refused) |
-| `sift where <symbol> [--syntactic] [--refs] [--offset N] [--at <rev>]` | Resolve a symbol: declarations, extensions, conformers, callers (a property's reads and writes, an enum case's uses), overrides; `--refs` adds every reference site, paged with `--offset`; `--at` answers as of a revision, declarations from that revision's files and call sites by name only. Where the index store does not answer a function's callers, the call sites matched by name come as their count and the first five, where the MCP tool lists up to 40 |
-| `sift search <query> [--offset N] [--count]` | Find declarations by structural shape — `kind:func attr:Test calls:Task !has:await`; `--count` prints the totals and a per-module breakdown, no listing |
+| `sift where <symbol> [--syntactic] [--refs] [--offset N] [--at <rev>]` | Resolve a symbol: declarations, extensions, conformers, callers (a property's reads and writes, an enum case's uses), overrides, and a type's uses counted on one line; `--refs` adds every reference site, paged with `--offset`; `--at` answers as of a revision, declarations from that revision's files and call sites by name only. Where the index store does not answer a function's callers, the call sites matched by name come as their count and the first five, where the MCP tool lists up to 40 |
+| `sift search <query> [--offset N] [--count]` | Find declarations by structural shape — `kind:func attr:Test calls:Task !has:await`; `--count` prints the totals and a per-module breakdown, no listing; past 120 matches the rest come as names by file when they fit about 8 kB, else a `truncated:` cursor |
 | `sift similar <target>` | Rank the declarations whose syntactic shape is closest to one you name — does this helper already exist? |
 | `sift dupes [<paths>…] [--min <overlap>] [--offset <n>] [--tests \| --no-tests]` | Group declarations whose bodies are near-duplicates, across the tree or under a path; copies first, test and preview code last, ten groups a page |
 | `sift strings <query>` | Trace display text to its localization key (or a key to its text) across `.xcstrings`/`.strings` catalogs, with literal Swift call sites, and to the Swift string literals that hold the text |
@@ -868,12 +919,13 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `sift diff [<range>] [--member <Type.member>] [--offset N] [--coverage]` | A structural digest of a change for review, in place of the raw `git diff`: every touched file, declarations added/removed/changed with before → after signatures, what changed outside them, callers of changed signatures, test names, and the tests reaching the changed files. `<range>` is a single commit (its own change), `A..B`, `A...B` (against the merge-base), or omitted for the working tree vs `HEAD`. `--member` prints one declaration's before/after; its header ends in an address `path#Type.member:line` (the file, the declaration's label, and its line after the change; `path#Type.member:before:line` for a declaration the range removed, which has no after side), and that whole address can be passed back to `--member`, as the ambiguity refusal's list does. `--coverage` adds what the last `sift run --coverage` measured, where it measured this very tree, and says so where it is stale or absent |
 | `sift usage [--since W] [--root R] [--unredact] [--all-roots] [--include-scratch] [--file P] [--run-file P]` | Summarise the index usage log — calls by tool, root and day, latency, top targets; `--all-roots` lists every root rather than the top five; `--file`/`--run-file` read other copies of `usage.jsonl` and `run.jsonl` |
 | `sift flakes [--since W] [--root R] [--unredact] [--file P]` | For every test that has both failed and passed across wrapped runs: how many named it, out of how many, and when one last did; `--file` reads another copy of `run.jsonl` |
-| `sift audit [--since W] [--until W] [--all] [--transcript P] [--projects D] [--unredact] [--progress] [--replay [--sample N] [--shapes P] [--against <binary>]] [--scan-diff --against <binary> [--all-windows]] [--summary \| --share]` | Audit transcripts for Swift lookups that went around the index, named file by file; `--until` bounds the window above, `--projects` reads another transcript directory. `--replay`, `--against`, `--scan-diff`, `--summary` and `--share` are described under **Auditing the misses** |
+| `sift audit [--since W] [--until W] [--all] [--transcript P] [--projects D] [--unredact] [--include-scratch] [--progress] [--replay [--sample N] [--shapes P] [--against <binary>]] [--scan-diff --against <binary> [--all-windows]] [--summary \| --share]` | Audit transcripts for Swift lookups that went around the index, named file by file; `--until` bounds the window above, `--projects` reads another transcript directory. `--replay`, `--against`, `--scan-diff`, `--summary` and `--share` are described under **Auditing the misses** |
+| `sift report --deploys` | List each install of the bundle's binary, one line each, newest last: time, commit, version, tree, size; read from `~/.sift/deploys.jsonl`, which `install.sh` appends to |
 | `sift report [--since W] [--root R] [--out P] [--include-scratch] [--no-open] [--progress] [--file P] [--run-file P] [--projects D]` | Write a self-contained HTML page — conditions awaiting you, index share, estimated savings, failures — and open it; `--file`, `--run-file` and `--projects` read other copies of the usage log, the run log and the transcripts |
 | `sift reconcile` | Diff index against working tree and fix divergences |
 | `sift reset` | Delete `.sift/`; the proved-run ledger, `sift/proved-runs.json` in the shared git directory, is one for every worktree and stays (with `failed-runs.json` beside it), and the answer names it where there is one |
-| `sift install [--agent A]… [--all] [--yes] [--dry-run]` | Detect Claude Code, Cursor and Codex and install into each one chosen, asking once per agent found; `--yes` takes every one found, `--all` all three, `--agent` the ones named, `--dry-run` writes and runs nothing. Exits 0 on success, nothing to do, or needing a flag (no terminal); 1 if any agent failed |
-| `sift doctor [--agent A]… [--cursor-dir D] [--codex-dir D] [--json]` | Check that each agent found runs what the install wrote (`--agent` checks the agents it names, found or not): the registration, the registered binary and its version, each hook fed a payload of that agent's shape, the MCP server's tool list; one line per check, agents not found skipped. `--cursor-dir` checks that Cursor directory; `--codex-dir` checks that Codex home, found or not (trust is reported where readable, not compared). Exits 1 if any check failed |
+| `sift install [--agent A]… [--all] [--yes] [--dry-run] [--allow-run] [--allow-lookups]` | Detect Claude Code, Cursor and Codex and install into each one chosen, asking once per agent found; `--yes` takes every one found, `--all` all three, `--agent` the ones named, `--dry-run` writes and runs nothing, `--allow-run` or `--allow-lookups` add Claude Code's allow rules without asking (both blocks, or the lookups alone). Exits 0 on success, nothing to do, or needing a flag (no terminal); 1 if any agent failed |
+| `sift doctor [--agent A]… [--cursor-dir D] [--codex-dir D] [--json]` | Check that each agent found runs what the install wrote (`--agent` checks the agents it names, found or not): the registration, the registered binary and its version, each hook fed a payload of that agent's shape, the MCP server's tool list; one line per check, agents not found skipped, agents found with nothing of sift's in them named and not counted. `--cursor-dir` checks that Cursor directory; `--codex-dir` checks that Codex home, found or not (trust is reported where readable, not compared). Exits 1 if any check failed, or if no agent has sift installed |
 | `sift install-hook [--allow-run \| --no-allow-run \| --allow-lookups] [--agent claude\|cursor\|codex] [--cursor-dir D] [--codex-dir D] [--settings P] [--command C]` | Register the SessionStart/SubagentStart primer, the PreToolUse shell hook, the PostToolUse edit check, the Stop/SubagentStop build check (`sift stop`, which Claude Code runs, not you: it blocks a stop once when Swift was edited with no green `sift run` build since); removes a legacy sift status line and band plugin; names any agent definition whose `tools:` allowlist shuts these tools out. `--allow-run`, `--no-allow-run` and `--allow-lookups` answer the two allow-rule questions (the four lookups, default yes; the run rules, default no) without asking: both blocks, neither, or the lookups alone; `--agent` picks Cursor or Codex instead (§4), `--cursor-dir` and `--codex-dir` naming their directories; `--settings` edits another settings file, `--command` registers another hook command than this binary's path |
 | `sift uninstall-hook [--only-advice] [--agent A] [--cursor-dir D] [--codex-dir D] [--settings P]` | Take those registrations back out; `--only-advice` removes just the PreToolUse hook; the other flags as for `install-hook` |
 | `sift uninstall [--purge] [--settings P]` | Take the tool back out: the hooks, a legacy status line, the MCP server at user and local scope, the Cursor and Codex registrations too, a legacy band plugin and its marketplace (through `claude plugin`, which edits the user's own settings, so left out when `--settings` is given), the agent rule; list every `.sift/` directory and every `.bak-sift` backup (settings, Cursor, Codex) it left, deleting them with `--purge`; print what removes the binary (`rm`, `brew uninstall` or `npm uninstall`) |
@@ -922,7 +974,9 @@ matches nothing says so and lists the roots the log holds.
 (`/tmp`, `/private/tmp`, `/var/folders`, `$TMPDIR`), under `~/Library/Caches`, or inside any `.build/`
 directory is a probe, not use: it is left out of every figure and table, and one line says how many were
 (`N calls against scratch roots (temporary, cache or .build directories) not counted`). `--include-scratch`
-restores the old totals. A repository merely named `build` is real.
+restores the old totals. `sift report` applies the same rule to calls, with the line above, and `sift audit` to sessions, by the working
+directory a transcript records, with `N sessions against scratch roots (…) not counted` (its `--replay` leaves them out
+too); both take the same `--include-scratch`. `sift audit --transcript` audits the transcript it names whatever it recorded. A repository merely named `build` is real.
 
 **The call count is index lookups, whichever face served them**: MCP tools, `digest` / `where` / `search`
 / `strings` from a shell, and answers the hook gives in place. A line names its face in `via` (absent for
@@ -970,7 +1024,7 @@ Sift draws nothing in Claude Code itself. Three commands show what it did:
 - `sift audit` names the lookups that went around the index (below).
 - `sift usage` counts calls by tool, root and day.
 
-The share is how often the agent *reached for* the index, not how well the index did. **It is not a success rate**: the rest are lookups that went somewhere else (a whole-file `Read`, a `grep`, a `cat`), and a call that failed is counted on its own. A file read whole after its digest stays in the share as a miss. The denominator is **every Swift lookup in a session that was a genuine choice between the index and something else**. A saving is an estimate (the source the index's answers stood in for, less what they served, priced against reading each file whole, which leans high), so `report`, `usage` and `audit` state it with that baseline.
+The share is how often the agent *reached for* the index, not how well the index did. **It is not a success rate**: the rest are lookups that went somewhere else (a whole-file `Read`, a `grep`, a `cat`), and a call that failed is counted on its own. A file read whole after its digest stays in the share as a miss. The denominator is **every Swift lookup in a session that was a genuine choice between the index and something else**. A saving is priced only where its counterfactual was observed: a read the advice hook intercepted and answered in place, the file or window asked for less what the answer served. Every other call is counted and never priced, and `report`, `usage` and `audit` state what the figure was priced on.
 
 What counts against the share — a lookup that went around the index — is narrower than "every Swift
 read". Seven kinds are tracked apart from the misses; six are excluded from the share and one stays in
@@ -1009,6 +1063,8 @@ sift audit --transcript <path> # one session and its subagents
   indexed        8  served by sift — 33% of the lookups that had a choice
   cold          14  went around the index  ← the misses
     batched      3  of those, a Swift read on a line the hook let run whole for its other statements — put the sift call on the line instead
+    backed off   0  of those, let through while the hook stood aside after an answer of that shape ran past its time budget (0 overruns)
+    over time    0  of those, a lookup whose own answer ran out of time
 
   guided         2  ranged reads an index call had located — the loop working
   read whole     2  read whole after its digest — the read a digest exists to save, paid anyway
@@ -1089,7 +1145,7 @@ note and the same `--include-scratch` to count them.
 
 ```
 $ sift digest ModuleResolver
-tree: Sift  head: adc3e08  clean  semantic: syntactic-only
+tree: Sift  head: adc3e08  clean
 ModuleResolver — SiftCore — Sources/SiftCore/ModuleResolver.swift:12-283 (+3 extensions)
 struct ModuleResolver
 
@@ -1104,7 +1160,8 @@ members:
 ```
 
 …so reading `module(for:)` is four lines at `:75`, not the whole file (the sample is trimmed; a real
-digest lists every member). `digest` also accepts a file path or a module name, and paginates with `--offset` when a type is huge.
+digest lists every member). `digest` also accepts a file path or a module name (`Name/` where a type shares
+the name, since a bare `Name` serves the type), and paginates with `--offset` when a type is huge.
 
 **When you already know the member's name**, skip the round trip — `digest ModuleResolver.module` (or
 the labeled `ModuleResolver.module(for:)`) returns that member's source directly. Bodies over 200 lines
@@ -1119,12 +1176,21 @@ $ sift where ResultCache --refs
 references to Lib.ResultCache (118 in 31 files):
   ProductKit/Sources/Lib/Session/Coordinator.swift (4): 21, 44, 58, 91
   ProductKit/Tests/LibTests/ResultCacheEraseTests.swift (7): 12, 19, 27, 28, 40, 63, 70
+
+not code, by written name — 3 DocC-link lines, 2 doc-comment lines, 1 string-literal line, 1 Markdown line, 2 file names (1 a lead):
+  ProductKit/Sources/Lib/Session/Coordinator.swift (4): DocC 20 · doc 18, 19 · string 77
+  ProductKit/Docs/Caching.md (3): DocC 14, 31 · 9
+  file names: ProductKit/Sources/Lib/ResultCache.swift, ProductKit/Tests/LibTests/ResultCacheEraseTests.swift (a lead)
 ```
 
-Callers alone won't do — a type has none, and test payloads never appear among them. One boundary
-matters here: the index store records **code occurrences only**, so doc comments and string literals
-naming the symbol are invisible to it. Grep for those before deleting; the answer says so every time,
-so a partial sweep is never mistaken for a complete one.
+Callers alone won't do — a type has none, and test payloads never appear among them. The index store
+records **code occurrences only**, so the places a rename must change that are not code come after them,
+read from the working tree's Swift and Markdown files: DocC links (a stale one breaks the documentation
+build), doc comments, comments, string literals, Markdown lines and file names, matched as a whole word.
+A file name other than the exact stem is a lead to check. The Markdown read includes hidden directories
+such as `.agents`, `.github` and `.claude` (not `.git`, `.build`, `.swiftpm` or `.sift`); Swift in a hidden
+directory is still never indexed. Storyboards, xibs, plists, string catalogs and
+project files are not read, and the answer says so when it finds nothing.
 
 ## 12. Compressing build output — `sift run`
 
@@ -1144,32 +1210,50 @@ A passing run is its verdict, its counts and where the raw log is:
 
 ```
 ✔ swift test
-totals: ✔ passed · Swift Testing 8 tests in 1 suite
-raw: .sift/runs/run-20260929-090738Z-58a3b1c1.log (26 lines in, 3 out)
+totals: ✔ passed · Swift Testing 8 tests in 1 suite, 0 skipped
+raw: Widget @ cc94af6 (clean) · .sift/runs/run-20260929-090738Z-58a3b1c1.log (26 lines in, 3 out), kept for the next 4 runs
 ```
 
+The `raw:` line opens with the tree and commit the run happened in, in the words of the `tree:` header
+(`Widget @ cc94af6 (clean)`, `(dirty: 3)` for a tree whose `.swift` files have moved, as `dirty:` counts them, no word on it where it cannot be read, a linked worktree named as it is there, the
+tree alone outside a repository), so a suite run in the wrong checkout does not read as the right one.
+
 A skipped test is counted on that line as skipped (`Swift Testing 2 tests in 1 suite, 1 skipped`, and the
-same for an `XCTSkip`), so a run whose selected tests all skipped does not read as tests that ran.
+same for an `XCTSkip`), so a run whose selected tests all skipped does not read as tests that ran. A run with
+test results states `0 skipped` when nothing skipped, and each skipped test is named under the totals line as
+`skipped: Suite.test — reason` (ten at most, then `skipped: +N more`).
 
 The tool's own tally lines are summed into the `totals:` line and left out beside it; whenever the sum
 is anything but a plain pass or fail — an exit code that disagrees, a count that would not sum — they are
 printed, since they are then the evidence to check it against.
 
 A failing one keeps what you have to act on — errors with their file, line and column, test failures
-from both frameworks with their messages, warnings deduplicated and capped at twenty — and nothing else:
+from both frameworks with their messages (an expectation's message and expansion whole up to 1 KiB), warnings
+deduplicated and capped at twenty — and nothing else. A warning or `error:` line a tool
+logs with a timestamp while the build runs (`<date> <time> tool[pid:tid] error: …`) is shown, never judged:
+it is listed as `tool: error: …` under `tool log (N):`, deduplicated and capped at twenty, and no verdict,
+exit code or explanation of a failure reads it. The same shape printed once a test has started is the
+test's own output and is left to the raw log. A filtered run that matched
+nothing is answered by its headline and the `raw:` line alone:
 
 ```
 ✘ swift test — exit 1
   aFailingTest() — Tests/SiftCoreTests/DepotStoreTests.swift:11 (body :8-12)
     Expectation failed: depot.count == 2 → false depot.count → 1
-totals: ✘ failed · Swift Testing 1 test in 1 suite, 1 failure
-raw: .sift/runs/run-20260929-090807Z-1b642cfb.log (17 lines in, 5 out)
+totals: ✘ failed · Swift Testing 1 test in 1 suite, 1 failure, 0 skipped
+raw: Widget @ cc94af6 (clean) · .sift/runs/failed-8c1d07e5-run-20260929-090807Z-1b642cfb.log (17 lines in, 5 out), kept until it passes or 5 newer failures
 ```
 
 The heading names the file and line and, where the failure sits inside the test's own body, that body's
 range. Two or more failures are led by one line that says whether they are one problem or several —
 `9 failures · 1 signature · 2 files · 0 in changed files (matched by name)` — and a failure that resolves
 to a helper rather than to its test gets an `in … (syntactic)` line naming the helper.
+
+How much it saves was measured on 20 build and test outputs, 18 cases on a clone of this repository, green and
+red, and 2 replays of a real iOS app's `xcodebuild` log: a median 94% fewer bytes, and none of those 20 answers
+was larger than its log ([the results](../Benchmarks/RESULTS-run-compression.md)). That holds for what was
+measured, not for every run: an answer that says nothing ran, for instance, can be a few dozen bytes longer
+than a tiny log.
 
 Six things worth knowing before you wire it into a script:
 
@@ -1208,9 +1292,12 @@ Six things worth knowing before you wire it into a script:
   unchanged since.
 - **Nothing is lost.** The complete raw output goes to a file of its own under `.sift/runs/` as it
   arrives, and every answer ends by naming that path and how many lines it stands for. One file per run,
-  named with its start time in UTC (the `Z`), and the five most recent are kept. The log of a run that
+  named with its start time in UTC (the `Z`), and the five that finished last are kept; the `raw:` line says
+  how long its own log lives. The log of a run that built and failed is kept in a pool of its own until a later
+  run of the same command in the same directory passes, or until five newer failures of any command push it
+  out; a run that ran nothing (exit 4) is not a failure and stays among the ordinary logs. The log of a run that
   named its tests and did not build, either run of a `--without` proof included, is kept in a pool of its
-  own, so later runs do not prune the log its answer names.
+  own too, so later runs do not prune the log its answer names.
 
 - **`swift build`, `swift test` and `xcodebuild` are recognised** — by the command name, not by what
   the output looks like. Anything else runs untouched, with one note on stderr saying so.

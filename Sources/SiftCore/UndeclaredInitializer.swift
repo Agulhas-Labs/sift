@@ -93,7 +93,7 @@ struct UndeclaredInitializer {
         guard let callSites, !types.isEmpty else { return [] }
         let byName = Dictionary(grouping: types, by: \.row.name)
         let scanned = await callSites(byName.mapValues { _ in .initializer })
-        var lines = ["", "\(NameMatchedSites.headingOpening) over the working tree, never stale — see sift help answers (call sites)"]
+        var lines: [String] = []
         for name in byName.keys.sorted() {
             let asked = byName[name] ?? []
             let candidates = try SameNamedTypes(store: store).candidates(named: name)
@@ -122,8 +122,8 @@ struct UndeclaredInitializer {
                 // First, beside the count by name it qualifies.
                 let counted = reading.clauses(named: name, listed: listed.map(\.site)) + (dropped.isEmpty ? [] : [dropped, "\(listed.count) kept"])
                 lines.append(counted.isEmpty
-                    ? "\"\(name).init\" (\(count) in \(files)\(forType)):"
-                    : "\"\(name).init\" (\(spelled.count) call site\(spelled.count == 1 ? "" : "s") by name, \(counted.joined(separator: ", ")), in \(files)\(forType)):")
+                    ? "\"\(name).init\" (\(count) by written name in \(files)\(forType)):"
+                    : "\"\(name).init\" (\(spelled.count) call site\(spelled.count == 1 ? "" : "s") by written name, \(counted.joined(separator: ", ")), in \(files)\(forType)):")
                 let detail = { (site: SyntacticCallSite) -> String in
                     let owners = listed.first { $0.site == site }?.owners
                     return "in \(site.enclosing)" + (owners.map { SameNamedTypes.flag(of: $0, for: [type.path]) } ?? "")

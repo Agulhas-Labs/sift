@@ -17,19 +17,39 @@ struct AffectedRenderer {
     let projectDirectories: [String]
     /// Supplies working-tree name mentions for the declarations the index store could not be asked about.
     var mentions: ((Set<String>) async -> [String: [NameMention]])?
+    /// Supplies the call sites `where` lists for each name, in the shape asked for it, for the after-edit walk.
+    var callSites: (([String: CallSiteScanner.SiteShape]) async -> [String: [SyntacticCallSite]])?
+    /// Compares both sides of the named changed files, for the after-edit walk's seeds.
+    var fileDiffs: ((Set<String>) throws -> [FileDiff])?
+    /// When a file was last committed, for a comparison against `HEAD`.
+    ///
+    /// A file committed since the build has edits the working-tree diff no longer shows. `nil` for a range, whose diff spans every commit in it.
+    var lastCommitTime: ((String) -> Double?)?
+    /// When `HEAD` last moved other than by a commit made on it, for a comparison against the build.
+    ///
+    /// A checkout, a pull or a reset since the build brings in edits no commit time newer than the build dates. `nil` for a range.
+    var headMoveTime: (() -> Double?)?
 }
 
 extension AffectedRenderer {
+    /// Points the walks at the working tree: its written names for the fallback, and for the after-edit walk its call sites and both sides of each changed file, the before side read from the range's start or `HEAD`.
+    mutating func readingWorkingTree(enumerator: FileEnumerator, git: GitContext, changes: [GitContext.Change], range: AffectedOptions.CommitRange?) {
+        let scanner = NameMentionScanner(repoRoot: repositoryRoot, enumerator: enumerator)
+        let callScanner = CallSiteScanner(repoRoot: repositoryRoot, enumerator: enumerator)
+        mentions = { await scanner.mentions(of: $0) }
+        callSites = { await callScanner.callSites(named: $0) }
+        lastCommitTime = range == nil ? { git.lastCommitTime(of: $0) } : nil
+        headMoveTime = range == nil ? { HeadReflog.lastMoveTime(in: git) } : nil
+        fileDiffs = { [repositoryRoot] paths in
+            try AffectedAfterEditSeeds.fileDiffs(of: changes.filter { paths.contains($0.path) }, range: range, git: git, repositoryRoot: repositoryRoot)
+        }
+    }
+
     /// Individual tests printed per target before the whole target is named instead.
     ///
     /// Past this the per-test list stops being usable and — much worse — a truncated flag list *looks* complete when pasted. Naming the target runs a superset, which is the safe direction, and the answer says which targets were coarsened and why.
     static var testListCap: Int {
         25
-    }
-
-    /// Suites listed under a target named whole before the rest are counted rather than printed.
-    static var suiteListCap: Int {
-        40
     }
 
     /// Changed files listed before the list is truncated; the count above it is always exact.
@@ -62,32 +82,6 @@ extension AffectedRenderer {
     /// The case that sets it: a few refused enum cases named `active`, `stale` and `unresolved` are enough to make a small change select most of the suite. A written-name match is evidence only insofar as it narrows, and a name written in a quarter of the repository narrows nothing — it converts the fallback from "a lead worth checking" into "the whole suite, with a footnote". Dropped names are counted and named in the answer rather than silently skipped, because a reader has to be able to tell "nothing matched" from "the match was worthless".
     static var nameEvidenceFileCap: Int {
         40
-    }
-
-    struct Output {
-        let body: String
-        let axis: SemanticAxis
-        /// The tests the list names, for a caller that renders them in its own words — `diff`, which embeds them as one bounded section rather than the whole answer.
-        var reached: [ReachedTest] = []
-        /// How many ways the limits block lists of this answer being short — the number a caller pointing at that block owes its reader.
-        var limitCount = 0
-        var depth = AffectedOptions.defaultDepth
-        /// How many changed files the resolved walk went on from past `depth`, so a caller stating the bound states its exception too.
-        var walkedOn = 0
-        /// The furthest hop the walk-on went to, or `nil` where it went on from no file.
-        var walkedTo: Int?
-        /// The repo-relative files the axis counted as newer than the build, so a caller judging more files can count each once.
-        var newerFiles: Set<String> = []
-    }
-
-    /// One test the walk reached, as the list prints it.
-    struct ReachedTest: Sendable {
-        let target: String
-        let described: String
-        let depth: Int
-        let nameMatch: Bool
-        /// `path:line`, and the drift marker where the evidence no longer stands against the build.
-        let location: String
     }
 }
 
@@ -132,8 +126,9 @@ extension AffectedRenderer {
         var axis: SemanticAxis = .syntacticOnly
         var newerFiles: Set<String> = []
         var unbuiltTests = UnbuiltTestFiles()
-        if case .unavailable = semantic {
-            axis = .noStore
+        var declaringFiles: OccurrenceFreshness?
+        if case let .unavailable(note) = semantic {
+            axis = SiftEngine.noStoreAxis(from: note)
         }
         if case .warming = semantic {
             axis = .warming
@@ -142,18 +137,29 @@ extension AffectedRenderer {
             axis = .openFailed
         }
         if case let .active(context) = semantic {
-            let occurrences = OccurrenceFreshness(store: store, buildAnchor: context.buildAnchor, relativePath: context.relativePath)
-            semanticWalk = try self.semanticWalk(from: resolution.declarations, context: context, reader: reader, occurrences: occurrences, depth: options.depth)
+            let occurrences = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories, citedBy: context.store)
+            let judge = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories)
+            declaringFiles = judge
+            semanticWalk = try self.semanticWalk(from: resolution.declarations, context: context, reader: reader, occurrences: occurrences, declaringFiles: judge, depth: options.depth)
             let withoutUnit = try context.testFilesWithoutUnit(in: store, projectDirectories: projectDirectories)
-            unbuiltTests = UnbuiltTestFiles(paths: withoutUnit.unbuilt, outsideTargets: withoutUnit.outsideTargets, provenance: context.store.provenance)
+            unbuiltTests = UnbuiltTestFiles(paths: withoutUnit.unbuilt, outsideTargets: withoutUnit.outsideTargets, provenance: context.store.provenance, package: context.store.package)
             axis = .of(refusals: semanticWalk.refusals, occurrences: occurrences, testFilesWithoutUnit: unbuiltTests.paths.count)
-            newerFiles = Set(semanticWalk.refusals.filter { $0.reason == .modifiedSinceBuild }.map(\.path)).union(occurrences.modifiedFiles)
+            newerFiles = Set(semanticWalk.refusals.filter(\.reason.isStale).map(\.path)).union(occurrences.modifiedFiles).union(occurrences.newFiles)
         }
-        let nameWalk = try await nameWalk(from: semanticWalk.unanswered, reader: reader, depth: options.depth, excluding: Set(unbuiltTests.outsideTargets))
+        // A file changed since the build is seeded from the declarations the diff touched in it and walked to their call sites, where both its sides could be compared; every other unanswered declaration keeps the written-name walk.
+        let afterEdit = try afterEditSeeds(refusals: semanticWalk.refusals, declaringFiles: declaringFiles)
+        let mentionInput = semanticWalk.unanswered.filter { !afterEdit.files.contains($0.path) }
+        let nameWalk = try await nameWalk(from: Self.mentionSeeds(mentionInput), reader: reader, depth: options.depth, excluding: Set(unbuiltTests.outsideTargets))
+        var callWalk = try await self.nameWalk(from: afterEdit.seeds, reader: reader, depth: options.depth, excluding: Set(unbuiltTests.outsideTargets), byCallSites: true, fallbacks: afterEdit.fallbacks)
+        for row in afterEdit.rows {
+            if let test = try reader.testSymbol(enclosing: row) {
+                record(test, resolved: false, depth: 1, state: .live, into: &callWalk.reached)
+            }
+        }
         // The declarations the store did answer for, asked again by name of the test files it holds no unit for: the store's answer for them cannot include a reference from a target it never compiled.
         let unanswered = Set(semanticWalk.unanswered.map(\.id))
         let testSideWalk = unbuiltTests.paths.isEmpty ? NameWalk() : try await self.nameWalk(
-            from: resolution.declarations.filter { !unanswered.contains($0.id) && $0.kind != .extensionKind },
+            from: Self.mentionSeeds(resolution.declarations.filter { !unanswered.contains($0.id) && $0.kind != .extensionKind }),
             reader: reader,
             depth: options.depth,
             recordingOnlyIn: Set(unbuiltTests.paths),
@@ -167,35 +173,45 @@ extension AffectedRenderer {
             semanticWalk.capNote(cap: Self.expansionCap),
             nameWalk.capNote(cap: Self.nameFrontierCap),
             testSideWalk.capNote(cap: Self.nameFrontierCap),
+            callWalk.capNote(cap: Self.nameFrontierCap),
         ].compactMap(\.self).map { "  \($0)" })
 
         var reached = semanticWalk.reached
         merge(nameWalk.reached, into: &reached)
         merge(testSideWalk.reached, into: &reached)
-        // A suite reached whole stands for every test declared in it, in either style, and only the inventory knows how many.
-        let inventory = try reached.keys.contains { $0.suite != nil && ($0.style == .xcTest || $0.function == nil) }
-            ? TestInventory.read(store: store, repositoryRoot: repositoryRoot)
-            : nil
+        merge(callWalk.reached, into: &reached)
+        // A suite reached whole stands for every test declared in it, in either style, and only the inventory knows how many; it also says whether every test of a target is reached, which names the target whole.
+        let inventory = try reached.isEmpty ? nil : TestInventory.read(store: store, repositoryRoot: repositoryRoot)
         reached = collapsingSuites(namingInheritedTests(reached, in: inventory))
-        let capped = resolution.capped || semanticWalk.capped || nameWalk.capped || testSideWalk.capped
+        let capped = resolution.capped || semanticWalk.capped || nameWalk.capped || testSideWalk.capped || callWalk.capped
 
-        let limits = blindSpots(
-            options: options,
+        let answeredBy = afterEdit.files.isEmpty
+            ? (reached.isEmpty ? "nothing reached" : reached.values.allSatisfy { !$0.resolved } ? "a name match" : "resolved references")
+            : "the after-edit walk (syntactic, from the declarations the diff touched)"
+        let (limits, ways) = blindSpots(
+            answeredBy: answeredBy,
+            depthLine: AffectedBlindSpots.depthLine(options.depth, walkedOn: semanticWalk.walkedOn.outcomes.count),
             resolution: resolution,
             excludedByConfig: excludedByConfig,
             reached: reached,
-            capped: capped,
-            walkedOn: semanticWalk.walkedOn.outcomes.count
+            capped: capped
         )
         lines.append("")
         lines.append(contentsOf: limits)
-        lines.append(contentsOf: SemanticRefusal.lines(semanticWalk.refusals))
+        lines.append(contentsOf: SemanticRefusal.lines(semanticWalk.refusals, namingDeclarations: false, declarationsSpanMultipleFiles: true))
+        if !semanticWalk.refusals.isEmpty, nameWalk.scannedNames > 0 {
+            lines.append("  the name match used \(mentionInput.count) declaration\(mentionInput.count == 1 ? "" : "s") from the files above, not listed here")
+        }
         lines.append(contentsOf: nameWalk.notes(cap: Self.nameEvidenceFileCap))
+        lines.append(contentsOf: callWalk.afterEditNotes(afterEdit, cap: Self.nameEvidenceFileCap))
         lines.append(contentsOf: unbuiltTests.notes(walk: testSideWalk, cap: Self.nameEvidenceFileCap))
-        // Counted, because the block is conditional and prints between seven and ten entries — a number a
-        // reader can check is the one number that must not be written by hand.
-        let ways = limits.count { $0.hasPrefix(Self.limitBullet) }
-        lines.append(contentsOf: testSections(reached: reached, inventory: inventory, options: options, ways: ways))
+        let package = if case let .active(context) = semantic {
+            context.store.package
+        } else {
+            ""
+        }
+        // Counted, not written by hand: the standing list plus this answer's own entries.
+        lines.append(contentsOf: testSections(reached: reached, inventory: inventory, options: options, ways: ways, package: package, afterEdit: afterEdit.files.isEmpty ? nil : (afterEdit, callWalk.scannedNames)))
         let listed = reached.keys.sorted().map { test in
             let evidence = reached[test]
             return ReachedTest(
@@ -230,7 +246,7 @@ extension AffectedRenderer {
                 : note
             lines.append("\(SiftEngine.degradedModeOpening)\(note)")
         case let .active(context):
-            lines.append("mode: syntactic + semantic (index store via \(context.store.provenance.name))")
+            lines.append("mode: syntactic + semantic (index store via \(DiscoveredStore.label(provenance: context.store.provenance, package: context.store.package)))")
         }
         lines.append("depth: \(options.depth) reference hop\(options.depth == 1 ? "" : "s") from the changed declarations")
         // A sweep that silently returns nothing reads as "nothing to run", which is the one way this command can do harm.
@@ -257,13 +273,14 @@ extension AffectedRenderer {
         var unanswered = declarations
         var excluded: Set<String> = []
         if case let .active(context) = semantic {
-            let occurrences = OccurrenceFreshness(store: store, buildAnchor: context.buildAnchor, relativePath: context.relativePath)
-            let walk = try semanticWalk(from: declarations, context: context, reader: reader, occurrences: occurrences, depth: depth)
+            let occurrences = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories, citedBy: context.store)
+            let declaringFiles = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories)
+            let walk = try semanticWalk(from: declarations, context: context, reader: reader, occurrences: occurrences, declaringFiles: declaringFiles, depth: depth)
             reached = walk.reached
             unanswered = walk.unanswered
             excluded = try Set(context.testFilesWithoutUnit(in: store, projectDirectories: projectDirectories).outsideTargets)
         }
-        try await merge(nameWalk(from: unanswered, reader: reader, depth: depth, excluding: excluded).reached, into: &reached)
+        try await merge(nameWalk(from: Self.mentionSeeds(unanswered), reader: reader, depth: depth, excluding: excluded).reached, into: &reached)
         var nearest: [String: Int] = [:]
         for (test, evidence) in reached where !test.swiftTestFilterSelectsNothing {
             let filter = test.suite == nil ? test.swiftTestFilter : test.suiteOnly.described
@@ -377,6 +394,7 @@ private extension AffectedRenderer {
         context: SemanticContext,
         reader: TestSymbolReader,
         occurrences: OccurrenceFreshness,
+        declaringFiles: OccurrenceFreshness,
         depth: Int
     ) throws -> SemanticWalk {
         var walk = SemanticWalk()
@@ -413,16 +431,22 @@ private extension AffectedRenderer {
                 expanded += 1
                 let qualified = try store.qualifiedName(of: row)
                 let file = try store.fileRow(path: row.path)
-                if file?.mtime ?? 0 > context.buildAnchor {
-                    let rebuild = SemanticRefusal.Rebuild(provenance: context.store.provenance, imports: file?.imports ?? [])
-                    walk.refusals.append(SemanticRefusal(path: row.path, reason: .modifiedSinceBuild, symbol: qualified, kind: row.kind, rebuild: rebuild))
+                // A file outside a nested package's store is refused as outside it, edited or not: no build of that package covers it.
+                let outside = context.packagesPassingOver(file: row.path) != nil
+                // Judged against the file's own build, so an edit a later build of another target skipped is refused too.
+                let fileKind = outside ? FileKind.current : declaringFiles.kind(ofFile: row.path, citedBy: context.store)
+                let stale = fileKind == .new
+                    ? SemanticRefusal.unowned(row, symbol: qualified, file: file, kind: fileKind, context: context, source: nil)
+                    : SemanticRefusal.changed(row, symbol: qualified, file: file, kind: fileKind, holder: context.store)
+                if let stale {
+                    walk.refusals.append(stale)
                     walk.unanswered.append(row)
                     continue
                 }
                 guard let usr = context.store.usr(for: row) else {
                     // The same reason `where` gives: a declaration under `#if` in a file the build did compile is not sent to build.
                     let source = { [repositoryRoot] (path: String) in try? String(contentsOf: repositoryRoot.appendingPathComponent(path), encoding: .utf8) }
-                    walk.refusals.append(SemanticRefusal.unowned(row, symbol: qualified, imports: file?.imports ?? [], modified: false, context: context, source: source))
+                    walk.refusals.append(SemanticRefusal.unowned(row, symbol: qualified, file: file, kind: .current, context: context, source: source))
                     walk.unanswered.append(row)
                     continue
                 }
@@ -452,7 +476,7 @@ private extension AffectedRenderer {
         // Reached only when the cap did not stop the walk above, which returns from inside the loop: a capped walk is already wider than its bound can show.
         var walkOn = ResolvedWalkOn(hits: expansions) { row in
             guard row.kind != .extensionKind, row.kind != .operatorKind,
-                  try store.fileRow(path: row.path)?.mtime ?? 0 <= context.buildAnchor,
+                  !declaringFiles.writtenSinceBuild(file: row.path),
                   let usr = context.store.usr(for: row) else { return nil }
             return try hits(ofUSR: usr, context: context, reader: reader, occurrences: occurrences)
         }
@@ -477,6 +501,23 @@ private extension AffectedRenderer {
             let test = try reader.testSymbol(enclosing: enclosing)
             return ResolvedWalkOn.Hit(enclosing: enclosing, test: test, state: state, leadsOn: Self.leadsOn(enclosing, from: test))
         }
+    }
+
+    /// The after-edit walk's seeds: the declarations the diff touched in each file the store refused as changed since the build.
+    ///
+    /// A file committed since its own build is seeded whole, the diff against `HEAD` showing only the edits after that commit; so is one whose last commit time cannot be read, and so is every refused file built before `HEAD` last moved, or every one when that cannot be read.
+    func afterEditSeeds(refusals: [SemanticRefusal], declaringFiles: OccurrenceFreshness?) throws -> AffectedAfterEditSeeds {
+        let refused = Set(refusals.filter(\.reason.isStale).map(\.path))
+        guard !refused.isEmpty, callSites != nil, let fileDiffs, let declaringFiles else { return AffectedAfterEditSeeds() }
+        let anchors = Dictionary(uniqueKeysWithValues: refused.map { ($0, declaringFiles.buildAnchor(ofFile: $0)) })
+        let headMove = headMoveTime.map { $0() }
+        let movedPast: Set<String> = headMove.map { time in refused.filter { AffectedAfterEditSeeds.isSinceBuild(time, anchor: anchors[$0] ?? 0) } } ?? []
+        let headMoved = movedPast == refused
+        let committed: Set<String> = headMoved ? [] : lastCommitTime.map { time in refused.filter { AffectedAfterEditSeeds.isSinceBuild(time($0), anchor: anchors[$0] ?? 0) } } ?? []
+        let whole = movedPast.union(committed)
+        var seeds = try AffectedAfterEditSeeds.of(fileDiffs(refused.subtracting(whole)), store: store)
+        (seeds.committedSinceBuild, seeds.headMovedSinceBuild) = (whole, headMoved)
+        return seeds
     }
 
     /// The changed declarations by file, for the files outside the test files: a changed test file is where tests already are, so it is never walked on.
@@ -515,12 +556,26 @@ private extension AffectedRenderer {
         func notes(cap: Int) -> [String] {
             guard scannedNames > 0 else { return [] }
             var lines = ["", "name-matched fallback: \(scannedNames) written name\(scannedNames == 1 ? "" : "s") \(scannedNames == 1 ? "was" : "were") scanned across the working tree instead — the base names of the declarations the store could not be asked about, and at each further hop the names of the declarations those turned up in. **A name is not a symbol** — same-named members of unrelated types are included, and dynamically dispatched uses are missed. Those tests are marked `name match` below."]
-            if !tooCommon.isEmpty {
-                let names = tooCommon.sorted()
-                lines.append("  \(names.count) name\(names.count == 1 ? "" : "s") in that scan \(names.count == 1 ? "was" : "were") written in more than \(cap) files and dropped rather than admitted — a match that broad narrows nothing, so NOTHING is reported for \(names.count == 1 ? "it" : "them"): \(names.joined(separator: ", "))")
-            }
-            lines.append(contentsOf: [setAsideNote()].compactMap(\.self))
+            lines.append(contentsOf: [tooCommonNote(cap: cap), setAsideNote()].compactMap(\.self))
             return lines
+        }
+
+        /// What the after-edit walk says of itself: what it was seeded from, and that a call site found by its written name is not a resolved reference.
+        func afterEditNotes(_ seeds: AffectedAfterEditSeeds, cap: Int) -> [String] {
+            let reason = seeds.headMovedSinceBuild ? "HEAD moved since the build" : "committed since the build"
+            let committed = seeds.committedSinceBuild.isEmpty ? [] : ["", "after-edit walk — seeded whole: \(reason): \(seeds.committedSinceBuild.sorted().joined(separator: ", "))"]
+            guard !seeds.files.isEmpty else { return committed }
+            let files = seeds.files.count
+            let names = "\(seeds.nameCount) name\(seeds.nameCount == 1 ? "" : "s")"
+            let note = "after-edit walk — syntactic, lower bound: the \(files) file\(files == 1 ? "" : "s") changed since the build \(files == 1 ? "was" : "were") seeded from the \(names) the diff touched there (\(seeds.namesListed)), not every declaration in \(files == 1 ? "it" : "them"), and followed to the call sites `where` finds by written name, \(scannedNames) name\(scannedNames == 1 ? "" : "s") over every hop. **A call site found by name is not a resolved reference** — same-named members of unrelated types are included, and dynamically dispatched uses are missed. Those tests are marked `name match` below, and a test the diff touched is listed itself."
+            return ["", note] + committed + [tooCommonNote(cap: cap), setAsideNote()].compactMap(\.self)
+        }
+
+        /// The names dropped for being written in more than `cap` files, named.
+        func tooCommonNote(cap: Int) -> String? {
+            guard !tooCommon.isEmpty else { return nil }
+            let names = tooCommon.sorted()
+            return "  \(names.count) name\(names.count == 1 ? "" : "s") in that scan \(names.count == 1 ? "was" : "were") written in more than \(cap) files and dropped rather than admitted — a match that broad narrows nothing, so NOTHING is reported for \(names.count == 1 ? "it" : "them"): \(names.joined(separator: ", "))"
         }
 
         /// The line counting the tests set aside because their module cannot load the module declaring the name, with their targets named.
@@ -541,6 +596,7 @@ private extension AffectedRenderer {
         var outsideTargets: [String] = []
 
         var provenance: DiscoveredStore.Provenance?
+        var package = ""
 
         /// The one note saying so, with the build that adds them where it is known: SwiftPM's own store, since a plain `swift build` builds no test target.
         func notes(walk: NameWalk, cap: Int) -> [String] {
@@ -551,7 +607,7 @@ private extension AffectedRenderer {
             }
             guard !paths.isEmpty else { return outside }
             let count = paths.count
-            let build = provenance == .swiftPMBuild ? "build \(count == 1 ? "it" : "them") with `sift run -- swift build --build-tests`" : "build \(count == 1 ? "its" : "their") target"
+            let build = provenance == .swiftPMBuild ? "build \(count == 1 ? "it" : "them") with `\(DiscoveredStore.swiftPMBuildCommand(package: package, buildTests: true))`" : "build \(count == 1 ? "its" : "their") target"
             let names = "\(walk.scannedNames) written name\(walk.scannedNames == 1 ? "" : "s")"
             var lines = [
                 "",
@@ -571,12 +627,25 @@ private extension AffectedRenderer {
     /// It honours the same `--depth` as the resolved walk rather than stopping at direct mentions, because the shape it most needs to reach is the same one: a suite that builds its fixture through a test helper mentions the helper and never the changed symbol. Each hop is one pass over the working tree, and a file that never spells any of the names is skipped before it is parsed.
     ///
     /// Given files to record from, it keeps only the tests written in those files, for the test files the store has no unit for; every other declaration a name turns up in is still carried into the next hop, since a helper anywhere is how a test reaches the change.
-    func nameWalk(from unanswered: [SymbolRow], reader: TestSymbolReader, depth: Int, recordingOnlyIn: Set<String>? = nil, excluding: Set<String> = []) async throws -> NameWalk {
-        guard let mentions, !unanswered.isEmpty else { return NameWalk() }
+    ///
+    /// `byCallSites` is the after-edit walk: each name is followed to the call sites `where` lists for it rather than to every token spelling it, so a declaration's own name, a same-named parameter or a label is no match. Its `fallbacks` are the types a seed name is followed through instead when the first hop finds no site of it.
+    func nameWalk(
+        from seeds: [AffectedNameSeed],
+        reader: TestSymbolReader,
+        depth: Int,
+        recordingOnlyIn: Set<String>? = nil,
+        excluding: Set<String> = [],
+        byCallSites: Bool = false,
+        fallbacks: [String: Set<AffectedNameSeed>] = [:]
+    ) async throws -> NameWalk {
+        guard !seeds.isEmpty, byCallSites ? callSites != nil : mentions != nil else { return NameWalk() }
         // Operators are dropped before the scan rather than after it: `<` is not an identifier token, so it can never match, while its substring pre-filter matches nearly every file in the repository and buys a full parse of all of them for nothing.
         var frontier: [String: Set<String>] = [:]
-        for row in unanswered where Self.isIdentifier(row.baseName) {
-            frontier[row.baseName, default: []].insert(row.module)
+        // The shape each name's call sites take, which only the call-site scan reads.
+        var shapes: [String: CallSiteScanner.SiteShape] = [:]
+        for seed in seeds where AffectedNameSeed.isIdentifier(seed.name) {
+            frontier[seed.name, default: []].insert(seed.module)
+            shapes[seed.name] = seed.shape.widened(by: shapes[seed.name])
         }
         var walk = NameWalk()
         var seen = frontier
@@ -591,12 +660,20 @@ private extension AffectedRenderer {
             // Counted here rather than once from the seed set, so the number the answer prints is the names
             // this walk actually carried into a scan — which is the population `tooCommon` is a subset of.
             walk.scannedNames += frontier.count
+            var found = await sites(of: Set(frontier.keys), shapes: shapes, byCallSites: byCallSites)
+            if hop == 1, !fallbacks.isEmpty {
+                let scanned = frontier.count
+                let rescan = AffectedAfterEditSeeds.fallingBack(to: fallbacks, found: found, excluding: excluding, frontier: &frontier, shapes: &shapes)
+                seen.merge(frontier) { $0.union($1) }
+                walk.scannedNames += frontier.count - scanned
+                await found.merge(rescan.isEmpty ? [:] : sites(of: rescan, shapes: shapes, byCallSites: byCallSites)) { $1 }
+            }
             // Sorted, because the site printed beside a test is whichever account `record` sees first and a
             // Dictionary hands its keys back in hash order. A suite declared in one file and extended in
             // another is the same `TestSymbol` reached from two names with two different sites, so the
             // `— path:line` beside it would flip between runs with the per-process hash seed. The sites
             // inside one name are sorted for exactly the same reason.
-            for (name, written) in await mentions(Set(frontier.keys)).sorted(by: { $0.key < $1.key }) {
+            for (name, written) in found.sorted(by: { $0.key < $1.key }) {
                 // Another project's files are left out before the cap is counted: they are no part of what the walk reads, as a test or as a hop.
                 let sites = written.filter { !excluding.contains($0.path) }
                 let declaring = frontier[name] ?? []
@@ -622,13 +699,17 @@ private extension AffectedRenderer {
                     // frontier, where the visitor can never match it (it compares against `.identifier`) but
                     // its `source.contains("==")` pre-filter matches nearly every Swift file — a full parse of
                     // the repository, every one of them returning nothing.
-                    if loadable, Self.leadsOn(enclosing, from: test), Self.isIdentifier(enclosing.baseName) {
+                    let onward = byCallSites
+                        ? try AffectedNameSeed.callSite(of: enclosing, in: store)
+                        : AffectedNameSeed(name: enclosing.baseName, module: enclosing.module, kind: enclosing.kind)
+                    if loadable, Self.leadsOn(enclosing, from: test), AffectedNameSeed.isIdentifier(onward.name) {
+                        shapes[onward.name] = onward.shape.widened(by: shapes[onward.name])
                         if test == nil, !viaHelper {
-                            if seen[enclosing.baseName, default: []].insert(enclosing.module).inserted {
-                                next[enclosing.baseName, default: []].insert(enclosing.module)
+                            if seen[onward.name, default: []].insert(onward.module).inserted {
+                                next[onward.name, default: []].insert(onward.module)
                             }
-                        } else if !seen[enclosing.baseName, default: []].contains(enclosing.module) {
-                            helpers[enclosing.baseName, default: []].insert(enclosing.module)
+                        } else if !seen[onward.name, default: []].contains(onward.module) {
+                            helpers[onward.name, default: []].insert(onward.module)
                         }
                     }
                 }
@@ -667,12 +748,23 @@ private extension AffectedRenderer {
         return walk
     }
 
-    /// Whether a declaration's base name is something an identifier token could ever equal.
+    /// The written-name seeds for indexed declarations: each one's base name, as every token spelling it is matched.
+    static func mentionSeeds(_ rows: [SymbolRow]) -> [AffectedNameSeed] {
+        rows.map { AffectedNameSeed(name: $0.baseName, module: $0.module, kind: $0.kind) }
+    }
+
+    /// Where each of `names` is written: every identifier token spelling it, or, for the after-edit walk, the call sites `where` would list for it.
     ///
-    /// Asked of every name that enters the frontier, at every hop — not only of the seed set. The two paths carry the same kind of thing (a declaration's base name) and pay the same price for an operator: a name the visitor can never match, whose substring pre-filter matches almost everything.
-    static func isIdentifier(_ name: String) -> Bool {
-        guard let first = name.first else { return false }
-        return first.isLetter || first == "_"
+    /// A function's name written as a member with no call and no labels, `x.f`, is one `where` counts beside its list rather than in it, and the walk leaves it out the same way, as it is far more often another type's property; a call, `T.f`, `x.f(label:)` and a bare `f` handed to a call or bound as a value all stay.
+    func sites(of names: Set<String>, shapes: [String: CallSiteScanner.SiteShape], byCallSites: Bool) async -> [String: [NameMention]] {
+        guard byCallSites, let callSites else { return await mentions?(names) ?? [:] }
+        let found = await callSites(shapes.filter { names.contains($0.key) })
+        var sites: [String: [NameMention]] = [:]
+        for (name, written) in found {
+            let listed = shapes[name] == .callOrReference ? written.filter { !$0.nameOnly || $0.handedOnBare } : written
+            sites[name] = listed.map { NameMention(path: $0.path, line: $0.line) }
+        }
+        return sites
     }
 
     /// Whether the walk follows a reference onward from the declaration it landed in, given the test that declaration is or sits in.
@@ -748,158 +840,135 @@ private extension AffectedRenderer {
 }
 
 private extension AffectedRenderer {
-    /// The limits block, printed above the list it qualifies.
+    /// The limits block, printed above the list it qualifies: at most two lines, what is specific to this answer.
+    ///
+    /// The standing list of what the index cannot see is `sift help affected-limits`; `ways` counts it with the answer's own entries, so the empty answer can cite a number a reader can check there.
     func blindSpots(
-        options: AffectedOptions,
+        answeredBy: String,
+        depthLine: String,
         resolution: Resolution,
         excludedByConfig: [String],
         reached: [TestSymbol: Evidence],
-        capped: Bool,
-        walkedOn: Int
-    ) -> [String] {
-        var lines = [AffectedBlindSpots.heading]
-        lines.append(contentsOf: AffectedBlindSpots.permanent.map { Self.limitBullet + $0 })
-        lines.append(Self.limitBullet + AffectedBlindSpots.depthLine(options.depth, walkedOn: walkedOn))
+        capped: Bool
+    ) -> (lines: [String], ways: Int) {
+        var entries = [depthLine]
         if !excludedByConfig.isEmpty {
-            lines.append(Self.limitBullet + AffectedBlindSpots.excludedByConfig(excludedByConfig, listing: Self.changedFileListCap))
+            entries.append(AffectedBlindSpots.excludedByConfig(excludedByConfig, listing: Self.changedFileListCap))
         }
         if !resolution.unreadable.isEmpty {
-            lines.append(Self.limitBullet + AffectedBlindSpots.unreadableFiles(resolution.unreadable))
+            entries.append(AffectedBlindSpots.unreadableFiles(resolution.unreadable))
         }
         if !reached.isEmpty {
-            lines.append(Self.limitBullet + AffectedBlindSpots.moduleNameCaveat)
+            entries.append(AffectedBlindSpots.moduleNameClause)
         }
         if reached.keys.contains(where: \.swiftTestFilterSelectsNothing) {
-            lines.append(Self.limitBullet + AffectedBlindSpots.nestedXCTestCaseCaveat)
+            entries.append(AffectedBlindSpots.nestedXCTestClause)
         }
         if capped {
-            lines.append(Self.limitBullet + "a size cap stopped the walk before it finished, so this answer is short of even what the index could have found — the notes above say which cap")
+            entries.append("a size cap stopped the walk before it finished, so this answer is short of even what the index could have found — the notes above say which cap")
         }
-        lines.append("  " + AffectedBlindSpots.conclusion)
-        return lines
+        return (
+            [
+                "\(AffectedBlindSpots.heading) answered by \(answeredBy). \(AffectedBlindSpots.lowerBoundLine) The standing limits: `sift help affected-limits`.",
+                Self.limitBullet + entries.joined(separator: "; "),
+            ],
+            AffectedBlindSpots.permanent.count + entries.count
+        )
     }
 }
 
 private extension AffectedRenderer {
     /// The tests, then the arguments that select them.
-    func testSections(reached: [TestSymbol: Evidence], inventory: TestInventory?, options: AffectedOptions, ways: Int) -> [String] {
+    ///
+    /// Under an after-edit walk, a target past the list cap whose name-matched tests are at least half of what it declares is not listed: the answer says it could not narrow below that target, and why.
+    func testSections(reached: [TestSymbol: Evidence], inventory: TestInventory?, options: AffectedOptions, ways: Int, package: String, afterEdit: (seeds: AffectedAfterEditSeeds, scanned: Int)? = nil) -> [String] {
         guard !reached.isEmpty else {
             return [
                 "",
                 "no test references found within \(options.depth) hop\(options.depth == 1 ? "" : "s").",
-                "that is not evidence that no test is affected: it means the index found no reference, which the limits above list \(ways) ways of being wrong about. Run the full suite.",
+                "that is not evidence that no test is affected: it means the index found no reference, which the limits (the standing list is `sift help affected-limits`) count \(ways) ways of being wrong about. Run the full suite.",
             ]
         }
         let byTarget = Dictionary(grouping: reached.keys, by: \.target)
-        let total = reached.keys.reduce(0) { $0 + Self.testCount(of: $1, in: inventory) }
+        let total = reached.keys.reduce(0) { $0 + AffectedTargetLines.testCount(of: $1, in: inventory) }
         var lines = ["", "affected tests (\(total) in \(byTarget.count) target\(byTarget.count == 1 ? "" : "s")):"]
         var arguments: [String] = []
         var filters: [String] = []
         var leftOutOfXcodebuild = 0
-        // Counted over every test these arguments select, not over the ones the list happened to print: a
-        // coarsened target names its whole suite in one `-only-testing:` and prints none of its members, so
-        // counting inside the printed prefix would put "N rest on a name match" directly above a selection
-        // standing in for tests it had not counted.
-        let nameOnly = reached.values.count { !$0.resolved }
+        var unfilterable = 0
+        var nameOnly = 0
+        var listedAny = false
+        var namedWhole = false
 
         for target in byTarget.keys.sorted() {
             let tests = (byTarget[target] ?? []).sorted()
             // Counted the way the headline counts: a whole suite is every test the inventory declares in it, not the one row it prints as.
-            let targetTotal = tests.reduce(0) { $0 + Self.testCount(of: $1, in: inventory) }
-            lines.append("  \(target) — \(targetTotal) test\(targetTotal == 1 ? "" : "s")")
-            if tests.count > Self.testListCap {
-                lines.append("    \(targetTotal) tests affected — more than this list prints, so the whole target is named below rather than a partial list that would look complete")
-                if let sample = tests.first {
-                    arguments.append(sample.targetOnly.onlyTestingArgument)
-                    filters.append(sample.targetOnly.swiftTestFilter)
+            let targetTotal = tests.reduce(0) { $0 + AffectedTargetLines.testCount(of: $1, in: inventory) }
+            let declared = inventory?.tests.count { $0.target == target } ?? 0
+            // Past the cap a per-test list would look complete and is not: the target is named by commands printed once, here, and never again in the sections below.
+            let nameMatched = tests.filter { reached[$0]?.resolved == false }.reduce(0) { $0 + AffectedTargetLines.testCount(of: $1, in: inventory) }
+            // Where the after-edit walk alone reached the target, the collapse says which names it walked from, which "all N tests" would not.
+            let names = nameMatched == targetTotal ? afterEdit.map { AffectedTargetLines.walkedFromClause(count: $0.seeds.nameCount, listed: $0.seeds.namesListed, scanned: $0.scanned) } : nil
+            // A target whose every test is affected is named whole at any size; under the cap its rows are kept beside the line, which carries the detail they do.
+            let wholeTarget = names == nil ? AffectedTargetLines.wholeTarget(target, affected: targetTotal, in: inventory, package: package) : nil
+            if tests.count > Self.testListCap, let sample = tests.first {
+                if let wholeTarget {
+                    lines.append("  " + wholeTarget)
+                } else if declared > 0, targetTotal * 2 >= declared {
+                    lines.append(contentsOf: AffectedTargetLines.collapseLines(target: target, reached: targetTotal, declared: declared, nameMatched: nameMatched, walkedFrom: names, sample: sample, package: package))
+                } else {
+                    lines.append("  \(target) — \(targetTotal) tests")
+                    let restOnNames = nameMatched > 0 ? "; \(nameMatched) of them rest on a name match rather than a resolved reference" : ""
+                    lines.append("    \(targetTotal) tests affected — the commands below run exactly the affected suites\(restOnNames)")
+                    lines.append(contentsOf: AffectedTargetLines.suiteCommandLines(for: tests, in: inventory, package: package))
                 }
+                namedWhole = true
+                continue
             }
-            for test in tests.prefix(Self.testListCap) {
+            listedAny = true
+            lines.append("  \(target) — \(targetTotal) test\(targetTotal == 1 ? "" : "s")")
+            wholeTarget.map { lines.append("    " + $0) }
+            for test in tests {
                 let evidence = reached[test]
                 var detail = ["\(evidence?.depth ?? 1) hop\((evidence?.depth ?? 1) == 1 ? "" : "s")"]
                 if evidence?.resolved == false {
                     detail.append("name match")
+                    nameOnly += 1
                 }
                 lines.append("    \(test.described) — \(detail.joined(separator: ", ")) — \(evidence?.path ?? "?"):\(evidence?.line ?? 0)\(evidence?.state.marker ?? "")")
-                if tests.count <= Self.testListCap {
-                    if let argument = test.onlyTestingArgument(runtimeCaseNames: inventory?.runtimeCaseNames ?? [:]) {
-                        arguments.append(argument)
-                    } else {
-                        leftOutOfXcodebuild += Self.testCount(of: test, in: inventory)
-                    }
-                    if !test.swiftTestFilterSelectsNothing {
-                        filters.append(test.swiftTestFilter)
-                    }
+                if let argument = test.onlyTestingArgument(runtimeCaseNames: inventory?.runtimeCaseNames ?? [:]) {
+                    arguments.append(argument)
+                } else {
+                    leftOutOfXcodebuild += AffectedTargetLines.testCount(of: test, in: inventory)
+                }
+                if test.swiftTestFilterSelectsNothing {
+                    unfilterable += AffectedTargetLines.testCount(of: test, in: inventory)
+                } else {
+                    filters.append(test.anchoredSwiftTestFilter)
                 }
             }
-            if tests.count > Self.testListCap {
-                // The tests the rows past the cap stand for, so this line, the one above and the target's own count are one count.
-                let unprinted = tests.dropFirst(Self.testListCap).reduce(0) { $0 + Self.testCount(of: $1, in: inventory) }
-                lines.append("    truncated: \(unprinted) more tests in this target")
-                lines.append(contentsOf: Self.suiteLines(for: tests, in: inventory))
-            }
         }
+        // Every target named by commands above has said how to run it; what is left to select is only what was listed.
+        guard listedAny else { return lines }
+        // Beside a target named by its own command, a line that read as the whole selection would leave that target out of the run it is pasted into.
+        let listedOnly = namedWhole ? " (listed targets only; the targets above are named by their own command)" : ""
 
         lines.append("")
-        lines.append("xcodebuild — one argument per selection\(nameOnly > 0 ? "; \(nameOnly) of the tests these select rest on a name match rather than a resolved reference" : ""):")
+        lines.append("xcodebuild — one argument per selection\(listedOnly)\(nameOnly > 0 ? "; \(nameOnly) of the tests these select rest on a name match rather than a resolved reference" : ""):")
         lines.append(contentsOf: arguments.sorted().map { "  \($0)" })
         if leftOutOfXcodebuild > 0 {
             lines.append("  " + AffectedBlindSpots.leftOutOfOnlyTesting(leftOutOfXcodebuild, noneLeft: arguments.isEmpty))
         }
         lines.append("")
-        lines.append("swift test — SwiftPM matches --filter as a regex against the printed test id:")
-        let unfilterable = reached.keys.filter(\.swiftTestFilterSelectsNothing).reduce(0) { $0 + Self.testCount(of: $1, in: inventory) }
+        lines.append("swift test — SwiftPM matches --filter as a regex against the printed test id\(listedOnly):")
         if filters.isEmpty {
-            lines.append("  swift test — " + AffectedBlindSpots.nothingFilterable(unfilterable))
+            lines.append("  " + DiscoveredStore.swiftPMTestCommand(package: package) + " — " + AffectedBlindSpots.nothingFilterable(unfilterable))
         } else {
-            lines.append((["  swift test"] + filters.sorted().map { "--filter '\($0)'" }).joined(separator: " "))
+            lines.append((["  " + DiscoveredStore.swiftPMTestCommand(package: package)] + filters.sorted().map { "--filter '\($0)'" }).joined(separator: " "))
             if unfilterable > 0 {
                 lines.append("  " + AffectedBlindSpots.leftOutOfTheFilter(unfilterable))
             }
         }
         return lines
-    }
-
-    /// The affected suites of a target named whole, each with the filter that selects it, so a narrower run can be assembled from the answer.
-    ///
-    /// Built from every affected test in the target, not the printed prefix. Each suite keeps a line of its own and they are never joined into one command: past the cap that command would be the partial flag list naming the target whole exists to avoid.
-    static func suiteLines(for tests: [TestSymbol], in inventory: TestInventory?) -> [String] {
-        var counts: [TestSymbol: Int] = [:]
-        var outsideAnySuite = 0
-        var nested = 0
-        for test in tests {
-            let count = testCount(of: test, in: inventory)
-            if test.suite == nil {
-                outsideAnySuite += count
-            } else if test.swiftTestFilterSelectsNothing {
-                nested += count
-            } else {
-                counts[test.suiteOnly, default: 0] += count
-            }
-        }
-        let suites = counts.keys.sorted()
-        var lines = [suites.isEmpty
-            ? "    no affected suite in this target has a filter of its own"
-            : "    affected suites in this target (\(suites.count)), each with the filter that selects it:"]
-        for suite in suites.prefix(suiteListCap) {
-            let count = counts[suite] ?? 0
-            lines.append("      \(suite.described) — \(count) test\(count == 1 ? "" : "s") — --filter '\(suite.swiftTestFilter)'")
-        }
-        if suites.count > suiteListCap {
-            lines.append("      truncated: \(suites.count - suiteListCap) more suites in this target")
-        }
-        if outsideAnySuite > 0 {
-            lines.append("      left out: \(outsideAnySuite) test\(outsideAnySuite == 1 ? "" : "s") declared outside any suite, which only the whole target's filter selects")
-        }
-        if nested > 0 {
-            lines.append("      left out: \(nested) test\(nested == 1 ? "" : "s") in a nested XCTest case, which no filter selects (see the limits above)")
-        }
-        return lines
-    }
-
-    /// How many tests one listed entry stands for: one for a test, and for a whole suite every test the inventory declares it to run, a Swift Testing suite's nested suites included.
-    static func testCount(of test: TestSymbol, in inventory: TestInventory?) -> Int {
-        guard test.function == nil, test.suite != nil, let inventory else { return 1 }
-        return inventory.tests.count { test.wholeSuiteRuns(TestSymbol(declared: $0)) }
     }
 }

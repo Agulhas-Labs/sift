@@ -116,19 +116,17 @@ public struct ShellAdvice {
         return lookupPipelines(of: command, holdsSource: holdsSource).map(\.key)
     }
 
-    /// Whether the lookup the advice on `command` is a search for names — every pattern one, none inverted — whose operands are several Swift files or a glob of them (``InPlaceShape/namesOnlySwiftFiles(_:)``), which the hook answers about those files or lets run, never with a `where` of the whole tree.
+    /// Whether the lookup the advice on `command` is a `grep` the hook lets run as a search of the Swift files it names, read by the hook's own parser and guard (``InPlaceShape/namedFileSearch(_:)``), whatever its pattern, so the scan never scores as a miss a line the hook let through on purpose, nor excuses one the hook reads otherwise.
     ///
-    /// Holds for a member grep the hook does answer as well, so a caller asks it only of a line the hook declined.
+    /// The caller asks it only of a line the hook found no answer for.
     static func searchesNamedSwiftFiles(_ command: String, holdsSource: ((String) -> Bool)?, skipping sanctioned: Set<String> = []) -> Bool {
-        // One file named is left out: its offer is that file's own digest, scoped to what the search named.
-        guard let pipeline = lookupPipeline(of: command, holdsSource: holdsSource, skipping: sanctioned), pipeline.file == nil,
-              pipeline.query.searches, !pipeline.query.invertsMatch,
-              !pipeline.query.patterns.isEmpty, pipeline.query.patterns.allSatisfy(IndexSuggestion.isName)
+        guard let pipeline = lookupPipeline(of: command, holdsSource: holdsSource, skipping: sanctioned),
+              let search = InPlaceShape.namedFileSearch(pipeline.query)
         else {
             return false
         }
-        let paths = pipeline.query.operandPaths
-        return !paths.isEmpty && InPlaceShape.namesOnlySwiftFiles(paths)
+        // One file named is left out: its offer is that file's own digest, scoped to what the search named.
+        return !InPlaceShape.searchesOneFile(search)
     }
 
     /// The path `command`'s reading stage is pointed at, or `nil` where it names none of its own — the file a single-file read or search names, or the first bare operand of a sweep.

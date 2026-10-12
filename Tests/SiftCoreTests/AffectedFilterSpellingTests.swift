@@ -136,8 +136,8 @@ struct AffectedFilterSpellingTests {
 
         let filters = Self.filters(in: output)
         #expect(filters.count == 10, "one filter per test of the fixture:\n\(output)")
-        #expect(filters.contains(#"LibTests\.shines\(\)"#))
-        #expect(filters.contains(#"LibTests\.Outer/Inner/deep\(\)"#))
+        #expect(filters.contains(#"^LibTests\.shines\(\)"#))
+        #expect(filters.contains(#"^LibTests\.Outer/Inner/deep\(\)"#))
         #expect(output.contains("-only-testing:LibTests/Outer/Inner/deeper()"))
         #expect(output.contains("-only-testing:LibTests/titled()"))
         for filter in filters {

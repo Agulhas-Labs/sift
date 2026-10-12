@@ -3,6 +3,7 @@
 //
 
 import Foundation
+import SiftCore
 
 /// The scan data model `TranscriptAudit` sweeps transcripts into — kept in its own file, alongside the primary type it extends, so that file stays inside the length the project holds every file to.
 extension TranscriptAudit {
@@ -28,12 +29,34 @@ extension TranscriptAudit {
         }
     }
 
+    /// Whether `url`'s recorded working directory places it inside `root` — every transcript when `root` is `nil`, and otherwise only one whose `cwd` is `root` itself or a directory beneath it, canonically compared so a differently-cased or symlinked spelling still matches (the same rule `LogScope` compares a logged call's `root` field by).
+    ///
+    /// The scratch exclusion additionally drops a transcript whose recorded `cwd` is a scratch root (``ScratchRoot``), so the report's share is real sessions only, as its call counts are; a transcript recording no `cwd` is kept.
+    static func inScope(_ url: URL, root: String?, excludingScratch: Bool = false) -> Bool {
+        let recordedCwd = (root != nil || excludingScratch) ? TranscriptWorkingDirectory.of(transcriptAt: url) : nil
+        if excludingScratch, let recordedCwd, ScratchRoot.contains(recordedCwd) {
+            return false
+        }
+        guard let root else { return true }
+        guard let recordedCwd else { return false }
+        return CanonicalPath.of(recordedCwd).isWithin(root)
+    }
+
     /// Every transcript in scope, and every context scanned among them.
     struct Sweep {
         let transcripts: [URL]
         let scans: [Scan]
         /// Every session in the window before a root narrowed it, so an answer that found none in the root can say where they ran.
         var windowed: [URL] = []
+        /// The overruns the hook's suppression log records within the window: answers that ran past their time budget and armed a back-off, whichever transcript the lookups they affected are in.
+        var overruns = 0
+        /// The sessions in the window, and in the root, left out because they were recorded in a scratch root.
+        var scratchSessions = 0
+
+        /// `text` with the line saying how many scratch sessions were left out after it, where any were.
+        func noted(_ text: String) -> String {
+            ScratchRoot.note(count: scratchSessions, noun: "session").map { text + "\n" + $0 } ?? text
+        }
 
         /// The contexts that made a Swift lookup.
         var active: [Scan] {
@@ -47,13 +70,13 @@ extension TranscriptAudit {
         let until: Date?
 
         /// Memoised for the whole sweep: the same file is first-touched in every transcript that opened it.
-        let belowFloor: (String) -> Bool
+        let belowFloor: @Sendable (String) -> Bool
 
         /// Memoised for the whole sweep too, and it matters more here: each answer costs an index open per registered root, and a week of transcripts greps the same handful of names over and over.
-        let couldAnswer: (String, String?) -> Bool
+        let couldAnswer: @Sendable (String, String?) -> Bool
 
         /// Memoised for the whole sweep, same as `couldAnswer` above: this is the member-shaped question, asked once per distinct type-member-root triple rather than once per occurrence across the window.
-        let memberExists: (String, String, String?) -> Bool
+        let memberExists: @Sendable (String, String, String?) -> Bool
 
         let timeZone: TimeZone
 
@@ -62,6 +85,9 @@ extension TranscriptAudit {
 
         /// The calls the hook's log says it let run, by the rule it logged, scored not worth for a rule of worth and batched for a line run whole, wherever the scan would call them cold.
         var loggedLetThrough: [String: InPlaceAnswerer.Withholding] = [:]
+
+        /// The calls the hook's log says it stood aside from, which stay cold and are named for the cause.
+        var stoodAside: [String: StoodAside] = [:]
 
         /// The calls the hook's answered log says it answered in place, scored as an answer delivered as an error is whatever their result's flag says.
         var answeredCalls: Set<String> = []
@@ -158,6 +184,18 @@ extension TranscriptAudit {
             tally.indexed + tally.guided + tally.readWholeAfterDigest + tally.revisited + tally.belowFloor + tally.cold
                 + tally.textSearches + tally.withheldOnWorth + tally.failed + tally.unavailable + tally.declined + tally.refusals > 0
         }
+    }
+
+    /// The overruns in the already-read `entries` that bear on this audit: logged from `root` or beneath it, and within the window.
+    ///
+    /// Where no window is given — `--transcript`, or `--all` — the span is the one the audited transcripts cover: from the earliest stamp any scan saw to the latest modification date among the snapshot's transcripts, the latter nudged forward a second because `until` is exclusive and a file's last write can be its last stamp. Without it the count would be every overrun the log ever recorded, for a single session's audit. A scan with no stamp at all leaves the lower edge open.
+    static func overruns(in entries: [[String: Any]], since: Date?, until: Date?, root: String?, scans: [Scan], snapshot: TranscriptSnapshot) -> Int {
+        guard since == nil, until == nil else {
+            return SuppressionLog.overruns(from: entries, since: since, until: until, root: root)
+        }
+        let first = scans.compactMap(\.earliestStamp).min()
+        let last = snapshot.modified.values.max().map { $0.addingTimeInterval(1) }
+        return SuppressionLog.overruns(from: entries, since: first, until: last, root: root)
     }
 
     /// A counted file row: display name, occurrences, and the last day one was seen.

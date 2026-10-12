@@ -21,7 +21,7 @@ struct WhereLocalTypeShadowTests {
     func aLocalStructSetsApartTheLinesOfItsFunction() async throws {
         let log = try await WhereQualifiedProtocolNoteTests.answer("Log", source: "enum Log { static func top() {} }\nfunc probe() {\n    Log.local()\n    struct Log { static func local() {} }\n    Log.local()\n}\nfunc check() { Log.top() }\n")
 
-        #expect(log.contains("\"Log\" used by 1 line in 1 file — "), "\(log)")
+        #expect(log.contains("\"Log\" (1 use by written name in 1 file) — "), "\(log)")
         #expect(log.contains("; 2 more lines writing \"Log\" bare inside a function that declares its own \"Log\", which is what the name means there, so not use"), "\(log)")
         #expect(log.contains("\n    :7  | func check() { Log.top() }"), "\(log)")
         #expect(!log.contains(":3  |"), "\(log)")
@@ -32,7 +32,7 @@ struct WhereLocalTypeShadowTests {
     func aLocalStructSetsApartNestedBodiesToo() async throws {
         let log = try await WhereQualifiedProtocolNoteTests.answer("Log", source: "enum Log { static func top() {} }\nfunc probe() {\n    struct Log { var count = 0 }\n    let tally = Log()\n    let show = { (x: Log) in x.count }\n    func nested(_ x: Log) -> Int { x.count }\n    _ = show(tally) + nested(tally)\n}\nfunc check() { Log.top() }\n")
 
-        #expect(log.contains("\"Log\" used by 1 line in 1 file — "), "\(log)")
+        #expect(log.contains("\"Log\" (1 use by written name in 1 file) — "), "\(log)")
         #expect(log.contains("; 3 more lines writing \"Log\" bare inside a function that declares its own \"Log\""), "\(log)")
     }
 
@@ -41,7 +41,7 @@ struct WhereLocalTypeShadowTests {
     func aLocalStructShadowsAMemberTypeInsideItsMethod() async throws {
         let item = try await WhereQualifiedProtocolNoteTests.answer("Holder.Item", source: "struct Holder {\n    struct Item { func held() {} }\n    func make() {\n        struct Item { func mine() {} }\n        let x = Item()\n        x.mine()\n    }\n    func take(_ y: Item) { y.held() }\n}\n")
 
-        #expect(item.contains("\"Item\" used by 1 line in 1 file — "), "\(item)")
+        #expect(item.contains("\"Item\" (1 use by written name in 1 file) — "), "\(item)")
         #expect(item.contains("; 1 more line writing \"Item\" bare inside a function that declares its own \"Item\""), "\(item)")
         #expect(item.contains("\n    :8  | func take(_ y: Item) { y.held() }"), "\(item)")
     }

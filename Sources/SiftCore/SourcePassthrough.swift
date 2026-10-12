@@ -104,16 +104,29 @@ public struct SourcePassthrough {
         guard !sites.isEmpty else { return .unmeasured }
 
         var extents: [Extent] = []
-        for row in sites {
+        var header = header
+        for (index, row) in sites.enumerated() {
             // An unreadable or empty extent means the comparison cannot be made honestly — one missing
             // site would understate the source and pass through something incomplete. Keep the digest,
             // and record nothing: a half-read type is a missing measurement, not a small one.
-            guard case let .lines(lines, _) = SourceSlicer.slice(of: row, in: read(row.path)) else {
+            let source = read(row.path)
+            guard case let .lines(lines, firstLine) = SourceSlicer.slice(of: row, in: source), let source else {
                 return .unmeasured
             }
-            extents.append(Extent(label: "\(row.path)\(row.rangeDescription)", lines: lines))
+            // The doc comment is what a digest keeps of a declaration and what says what it is, so a
+            // served declaration carries it; the row's range starts at the declaration itself.
+            let leading = leadingLines(above: firstLine, in: source.components(separatedBy: "\n"))
+            // The citation covers what is served, so it starts at the first doc or attribute line.
+            let cited = "\(row.path):\(firstLine - leading.count)-\(row.endLine)"
+            if index == 0, !leading.isEmpty {
+                header = header.replacingOccurrences(of: "\(row.path)\(row.rangeDescription)", with: cited)
+            }
+            extents.append(Extent(label: leading.isEmpty ? "\(row.path)\(row.rangeDescription)" : cited, lines: leading + lines))
         }
-        return decide(insteadOf: digest, header: header, named: named, extents: extents, preamble: preamble)
+        return decide(
+            insteadOf: digest, header: header, named: named, extents: extents, preamble: preamble,
+            suffix: extents.count == 1 ? servedDeclarationSuffix : servedDeclarationsSuffix
+        )
     }
 
     /// The whole-file variant, for a `digest <path>` whose summary costs as much as the file.
@@ -141,7 +154,8 @@ public struct SourcePassthrough {
         named: Int,
         extents: [Extent],
         preamble: [String],
-        subject: Subject = .swift
+        subject: Subject = .swift,
+        suffix: String = servedSourceSuffix
     ) -> Decision {
         // Counted before the ceiling, not after: a type too long to pass through is exactly the type whose
         // digest compresses best, and stopping short of the arithmetic would leave the biggest savings the
@@ -177,7 +191,7 @@ public struct SourcePassthrough {
         // code inside it are the same digest and a reader checking the number must not have to guess which.
         var lines = preamble
         lines.append(header)
-        lines.append(note(totalLines: totalLines, siteCount: extents.count, reason: {
+        lines.append(note(totalLines: totalLines, siteCount: extents.count, suffix: suffix, reason: {
             if ratio >= breakEvenRatio {
                 return "\(subject.summary) would cost \(percentage(ratio)) of the \(subject.whole)"
             }
@@ -205,10 +219,37 @@ public struct SourcePassthrough {
         )
     }
 
-    private static func note(totalLines: Int, siteCount: Int, reason: String) -> String {
+    private static func note(totalLines: Int, siteCount: Int, suffix: String, reason: String) -> String {
         let counted = "\(totalLines) line\(totalLines == 1 ? "" : "s")"
         let span = siteCount == 1 ? counted : "\(counted) across \(siteCount) sites"
-        return "(\(span); \(reason)\(servedSourceSuffix)"
+        return "(\(span); \(reason)\(suffix)"
+    }
+
+    /// The doc-comment and attribute lines standing directly above a declaration that starts at `firstLine` (1-based), in file order.
+    ///
+    /// Walks up over `///` lines, attribute lines and a `/** … */` block, and stops at the first line that is none of them: a plain `//` comment or a blank line is not part of the declaration.
+    static func leadingLines(above firstLine: Int, in sourceLines: [String]) -> [String] {
+        let end = min(max(firstLine - 1, 0), sourceLines.count)
+        var start = end
+        while start > 0 {
+            let line = sourceLines[start - 1].trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("///") || line.hasPrefix("@") {
+                start -= 1
+            } else if line.hasSuffix("*/"), let opening = blockDocStart(closingAt: start - 1, in: sourceLines) {
+                start = opening
+            } else {
+                break
+            }
+        }
+        return Array(sourceLines[start ..< end])
+    }
+
+    /// The index of the `/**` line opening the block comment that closes at `closing`, or `nil` when that comment is not a doc comment.
+    private static func blockDocStart(closingAt closing: Int, in sourceLines: [String]) -> Int? {
+        for index in stride(from: closing, through: 0, by: -1) where sourceLines[index].contains("/*") {
+            return sourceLines[index].trimmingCharacters(in: .whitespaces).hasPrefix("/**") ? index : nil
+        }
+        return nil
     }
 
     private static func percentage(_ ratio: Double) -> String {
@@ -347,6 +388,16 @@ public extension SourcePassthrough {
         ", so the source itself follows)"
     }
 
+    /// The ending for a type's digest, which serves the declaration and its doc comment, not the file around it.
+    static var servedDeclarationSuffix: String {
+        ", so the declaration's source follows)"
+    }
+
+    /// ``servedDeclarationSuffix`` for a type with extensions, where the sites are several declarations.
+    static var servedDeclarationsSuffix: String {
+        ", so the declarations' source follows)"
+    }
+
     /// What a whole-file digest answer decided about its file: which file, and whether its source was served in place of a summary.
     struct FileVerdict: Sendable, Equatable {
         /// The file as the answer named it: relative to the repository the digest ran in.
@@ -413,7 +464,8 @@ extension SourcePassthrough {
         if index < lines.count, lines[index].hasPrefix(SiftEngine.inMemoryIndexNoteOpening) {
             index += 1
         }
-        if index + 1 < lines.count, lines[index].hasPrefix(GuessedModuleNotice.bannerOpening), lines[index + 1].isEmpty {
+        // A guessed-module banner of each reason can sit there, one under the other.
+        while index + 1 < lines.count, GuessedModuleNotice.opensBanner(lines[index]), lines[index + 1].isEmpty {
             index += 2
         }
         return index

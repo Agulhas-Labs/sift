@@ -25,6 +25,23 @@ struct DiffNameOnlyCallersTests {
         #expect(output.contains("        Sources/Lib/Lonely.swift:5  in pick(_:)"), "\(output)")
     }
 
+    /// A function both called and handed on unapplied lists its call and still says where its name is written with no call, so the list of calls is not read as every use.
+    @Test
+    func aChangedFunctionCalledAndHandedOnShowsBoth() async throws {
+        let root = try TestSources.makeTempRepo()
+        try TestSources.write(DiffEngineTests.manifest(), to: "Package.swift", in: root)
+        try TestSources.write(Self.lonely(returning: "Int", value: "1") + Self.caller(returning: "Int"), to: "Sources/Lib/Lonely.swift", in: root)
+        try TestSources.commitAll(in: root, message: "fixture")
+        try TestSources.write(Self.lonely(returning: "String", value: "\"1\"") + Self.caller(returning: "String"), to: "Sources/Lib/Lonely.swift", in: root)
+
+        let output = try await DiffEngineTests.diff(root)
+
+        #expect(output.contains("~ Lonely.only() — name-matched on \"only\""), "\(output)")
+        #expect(output.contains("      Sources/Lib/Lonely.swift:7  in use(_:)"), "\(output)")
+        #expect(output.contains("      but the name is written once with no call"), "\(output)")
+        #expect(output.contains("        Sources/Lib/Lonely.swift:5  in pick(_:)"), "\(output)")
+    }
+
     /// A reference the store records with no call is marked in the diff's list as in `where`'s, so a function handed on unapplied is not read as called.
     @Test
     func aStoreReferenceWithNoCallIsMarkedInTheDiff() async throws {
@@ -97,6 +114,10 @@ struct DiffNameOnlyCallersTests {
             return l.only
         }
         """
+    }
+
+    static func caller(returning type: String) -> String {
+        "\nfunc use(_ l: Lonely) -> \(type) { l.only() }"
     }
 
     static func depot(returning type: String, body: String) -> String {

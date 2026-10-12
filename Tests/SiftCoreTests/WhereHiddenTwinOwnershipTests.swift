@@ -39,7 +39,7 @@ struct WhereHiddenTwinOwnershipTests {
         try TestSources.write(Self.depotFile, to: "Sources/Lib/Depot.swift", in: root)
         try TestSources.commitAll(in: root, message: "hidden twin fixture, unbuilt")
         let engine = try SiftEngine(directory: root)
-        return try await engine.lookup(symbol: "JSONDecoder", freshness: engine.ensureFresh())
+        return try await engine.lookup(symbol: "JSONDecoder", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
     }
 
     /// A declaration private to another file, or under an `#if` the extension does not share, cannot be what the extension extends for certain, so the extension's line is a use rather than the type's own.
@@ -47,7 +47,7 @@ struct WhereHiddenTwinOwnershipTests {
     func anExtensionTheDeclarationIsHiddenFromIsAUse(gizmo: String) async throws {
         let output = try await Self.answer(gizmo: gizmo)
 
-        #expect(output.contains("\"JSONDecoder\" used by 1 line in 1 file — "), "\(output)")
+        #expect(output.contains("\"JSONDecoder\" (1 use by written name in 1 file) — "), "\(output)")
         #expect(output.contains("\n    :3  | extension JSONDecoder {\n"), "\(output)")
         #expect(!output.contains("inside its own declaration or its extensions in this module"), "\(output)")
     }
@@ -57,7 +57,7 @@ struct WhereHiddenTwinOwnershipTests {
     func anExtensionOfAVisibleDeclarationIsItsOwn() async throws {
         let output = try await Self.answer(gizmo: "struct JSONDecoder {}\n")
 
-        #expect(output.contains("1 more line inside its own declaration or its extensions in this module, which is not use"), "\(output)")
+        #expect(output.contains("1 more line inside its own declaration or its extensions in this module"), "\(output)")
         #expect(!output.contains("\"JSONDecoder\" used by"), "\(output)")
     }
 }

@@ -39,7 +39,7 @@ struct WhereUnbuiltTestsZeroUseTests {
         let property = try await engine.lookup(symbol: "Box.walk", freshness: engine.ensureFresh())
         let hedge = "recorded in the store; 1 test file is not in it (build with `sift run -- swift build --build-tests`)"
 
-        #expect(type.contains("no references to Lib.Box \(hedge) — check comments and strings with grep"), "\(type)")
+        #expect(type.contains("no references to Lib.Box \(hedge) — where --refs lists comments, strings and Markdown under not code"), "\(type)")
         #expect(property.contains("no reads or writes of Lib.Box.walk \(hedge)"), "\(property)")
     }
 }

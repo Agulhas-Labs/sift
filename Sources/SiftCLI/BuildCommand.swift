@@ -153,7 +153,7 @@ struct BuildCommand: ParsableCommand {
 private extension BuildCommand {
     /// A failed build's own answer, as `sift run` gives it, or its raw log where the filter could not explain it.
     func reportFailure(_ outcome: RunOutcome, root: URL) {
-        if let answer = outcome.filteredAnswer(workingDirectory: root) {
+        if let answer = outcome.filteredAnswer(workingDirectory: root, stamped: true) {
             output.emit(answer.text)
             return
         }

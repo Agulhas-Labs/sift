@@ -12,29 +12,30 @@ import SwiftSyntax
 struct ConformanceHeads {
     /// The heads each type, protocol or extension declaration in `source` writes in its own inheritance clause, and each typealias in its underlying type (never its where clause), keyed by where the declaration starts, its attributes included, which is where the index puts its row.
     static func declarations(in source: String) -> [Start: [String: Set<Start>]] {
-        let tree = Parser.parse(source: source)
-        let converter = SourceLocationConverter(fileName: "", tree: tree)
-        var found: [Start: [String: Set<Start>]] = [:]
-        var pending = [Syntax(tree)]
-        while let node = pending.popLast() {
-            pending += node.children(viewMode: .sourceAccurate)
-            let types: [TypeSyntax] = if let group = node.asProtocol(DeclGroupSyntax.self) {
-                group.inheritanceClause?.inheritedTypes.map(\.type) ?? []
-            } else if let alias = node.as(TypeAliasDeclSyntax.self) {
-                [alias.initializer.value]
-            } else {
-                []
+        NestingGate.parseOrEmpty(source) { tree in
+            let converter = SourceLocationConverter(fileName: "", tree: tree)
+            var found: [Start: [String: Set<Start>]] = [:]
+            var pending = [Syntax(tree)]
+            while let node = pending.popLast() {
+                pending += node.children(viewMode: .sourceAccurate)
+                let types: [TypeSyntax] = if let group = node.asProtocol(DeclGroupSyntax.self) {
+                    group.inheritanceClause?.inheritedTypes.map(\.type) ?? []
+                } else if let alias = node.as(TypeAliasDeclSyntax.self) {
+                    [alias.initializer.value]
+                } else {
+                    []
+                }
+                guard !types.isEmpty else { continue }
+                var heads: [String: Set<Start>] = [:]
+                for token in types.flatMap(Self.heads(of:)) {
+                    let location = converter.location(for: token.positionAfterSkippingLeadingTrivia)
+                    heads[Self.name(of: token), default: []].insert(Start(line: location.line, column: location.column))
+                }
+                let start = converter.location(for: node.positionAfterSkippingLeadingTrivia)
+                found[Start(line: start.line, column: start.column)] = heads
             }
-            guard !types.isEmpty else { continue }
-            var heads: [String: Set<Start>] = [:]
-            for token in types.flatMap(Self.heads(of:)) {
-                let location = converter.location(for: token.positionAfterSkippingLeadingTrivia)
-                heads[Self.name(of: token), default: []].insert(Start(line: location.line, column: location.column))
-            }
-            let start = converter.location(for: node.positionAfterSkippingLeadingTrivia)
-            found[Start(line: start.line, column: start.column)] = heads
+            return found
         }
-        return found
     }
 
     /// The name tokens `type` writes as what is conformed to: an identifier's or a member type's own last name, each element of a composition, under any attribute; never a generic argument, an existential's protocol or a suppressed `~Copyable`.

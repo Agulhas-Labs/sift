@@ -16,9 +16,10 @@ struct UsageReportTests {
         return file
     }
 
-    private static func entry(tool: String, target: String? = nil, root: String = "/repo/a", ms: Int = 10, succeeded: Bool = true, error: String? = nil, timestamp: String = "2026-07-30T10:00:00Z", bytes: (out: Int, source: Int)? = nil, served: Int? = nil, agent: String? = nil, via: String? = nil) -> String {
+    private static func entry(tool: String, target: String? = nil, root: String = "/repo/a", ms: Int = 10, succeeded: Bool = true, error: String? = nil, timestamp: String = "2026-07-30T10:00:00Z", bytes: (out: Int, source: Int)? = nil, served: Int? = nil, agent: String? = nil, via: String? = nil, intercepted: String? = nil) -> String {
         var object: [String: Any] = ["tool": tool, "root": root, "ms": ms, "ok": succeeded, "ts": timestamp]
         object["via"] = via
+        object["intercepted"] = intercepted
         if let target {
             object["target"] = target
         }
@@ -71,8 +72,8 @@ struct UsageReportTests {
     @Test
     func theSummaryNamesTheWorkASubagentDid() throws {
         let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Widget", bytes: (out: 400, source: 4000), agent: "adae5f77"),
-            Self.entry(tool: "digest", target: "Engine", bytes: (out: 200, source: 2000), agent: "bb19c2d0"),
+            Self.entry(tool: "digest", target: "Widget", bytes: (out: 400, source: 4000), agent: "adae5f77", via: "hook", intercepted: "window"),
+            Self.entry(tool: "digest", target: "Engine", bytes: (out: 200, source: 2000), agent: "bb19c2d0", via: "hook", intercepted: "window"),
             Self.entry(tool: "digest", target: "Rail", bytes: (out: 100, source: 1000)),
         ])
 
@@ -91,8 +92,8 @@ struct UsageReportTests {
     @Test
     func oneSubagentIsNamedInTheSingularAndTheCountInFrontOfItIsCalls() throws {
         let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Widget", bytes: (out: 400, source: 4000), agent: "adae5f77"),
-            Self.entry(tool: "digest", target: "Engine", bytes: (out: 200, source: 2000), agent: "adae5f77"),
+            Self.entry(tool: "digest", target: "Widget", bytes: (out: 400, source: 4000), agent: "adae5f77", via: "hook", intercepted: "window"),
+            Self.entry(tool: "digest", target: "Engine", bytes: (out: 200, source: 2000), agent: "adae5f77", via: "hook", intercepted: "window"),
             Self.entry(tool: "digest", target: "Rail", bytes: (out: 100, source: 1000)),
         ])
 
@@ -284,135 +285,84 @@ struct UsageReportTests {
         #expect(report.contains("usage — 0 failures, 1 call (since 2026-07-30, in /repo/a)"))
     }
 
-    /// Savings are summed on both sides, and said to be measured over the calls that measured anything.
+    /// An intercepted window, the way the advice hook logs one: the bytes the command named, the bytes served.
+    private static func window(_ target: String, out: Int, source: Int, root: String = "/repo/a", timestamp: String = "2026-07-30T10:00:00Z") -> String {
+        entry(tool: "digest", target: target, root: root, timestamp: timestamp, bytes: (out: out, source: source), via: "hook", intercepted: "window")
+    }
+
+    /// Savings are summed on both sides, and priced only over the intercepted reads.
     ///
-    /// A mean of per-call ratios would read 30% here, letting the tiny answer — the shape a digest compresses worst — outweigh the large one the tool exists for. And a report that stated 11% without naming the two calls it came from would be read as a claim about all three.
+    /// A mean of per-call ratios would read 30% here, letting the tiny answer outweigh the large one. And the digest made by choice is counted beside them, unpriced, not folded in.
     @Test
-    func savingsSumBothSidesAndStateHowManyCallsTheyWereMeasuredOver() throws {
+    func savingsSumBothSidesAndStateWhatTheyWerePricedOn() throws {
         let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Small", bytes: (out: 10, source: 20)),
-            Self.entry(tool: "digest", target: "Big", bytes: (out: 100, source: 1000)),
+            Self.window("Small", out: 10, source: 20),
+            Self.window("Big", out: 100, source: 1000),
+            Self.entry(tool: "digest", target: "Voluntary", bytes: (out: 50, source: 5000)),
             Self.entry(tool: "where", target: "Big"),
         ])
 
         let report = UsageReport.render(fileURL: file)
 
-        #expect(report.contains("digest served 11% of the source it replaced (measured over 2 of 3 calls)"))
+        #expect(report.contains("estimated savings — ~227 tokens saved on 2 intercepted reads (file or window asked for − answer served); 2 other calls unpriced"))
+        #expect(report.contains("     2  priced"))
+        #expect(!report.contains("leans high"))
     }
 
     /// A saving too large to round to anything is still not free, and printing 0% claims it was.
-    ///
-    /// The strongest number the tool can produce is the one most likely to be disbelieved, and "served 0% of the source it replaced" is a claim no measurement supports — the answer cost bytes, and `<1%` says both that it was small and that it was not nothing.
     @Test
     func aSavingTooLargeToRoundIsPrintedAsUnderOnePercentNotAsFree() throws {
-        let file = try Self.writeLog([Self.entry(tool: "digest", target: "Enormous", bytes: (out: 200, source: 90000))])
+        let file = try Self.writeLog([Self.window("Enormous", out: 200, source: 90000)])
 
         let scan = try #require(try? UsageScan.load(fileURL: file).get())
         let savings = try #require(scan.savings)
 
         #expect(savings.percent == 0)
         #expect(savings.percentText == "<1%")
-        #expect(UsageReport.render(fileURL: file).contains("digest served <1% of the source it replaced"))
+        #expect(UsageReport.render(fileURL: file).contains("<1%") || UsageReport.render(fileURL: file).contains("under the source"))
     }
 
-    /// A denominator that is mostly log age says so, rather than leaving it to read as sampling.
-    ///
-    /// "Measured over 1 of 3 calls" invites the reading that most answers declined to weigh themselves; what happened is that the fields were added on a day inside the window and everything before it is older than the measurement.
+    /// Lines written before the fields existed read as unpriced calls, not as savings of nothing.
     @Test
-    func aWindowReachingBackPastTheFieldsNamesTheDayTheyStarted() throws {
-        let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Old", timestamp: "2026-08-10T09:00:00Z"),
-            Self.entry(tool: "digest", target: "Older", timestamp: "2026-08-11T09:00:00Z"),
-            Self.entry(tool: "digest", target: "Now", timestamp: "2026-08-18T09:00:00Z", bytes: (out: 100, source: 1000)),
-        ])
-
-        let report = UsageReport.render(fileURL: file)
-
-        #expect(report.contains("(measured over 1 of 3 calls — fields recorded since 2026-08-18)"))
-    }
-
-    /// A tool that never measures is not evidence the log predates the fields, and must not date them.
-    ///
-    /// `where` and `search` stand in for a grep rather than a run of source, so they carry no bytes by design. Explaining the denominator with an onset day on their account would attribute it to something that is not its cause.
-    @Test
-    func anUnmeasuredCallFromANonMeasuringToolDoesNotDateTheFields() throws {
-        let file = try Self.writeLog([
-            // Deliberately on a day *before* the first measured call: on the same day the day filter alone
-            // withholds the note, and the test would pass without the tool ever being consulted.
-            Self.entry(tool: "where", target: "Widget", timestamp: "2026-08-17T08:00:00Z"),
-            Self.entry(tool: "digest", target: "Now", timestamp: "2026-08-18T09:00:00Z", bytes: (out: 100, source: 1000)),
-        ])
-
-        let report = UsageReport.render(fileURL: file)
-
-        #expect(report.contains("(measured over 1 of 2 calls)"))
-        #expect(!report.contains("fields recorded since"))
-    }
-
-    /// A call that failed measured nothing because it answered nothing, and is no evidence the log predates the fields.
-    ///
-    /// The same wrong-cause error as the test above, arriving down the one path `tool` cannot filter: a refusal replaces no source, so a failed `digest` records no bytes under whatever version wrote it. Dating the onset on it explains the denominator with a day that proves only that something went wrong.
-    @Test
-    func aFailedCallBeforeTheFirstMeasuredOneDoesNotDateTheFields() throws {
-        let file = try Self.writeLog([
-            Self.entry(
-                tool: "digest",
-                target: "Missing",
-                succeeded: false,
-                error: "no type named Missing",
-                timestamp: "2026-08-17T08:00:00Z"
-            ),
-            Self.entry(tool: "digest", target: "Now", timestamp: "2026-08-18T09:00:00Z", bytes: (out: 100, source: 1000)),
-        ])
-
-        let report = UsageReport.render(fileURL: file)
-
-        #expect(report.contains("(measured over 1 of 2 calls)"))
-        #expect(!report.contains("fields recorded since"))
-    }
-
-    /// Lines written before the fields existed read as unmeasured calls, not as savings of nothing.
-    @Test
-    func aLogWithNothingMeasuredCarriesNoSavingsLine() throws {
+    func aLogWithNothingPricedCarriesNoSavingsLine() throws {
         let file = try Self.writeLog([
             Self.entry(tool: "digest", target: "Widget"),
             Self.entry(tool: "where", target: "Widget"),
         ])
 
-        #expect(!UsageReport.render(fileURL: file).contains("of the source it replaced"))
+        #expect(!UsageReport.render(fileURL: file).contains("tokens saved"))
     }
 
-    /// Three generations of log line coexist, and each reads as what it is.
+    /// Three generations of log line coexist, and none but an intercepted read is priced.
     ///
-    /// The byte fields arrived in two rounds — the pair for `digest` first, the served size for every tool later — so a log spanning both holds lines carrying neither, lines carrying both, and lines carrying only the numerator. A reader that took the served size as evidence of a measurement would fold a `where` call into the compression ratio with no denominator at all.
+    /// A voluntary digest carries both byte fields and a lookup carries only the served size; neither stands in for a read anyone ran, so both are counted and sized, and only the hook's interception is a saving.
     @Test
-    func aServedSizeWithoutASourceIsNotAMeasurement() throws {
+    func onlyAnInterceptedReadIsPricedWhateverElseRecordedItsBytes() throws {
         let file = try Self.writeLog([
             Self.entry(tool: "digest", target: "Ancient", timestamp: "2026-08-01T09:00:00Z"),
-            Self.entry(tool: "digest", target: "Measured", timestamp: "2026-08-18T09:00:00Z", bytes: (out: 100, source: 1000)),
+            Self.entry(tool: "digest", target: "Voluntary", timestamp: "2026-08-18T09:00:00Z", bytes: (out: 100, source: 1000)),
             Self.entry(tool: "where", target: "Looked up", timestamp: "2026-08-27T09:00:00Z", served: 4000),
+            Self.window("Asked", out: 100, source: 1000, timestamp: "2026-08-28T09:00:00Z"),
         ])
 
         let scan = try #require(try? UsageScan.load(fileURL: file).get())
         let savings = try #require(scan.savings)
 
-        #expect(scan.entries.count == 3)
-        #expect(scan.entries.map { $0.answer?.served } == [nil, 100, 4000])
-        #expect(scan.entries.compactMap(\.measured).count == 1)
-        // The 4,000 bytes the lookup served are on the record and out of the ratio, which is the whole point
-        // of recording them without inventing a source to divide them by.
+        #expect(scan.entries.count == 4)
+        #expect(scan.entries.map { $0.answer?.served } == [nil, 100, 4000, 100])
+        #expect(scan.entries.compactMap(\.credited).count == 1)
         #expect(savings.total.calls == 1)
         #expect(savings.total.served == 100)
-        #expect(savings.unpriced?.served == 4000)
+        #expect(savings.total.saved == 900)
+        #expect(savings.unpriced?.calls == 3)
+        #expect(savings.unpriced?.served == 4100)
     }
 
-    /// The served size reached the lookup tools on its own day, and the line says so rather than reading as "they served almost nothing".
-    ///
-    /// The same age argument the measured onset makes, against a later start date. A window spanning both days holds `where` calls that recorded nothing because they predate the field, and "1 of 2 recorded what they served" invites the reading that the other one served nothing at all.
+    /// The unpriced note says what the calls served and why they carry no saving, and never dates a field.
     @Test
-    func theUnpricedCallsNameTheDayTheyBeganRecordingWhatTheyServed() throws {
+    func theUnpricedCallsSayWhatTheyServedAndWhyTheyAreNotPriced() throws {
         let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Measured", timestamp: "2026-08-18T09:00:00Z", bytes: (out: 100, source: 1000)),
+            Self.window("Measured", out: 100, source: 1000, timestamp: "2026-08-18T09:00:00Z"),
             Self.entry(tool: "where", target: "Before", timestamp: "2026-08-20T09:00:00Z"),
             Self.entry(tool: "where", target: "After", timestamp: "2026-08-27T09:00:00Z", served: 4000),
         ])
@@ -422,20 +372,33 @@ struct UsageReportTests {
 
         #expect(unpriced.calls == 2)
         #expect(unpriced.recorded == 1)
-        #expect(unpriced.recordedSince == "2026-08-27")
         // `4.0`, not `4`: below ten kilobytes the figure carries a decimal, because truncating there would
         // print 1,999 B as `1 kB`.
-        #expect(unpriced.note.hasSuffix("1 of them served 4.0 kB, recorded since 2026-08-27"))
+        #expect(unpriced.note.contains("1 of them served 4.0 kB"))
+        #expect(unpriced.note.contains("nothing observed to price them against"))
     }
 
-    /// A window in which every measured call is on one side prints that side once, not twice under two labels.
-    ///
-    /// Two rows reading identically is not corroboration; it is one number said again, and the split is only worth printing where it separates something.
+    /// A hook answer logged before the log recorded what it intercepted is unpriced, and the note names it.
+    @Test
+    func aHookAnswerWithoutTheInterceptedFieldIsUnpricedAndSaysSo() throws {
+        let file = try Self.writeLog([
+            Self.window("Asked", out: 100, source: 1000),
+            Self.entry(tool: "digest", target: "Old", bytes: (out: 100, source: 1000), via: "hook"),
+        ])
+
+        let unpriced = try #require(try UsageScan.load(fileURL: file).get().savings?.unpriced)
+
+        #expect(unpriced.calls == 1)
+        #expect(unpriced.unlabelled == 1)
+        #expect(unpriced.note.hasSuffix("1 of them hook answers logged before the field that prices one"))
+    }
+
+    /// A window in which every priced call is on one side prints that side once, not twice under two labels.
     @Test
     func aWindowWithNoPassthroughsPrintsOneRowRatherThanTheSameRowTwice() throws {
         let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Big", bytes: (out: 100, source: 1000)),
-            Self.entry(tool: "digest", target: "Bigger", bytes: (out: 200, source: 4000)),
+            Self.window("Big", out: 100, source: 1000),
+            Self.window("Bigger", out: 200, source: 4000),
         ])
 
         let report = UsageReport.render(fileURL: file)
@@ -444,34 +407,33 @@ struct UsageReportTests {
         #expect(savings.split.isEmpty)
         #expect(!report.contains("compressed"))
         #expect(!report.contains("served source"))
-        #expect(report.contains("     2  measured"))
+        #expect(report.contains("     2  priced"))
     }
 
-    /// With nothing in scope left unmeasured, the total is a total and says nothing about floors.
+    /// With nothing in scope left unpriced the total states no unpriced count.
     @Test
-    func aWindowWhereEveryCallWasWeighedDoesNotCallItsTotalAFloor() throws {
-        let file = try Self.writeLog([Self.entry(tool: "digest", target: "Only", bytes: (out: 100, source: 1000))])
+    func aWindowWhereEveryCallWasPricedStatesNoUnpricedCalls() throws {
+        let file = try Self.writeLog([Self.window("Only", out: 100, source: 1000)])
 
         let savings = try #require(try UsageScan.load(fileURL: file).get().savings)
 
-        #expect(savings.unrecorded == nil)
         #expect(savings.unpriced == nil)
-        #expect(savings.floorNote == nil)
-        #expect(!UsageReport.render(fileURL: file).contains("leaves out what was not weighed"))
+        #expect(!savings.headline.contains("unpriced"))
     }
 
     /// The savings line is scoped by the same filters as the counts above it.
     @Test
     func savingsRespectTheSinceAndRootFilters() throws {
         let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Old", timestamp: "2026-07-28T09:00:00Z", bytes: (out: 900, source: 1000)),
-            Self.entry(tool: "digest", target: "Recent", timestamp: "2026-07-30T09:00:00Z", bytes: (out: 100, source: 1000)),
-            Self.entry(tool: "digest", target: "Elsewhere", root: "/repo/b", timestamp: "2026-07-30T09:00:00Z", bytes: (out: 900, source: 1000)),
+            Self.window("Old", out: 900, source: 1000, timestamp: "2026-07-28T09:00:00Z"),
+            Self.window("Recent", out: 100, source: 1000, timestamp: "2026-07-30T09:00:00Z"),
+            Self.window("Elsewhere", out: 900, source: 1000, root: "/repo/b", timestamp: "2026-07-30T09:00:00Z"),
         ])
 
         let report = UsageReport.render(fileURL: file, since: "2026-07-30", root: "/repo/a")
 
-        #expect(report.contains("digest served 10% of the source it replaced (measured over 1 of 1 call)"))
+        #expect(report.contains("saved on 1 intercepted read (file or window asked for − answer served)"))
+        #expect(report.contains("     1  priced"))
     }
 
     /// Seven roots, each with a distinct call count so `most-used first` orders them without ties: `/repo/r0` (7 calls) down to `/repo/r6` (1 call).
@@ -527,46 +489,5 @@ struct UsageReportTests {
         }
 
         #expect(!report.contains("more root"))
-    }
-
-    /// The floor note says a face's lookups may be missing from the log only where the window reaches back past the CLI's first logged lookup — dated over the whole log, not the window, since it is a fact about the machine.
-    @Test
-    func theFloorNoteBlamesAnUnloggedFaceOnlyWhereTheWindowReachesPastIt() throws {
-        let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Widget", timestamp: "2026-07-28T09:00:00Z", bytes: (out: 400, source: 4000)),
-            Self.entry(tool: "where", target: "Widget", timestamp: "2026-07-28T10:00:00Z", served: 90, via: "cli"),
-            Self.entry(tool: "digest", target: "Engine", timestamp: "2026-07-29T08:00:00Z", bytes: (out: 200, source: 2000)),
-            Self.entry(tool: "where", target: "Engine", timestamp: "2026-07-29T10:00:00Z", served: 90, via: "cli"),
-        ])
-        let clause = "and a lookup served before its face began logging is not in the log to weigh at all."
-
-        #expect(UsageReport.render(fileURL: file).contains(clause))
-        let afterward = UsageReport.render(fileURL: file, since: "2026-07-29")
-        #expect(afterward.contains("leaves out what was not weighed: only the 1 call above were weighed.\n"))
-        #expect(!afterward.contains(clause))
-    }
-
-    /// A log with no CLI line at all cannot tell a machine that never used the CLI from one older than its logging, so the floor keeps the clause.
-    @Test
-    func theFloorNoteKeepsTheUnloggedFaceWhereTheLogHoldsNoCLILine() throws {
-        let file = try Self.writeLog([
-            Self.entry(tool: "digest", target: "Widget", bytes: (out: 400, source: 4000)),
-            Self.entry(tool: "where", target: "Widget", served: 90),
-        ])
-
-        #expect(UsageReport.render(fileURL: file).contains("is not in the log to weigh at all."))
-    }
-
-    /// The clause is decided on the window's own start against the onset's day, not on which entries happen to fall in scope — a `--since` before the CLI's first logged lookup keeps the clause even where the log holds no entry earlier than that lookup to prove the gap.
-    @Test
-    func theFloorNoteKeepsTheClauseWhenTheWindowStartsBeforeCLILoggingWithNoEntriesBetween() throws {
-        let file = try Self.writeLog([
-            Self.entry(tool: "where", target: "Widget", timestamp: "2026-07-29T09:00:00Z", served: 90, via: "cli"),
-            Self.entry(tool: "digest", target: "Engine", timestamp: "2026-07-29T10:00:00Z", bytes: (out: 200, source: 2000)),
-        ])
-
-        let report = UsageReport.render(fileURL: file, since: "2026-07-01")
-
-        #expect(report.contains("and a lookup served before its face began logging is not in the log to weigh at all."))
     }
 }

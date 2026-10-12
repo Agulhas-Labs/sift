@@ -8,7 +8,7 @@ import SwiftSyntax
 ///
 /// Computed lazily per declaration and thrown away with it. The scan is one pass and collects all three axes at once, because a query asking two body questions should not walk the subtree twice.
 ///
-/// **Scope note that changes what answers mean:** the subtree of a *type* includes every member body, so `kind:class calls:fetch` matches a class one of whose methods calls `fetch`. That is the useful reading, but it means a body term on a container is a question about the container's whole contents, not about a body it has of its own.
+/// **Scope note that changes what answers mean:** the subtree of a *type* includes every member body written inside its declaration, but not those of an `extension` of it, so `kind:class calls:fetch` matches a class one of whose methods calls `fetch`. That is the useful reading, but it means a body term on a container is a question about the container's whole contents, not about a body it has of its own.
 struct BodyFacts {
     /// Base names of every call — `store.save(x)` contributes `save`, `Task { }` contributes `Task`.
     private(set) var calledNames: Set<String> = []

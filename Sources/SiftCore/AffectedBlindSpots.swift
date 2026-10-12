@@ -15,9 +15,14 @@ struct AffectedBlindSpots {
             "a subclass override reached through its base type is an occurrence against the base, so a test exercising only the subclass can be missing here",
             "resources, fixtures and golden files loaded by name are not code occurrences at all — a test that reads a file this change rewrote has no reference to find",
             "macro-generated code is invisible to the parser, so a test touching only what a macro expands to is not listed",
-            "comments and string literals are not indexed — the same boundary `where --refs` states — so a name that only appears in them is missed",
+            "comments and string literals are not indexed, so a test that only names the symbol in one of them is not listed",
             "a test that fails on behaviour rather than on a symbol (an ordering, a timing, a total) needs no reference to this change to break",
         ]
+    }
+
+    /// What the answer itself says of the whole list, the first sentence of ``conclusion``.
+    static var lowerBoundLine: String {
+        "this is a lower bound, not a safe-to-skip set: it reports, it does not run, and it never decides what to leave out."
     }
 
     /// The heading that has to be read before the list, in the imperative, because it is an instruction and not a disclaimer.
@@ -27,7 +32,7 @@ struct AffectedBlindSpots {
 
     /// The line that closes the block, and the only sentence in the answer that says what to do with all of it.
     static var conclusion: String {
-        "this is a lower bound, not a safe-to-skip set: it reports, it does not run, and it never decides what to leave out. A green run of only these tests is not a green suite."
+        lowerBoundLine + " A green run of only these tests is not a green suite."
     }
 
     /// The depth clause, which changes with the query and so cannot be a constant.
@@ -35,7 +40,7 @@ struct AffectedBlindSpots {
     /// Given the changed files the resolved walk went on from, it names them as the exception, so a list holding tests past the bound does not sit under a line saying the walk stopped there.
     static func depthLine(_ depth: Int, walkedOn files: Int = 0) -> String {
         let exception = files == 0 ? "" : ", except from the \(files == 1 ? "changed file" : "\(files) changed files") the note above names, walked on past it toward \(files == 1 ? "its" : "each one's") first test, as far as that note says it went"
-        return "the reference walk stops at \(depth) hop\(depth == 1 ? "" : "s")\(exception) — a test reaching this change through a longer chain of helpers is not listed, and a bounded walk is bounded"
+        return "the reference walk stops at \(depth) hop\(depth == 1 ? "" : "s")\(exception) — a test further out is not listed"
     }
 
     /// `diff`'s tests section's clause for the changed files the walk went on from, which says toward a first test and not to one.
@@ -48,6 +53,16 @@ struct AffectedBlindSpots {
     /// This is the one place the answer stops being a lower bound and becomes an instruction, so it is the one place a caveat is not optional. Recognising tests by shape from indexed rows is what lets this cover SwiftPM, XcodeGen and `.xcodeproj` at once, and the whole cost of that choice lands here: the index holds the **module**, `-only-testing:` takes the target, and the two part company wherever a target overrides `PRODUCT_MODULE_NAME`. `xcodebuild` does not skip an identifier it does not recognise — it fails the entire invocation — so a wrong name here does not narrow a run, it loses one. ``TestSymbolReader`` says the cost is stated where it is felt; this is where.
     static var moduleNameCaveat: String {
         "the `-only-testing:` arguments below name the **module**, which is the target name for SwiftPM and for any Xcode target that has not overridden `PRODUCT_MODULE_NAME` — where one has, the identifier is not a target `xcodebuild` knows and it fails the whole invocation rather than skipping that selection; check one before running the set"
+    }
+
+    /// ``moduleNameCaveat`` as the answer's own entry, short: the full text is in `sift help affected-limits`.
+    static var moduleNameClause: String {
+        "`-only-testing:` names the module: a target with its own PRODUCT_MODULE_NAME makes xcodebuild fail the whole invocation rather than skipping that selection"
+    }
+
+    /// ``nestedXCTestCaseCaveat`` as the answer's own entry, short: the full text is in `sift help affected-limits`.
+    static var nestedXCTestClause: String {
+        "an XCTest case nested inside another type is selected by no `swift test --filter`, and by xcodebuild only through its runtime class name"
     }
 
     /// Named only when the answer contains a test in an XCTest case nested inside another type, since the two runners' lines each treat that test their own way.

@@ -90,22 +90,23 @@ private extension BareNameOutsideTypes {
         // A macro's declaration always writes its definition, `= #externalMacro(…)` say, so the cheap test never skips a file declaring one.
         guard let data = FileManager.default.contents(atPath: rootPath + "/" + path), let source = String(data: data, encoding: .utf8),
               mayExpandOrAttach(source, builtins: AttributeScanner.nonIntroducingAttributes(importing: [])) else { return FileScopeReading() }
-        let tree = Parser.parse(source: source)
-        let scoped = scopedItems(tree.statements.map { Syntax($0.item) }, inherited: [])
-        let argumentless = AttributeScanner.argumentlessMacros
-        let expands = scoped.contains { item, modules in
-            if let name = freestandingName(item), !AttributeScanner.nonIntroducingFreestandingMacros(importing: modules).contains(name) {
-                return true
+        return NestingGate.parseOrEmpty(source) { tree in
+            let scoped = scopedItems(tree.statements.map { Syntax($0.item) }, inherited: [])
+            let argumentless = AttributeScanner.argumentlessMacros
+            let expands = scoped.contains { item, modules in
+                if let name = freestandingName(item), !AttributeScanner.nonIntroducingFreestandingMacros(importing: modules).contains(name) {
+                    return true
+                }
+                let known = AttributeScanner.nonIntroducingAttributes(importing: modules)
+                return LocalTypeShadow.carriesCustomAttribute(item, known: known, argumentless: argumentless)
             }
-            let known = AttributeScanner.nonIntroducingAttributes(importing: modules)
-            return LocalTypeShadow.carriesCustomAttribute(item, known: known, argumentless: argumentless)
+            guard !expands else { return FileScopeReading(expands: true) }
+            let items = scoped.map(\.item)
+            return FileScopeReading(
+                declared: Set(items.compactMap { $0.as(MacroDeclSyntax.self).map { $0.name.identifier?.name ?? $0.name.text } }),
+                written: Set(items.flatMap(macroNames))
+            )
         }
-        guard !expands else { return FileScopeReading(expands: true) }
-        let items = scoped.map(\.item)
-        return FileScopeReading(
-            declared: Set(items.compactMap { $0.as(MacroDeclSyntax.self).map { $0.name.identifier?.name ?? $0.name.text } }),
-            written: Set(items.flatMap(macroNames))
-        )
     }
 
     /// Whether `name`, written bare at `node`, has no type, extension, protocol or attribute around it, and no body around it declares the name or holds anything that may.
@@ -186,15 +187,17 @@ private extension BareNameOutsideTypes {
 
     /// Whether a macro declared as `signature` may introduce `name`: its names name it, however spaced, commented or escaped, or say names it cannot spell ahead.
     static func mayIntroduce(_ name: String, signature: String) -> Bool {
-        let tokens = Array(Parser.parse(source: signature).tokens(viewMode: .sourceAccurate))
-        return tokens.indices.contains { index in
-            let word = tokens[index].text
-            if ["arbitrary", "overloaded", "prefixed", "suffixed"].contains(word) {
-                return true
+        NestingGate.parseOrEmpty(signature) { tree in
+            let tokens = Array(tree.tokens(viewMode: .sourceAccurate))
+            return tokens.indices.contains { index in
+                let word = tokens[index].text
+                if ["arbitrary", "overloaded", "prefixed", "suffixed"].contains(word) {
+                    return true
+                }
+                guard word == "named", index + 2 < tokens.count, tokens[index + 1].tokenKind == .leftParen else { return false }
+                let named = tokens[index + 2]
+                return (named.identifier?.name ?? named.text) == name
             }
-            guard word == "named", index + 2 < tokens.count, tokens[index + 1].tokenKind == .leftParen else { return false }
-            let named = tokens[index + 2]
-            return (named.identifier?.name ?? named.text) == name
         }
     }
 }

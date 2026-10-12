@@ -65,9 +65,9 @@ struct AffectedXCTestCaseTests {
 
         #expect(output.contains("LibTests.Outer.Inner/testOne"))
         #expect(!output.contains("-only-testing:LibTests/Outer.Inner"))
-        #expect(Self.swiftTestLine(output) == #"  swift test --filter 'LibTests\.GadgetTests/testTwo'"#)
+        #expect(Self.swiftTestLine(output) == #"  swift test --filter '^LibTests\.GadgetTests/testTwo$'"#)
         #expect(!output.contains(#"Outer\.Inner"#))
-        #expect(output.contains("an XCTest case nested inside another type (`Outer.Inner`) is, on macOS, selected by no `swift test --filter`"))
+        #expect(output.contains("an XCTest case nested inside another type is selected by no `swift test --filter`"))
         #expect(output.contains("leaves out 1 test above in a nested XCTest case, which no filter selects"))
         #expect(!output.contains("verified for swift-testing's own ids"), "the swift-testing suite caveat is for a different runner's nesting and says nothing true about this one")
     }
@@ -129,7 +129,7 @@ struct AffectedXCTestCaseTests {
         #expect(output.contains("LibTests.BaseCase/testOne"))
         #expect(output.contains("LibTests.GadgetTests/testOne"))
         #expect(output.contains("-only-testing:LibTests/GadgetTests/testOne"))
-        #expect(output.contains(#"--filter 'LibTests\.GadgetTests/testOne'"#))
+        #expect(output.contains(#"--filter '^LibTests\.GadgetTests/testOne$'"#))
         #expect(!output.contains("GizmoTests/testOne"))
     }
 

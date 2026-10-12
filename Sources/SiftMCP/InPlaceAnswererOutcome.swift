@@ -16,7 +16,13 @@ public extension InPlaceAnswerer {
         /// How long answering took, the engine open and the search included.
         public let milliseconds: Int
 
-        public init(reason: String, calls: [Call], root: String, milliseconds: Int) {
+        /// What the whole read of one Swift file is weighed with: the bytes it is served — the whole digest where it fits the size budget, its first page cut to fit otherwise — against the file's size.
+        ///
+        /// The answer's own, where it is that whole read; the file's whole read, where the calls answer windows printing most of it; `nil` for any other answer, or where that whole read would not be answered.
+        public let wholeRead: AnswerBytes?
+
+        public init(reason: String, calls: [Call], root: String, milliseconds: Int, wholeRead: AnswerBytes? = nil) {
+            self.wholeRead = wholeRead
             self.reason = reason
             self.calls = calls
             self.root = root
@@ -32,12 +38,28 @@ public extension InPlaceAnswerer {
         public let target: String
         /// What it served — every byte of the refusal is charged to one call — and the source it stands in for, where the call weighed one.
         public let bytes: AnswerBytes
+        /// What the command asked for that this call answered, which decides whether the usage log can price it (``Interception``).
+        public let intercepted: Interception
+        /// For a whole file intercepted, the bytes of the lines one whole-file `Read` returns (its first ``LineWindow/readDefaultLimit``), which is what the usage log prices it against; `nil` for every other call.
+        public let readBytes: Int?
 
-        public init(tool: String, target: String, bytes: AnswerBytes) {
+        public init(tool: String, target: String, bytes: AnswerBytes, intercepted: Interception = .other, readBytes: Int? = nil) {
             self.tool = tool
             self.target = target
             self.bytes = bytes
+            self.intercepted = intercepted
+            self.readBytes = readBytes
         }
+    }
+
+    /// What an intercepted command asked for, as the usage log's `intercepted` field records it: only the first two have an observed counterfactual, the bytes the command would have printed.
+    enum Interception: String, Sendable, Equatable {
+        /// A whole file, whose size is the call's source.
+        case file
+        /// A window of lines, whose bytes are the call's source.
+        case window
+        /// Anything else — a grep, a sweep, a pattern range, an outline — whose output nobody saw, so nothing it would have cost is on the record.
+        case other
     }
 
     /// Why an answer was not given, and the refusal stood instead.
@@ -46,7 +68,9 @@ public extension InPlaceAnswerer {
         case noRepository
         /// The operands of a sweep name more than one repository.
         case outsideRoot
-        /// A sweep in a repository with no index store, where no `where` answer lists a reference.
+        /// No longer reached, and kept so an older suppression row that names it still reads back.
+        ///
+        /// It withheld a sweep in a repository with no index store, which is now answered from the syntactic `where`, listing every use by written name.
         case noStore
         /// The shape ran out of time in the repository within the back-off window (``InPlaceBackoff``).
         case backingOff
@@ -68,7 +92,7 @@ public extension InPlaceAnswerer {
         case outlineTooLarge
         /// A window's answer would not show the text of the lines it asks for — lines in a declaration's leading doc comment, lines whose answer would name one member's declaration and nothing else (no view outline), or any lines where it saves less than ``InPlaceAnswer/windowSavingFloor`` — so the identical re-run would follow it, and the window runs.
         case linesNotShown
-        /// A whole read of a Swift file whose digest spares less than the turn that follows it costs, judged by ``WholeReadWorth`` from the file's size, the answer's and the context's, so the read runs.
+        /// A whole read of a Swift file, or a window printing most of its lines, whose digest spares less than the turn that follows it costs, or a narrower window a `Read` asked for whose answer spares less than the identical re-run is expected to cost, judged by ``WholeReadWorth`` from what the read prints, the answer's size and the context's, so the read runs.
         case notWorthTheTurn
         /// The repository cannot be written, so its index would be held in memory and built by parsing the whole tree for this one call, which the hook, a process of its own per call, would pay on every call (``SiftEngine/wouldKeepIndexInMemory(root:)``).
         case treeNotWritable

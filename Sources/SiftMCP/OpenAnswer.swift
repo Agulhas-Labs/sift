@@ -28,7 +28,4 @@ struct OpenAnswer: Sendable, Equatable, Codable {
 
     /// What the answer handed back, `nil` while this is still a call awaiting its result.
     var shape: AnswerShape?
-
-    /// The bytes of saving the answer's closing line claimed for this file.
-    var saving = 0
 }

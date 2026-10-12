@@ -31,7 +31,7 @@ struct FileDigestParts {
 
     /// The digest of the file a read names, with the call that served it, weighed against the lines `windows` print where they can be read and against the file's source otherwise, or `nil` where the index does not hold that file at exactly that path.
     ///
-    /// `pageSize` is the member lines of the page where the answer is cut to fit the size budget, and the page every face serves otherwise. Where the reach check is switched off the call is not asked whether the page reaches the window's members, and says it does.
+    /// `pageSize` is the member lines of the page where the answer is cut to fit the size budget, and the page every face serves otherwise, except that a single-file read with no window asked for whole is served the whole digest: the hook has denied the file's source, so every member the reader would have seen comes, not sixty of them and a cursor. Where the reach check is switched off the call is not asked whether the page reaches the window's members, and says it does.
     static func wholeFileDigest(
         _ path: String,
         windows: [LineWindow] = [],
@@ -39,8 +39,10 @@ struct FileDigestParts {
         engine: SiftEngine,
         spelling: CallSpelling,
         pageSize: Int? = nil,
+        wholeIfWindowless: Bool = false,
         checkingReach: Bool = true
     ) throws -> (call: ComputedCall, text: String)? {
+        let pageSize = pageSize ?? (wholeIfWindowless && windows.isEmpty ? Int.max : nil)
         guard let file = try OperandFile.indexed(path, in: directory, engine: engine),
               let digest = try ExactAnswer.fileDigest(in: engine, path: file.relative, spelling: spelling, pageSize: pageSize)
         else {
@@ -51,6 +53,9 @@ struct FileDigestParts {
         // prints what no digest of the file stands in for.
         guard windows.isEmpty || window != nil else { return nil }
         var call = ComputedCall(tool: "digest", target: file.relative, served: digest.text.utf8.count, source: window ?? file.bytes, weighsWindow: window != nil, fileLines: window == nil ? file.lines.count : nil)
+        if window == nil {
+            call.readBytes = min(file.bytes, file.byteLengths.prefix(LineWindow.readDefaultLimit).reduce(0) { $0 + $1 + 1 })
+        }
         if window != nil, let ranges = LineWindow.ranges(of: windows, in: file.lines, byteLengths: file.byteLengths) {
             call.windowText = printedText(of: ranges, in: file.lines)
             // A digest served as the file's own source reaches every line; a paged one only as far as its first page

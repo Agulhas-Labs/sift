@@ -2,7 +2,6 @@
 // Copyright © Agulhas Labs
 //
 
-import SwiftParser
 import SwiftSyntax
 
 /// The types that share a simple name, and which of them a name-matched `T(…)` site builds.
@@ -102,20 +101,32 @@ struct SameNamedTypes {
     ///
     /// Every parameter is taken as defaulted: a stored signature stops before a long initial value, so one showing none is no proof it has none, and leaving a label out is the generous reading.
     private static func memberwise(_ properties: [SymbolRow]) -> ParameterLabels? {
+        ParseThread.run { memberwiseParsing(properties) }
+    }
+
+    /// ``memberwise(_:)`` read from each signature's parse, on a parse thread.
+    private static func memberwiseParsing(_ properties: [SymbolRow]) -> ParameterLabels? {
         var parameters: [ParameterLabels.Parameter] = []
         for property in properties {
-            let tree = Parser.parse(source: property.signature)
-            guard !tree.hasError, let declaration = tree.statements.first?.item.as(VariableDeclSyntax.self),
-                  !declaration.modifiers.contains(where: { $0.name.tokenKind == .keyword(.lazy) }),
-                  let binding = declaration.bindings.first(where: { $0.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == property.name }),
-                  let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier
-            else { return nil }
-            if declaration.bindingSpecifier.tokenKind == .keyword(.let), binding.initializer != nil {
-                continue
+            guard let read = NestingGate.parseOrEmpty(property.signature, { memberwiseParameter(of: property, parsed: $0) }) else { return nil }
+            if let parameter = read {
+                parameters.append(parameter)
             }
-            parameters.append(ParameterLabels.Parameter(label: WrittenArguments.label(identifier), isDefaulted: true, isVariadic: false))
         }
         return ParameterLabels(parameters: parameters)
+    }
+
+    /// The parameter `property` gives the memberwise initializer, read from its signature's parse `tree` on the parse thread that made it: `.some(nil)` where it gives none, `nil` where the signature does not say.
+    private static func memberwiseParameter(of property: SymbolRow, parsed tree: SourceFileSyntax) -> ParameterLabels.Parameter?? {
+        guard !tree.hasError, let declaration = tree.statements.first?.item.as(VariableDeclSyntax.self),
+              !declaration.modifiers.contains(where: { $0.name.tokenKind == .keyword(.lazy) }),
+              let binding = declaration.bindings.first(where: { $0.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == property.name }),
+              let identifier = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier
+        else { return nil }
+        if declaration.bindingSpecifier.tokenKind == .keyword(.let), binding.initializer != nil {
+            return .some(nil)
+        }
+        return ParameterLabels.Parameter(label: WrittenArguments.label(identifier), isDefaulted: true, isVariadic: false)
     }
 }
 
@@ -293,17 +304,16 @@ extension SameNamedTypes {
 
         /// The names of the generic parameters a type's declaration writes — `Log` for `struct Gen<Log: P>`.
         static func genericParameters(of type: SymbolRow) -> [String] {
-            let tree = Parser.parse(source: type.signature + " {}")
-            let clause = tree.statements.first.flatMap { Syntax($0.item).asProtocol(WithGenericParametersSyntax.self)?.genericParameterClause }
-            return clause?.parameters.map(\.name.text) ?? []
+            NestingGate.parseOrEmpty(type.signature + " {}") { tree in
+                let clause = tree.statements.first.flatMap { Syntax($0.item).asProtocol(WithGenericParametersSyntax.self)?.genericParameterClause }
+                return clause?.parameters.map(\.name.text) ?? []
+            }
         }
 
         /// The dotted path a typealias's right-hand side writes, generic arguments set aside, or `nil` where it writes anything else.
         static func target(of alias: SymbolRow) -> String? {
             guard let equals = alias.signature.firstIndex(of: "=") else { return nil }
-            var parser = Parser(String(alias.signature[alias.signature.index(after: equals)...]))
-            let type = TypeSyntax.parse(from: &parser)
-            return type.hasError ? nil : DeclaredTypeName.path(of: type)
+            return NestingGate.parseTypeOrMissing(String(alias.signature[alias.signature.index(after: equals)...])) { $0.hasError ? nil : DeclaredTypeName.path(of: $0) }
         }
 
         /// The names a scope written `name` stands for — itself, what a typealias of the name names, and every type those inherit from — and those among them the index declares no type or typealias for.
@@ -335,7 +345,8 @@ extension SameNamedTypes {
                 recorded[candidate.path] = Set(owned.context.store.references(ofUSR: owned.usr).map { "\(owned.context.relativePath($0.path)):\($0.line)" })
             }
             self.recorded = recorded
-            freshness = semantic.map { OccurrenceFreshness(store: store, buildAnchor: $0.buildAnchor, relativePath: $0.relativePath) }
+            // No project directories: a site is judged only where a store holds its file's unit, which build membership never decides.
+            freshness = semantic.map { OccurrenceFreshness(store: store, context: $0, projectDirectories: []) }
         }
 
         /// The candidates `site` builds.

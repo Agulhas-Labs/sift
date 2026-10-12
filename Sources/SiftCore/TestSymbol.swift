@@ -62,6 +62,22 @@ extension TestSymbol {
         return pattern
     }
 
+    /// ``swiftTestFilter`` as a command prints it, opening at the start of the id so a target whose name ends with this one's is not also selected: a whole suite's pattern ends where the suite's id does, at its own end or a slash into a nested suite or test, and an XCTest function's pattern ends at its own end, so neither also selects a sibling whose name begins with it.
+    ///
+    /// A Swift Testing function's pattern is left open at the end: its pattern already ends at the closing parenthesis, and measured with `swift test --filter` a pattern ended with a dollar sign there ran nothing.
+    var anchoredSwiftTestFilter: String {
+        switch (function, suite) {
+        case (.some, _): "^" + (style == .xcTest ? swiftTestFilter + "$" : swiftTestFilter)
+        case (nil, .some): "^" + swiftTestFilter + "(/|$)"
+        case (nil, nil): swiftTestFilter
+        }
+    }
+
+    /// The pattern that selects exactly the tests of a target, as a command prints it: the target's name opens the id and a dot follows it, so a target whose name begins with this one's is not also selected.
+    static func anchoredTargetFilter(_ target: String) -> String {
+        "^" + escapedForRegex(target) + "\\."
+    }
+
     /// The same test named for a human, as `swift test list` prints it: `Target.Suite/function()`, `Target.Outer/Inner/function()` for a nested Swift Testing suite, `Target.function()` at file scope.
     var described: String {
         var text = target

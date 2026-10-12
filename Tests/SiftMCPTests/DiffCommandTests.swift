@@ -37,7 +37,7 @@ struct DiffCommandTests {
 
         #expect(refused)
         #expect(counts.files == 0)
-        #expect(text.split(separator: "\n").first?.contains("nothing stored to go stale") == true)
+        #expect(text.split(separator: "\n").first?.hasSuffix("  source: live") == true)
     }
 
     @Test

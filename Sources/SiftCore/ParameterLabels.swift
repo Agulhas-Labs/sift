@@ -15,7 +15,12 @@ struct ParameterLabels: Sendable, Equatable {
     ///
     /// A signature is the declaration's head as the index stored it, whitespace collapsed; one that no longer parses to its own labeled name — a comment that swallowed the rest of the line, a head the parser could not finish — cannot be trusted to say which calls it takes, so it narrows nothing.
     init?(signature: String, name: String) {
-        let tree = Parser.parse(source: signature)
+        guard let labels = NestingGate.parseOrEmpty(signature, { ParameterLabels(parsed: $0, name: name) }) else { return nil }
+        self = labels
+    }
+
+    /// The labels a signature's parse `tree` declares, read on the parse thread that made it.
+    private init?(parsed tree: SourceFileSyntax, name: String) {
         guard !tree.hasError, let item = tree.statements.first?.item else { return nil }
         let list: FunctionParameterListSyntax
         let base: String

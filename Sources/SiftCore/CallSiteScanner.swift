@@ -128,8 +128,7 @@ struct CallSiteScanner {
         let isInitializerSweep = names.values.contains(.initializer)
         let spelled = isInitializerSweep ? Array(names.keys) + ["init"] : Array(names.keys)
         guard spelled.contains(where: { source.contains($0) }) || isInitializerSweep && SelfCallSpelling.isWritten(in: source) else { return ScannedCallSites() }
-        let tree = Parser.parse(source: source)
-        return sites(in: tree, converter: SourceLocationConverter(fileName: path, tree: tree), path: path, names: names)
+        return NestingGate.parseOrEmpty(source) { sites(in: $0, converter: SourceLocationConverter(fileName: path, tree: $0), path: path, names: names) }
     }
 
     /// What one already parsed file holds for `names`, for a caller that reads the same tree for something else too.
@@ -261,7 +260,7 @@ private extension CallSiteScanner {
                         let location = converter.location(for: node.baseName.positionAfterSkippingLeadingTrivia)
                         sites[name, default: []].append(site(at: node, arguments: nil, unappliedOn: type, operatorAt: "\(location.line):\(location.column)"))
                     } else {
-                        record(name, at: node, nameOnly: type == nil, unappliedOn: type)
+                        sites[name, default: []].append(site(at: node, arguments: nil, nameOnly: type == nil, unappliedOn: type).handingOnBare(type == nil && BareFunctionReference.isHandedOn(node)))
                     }
                 }
             }
@@ -868,7 +867,7 @@ private extension CallSiteScanner.Visitor {
 }
 
 /// Whether a base identifier spelled like a type is shadowed by a local `let`/`var`, an `if`/`guard`/`while let`, or a closure or function parameter of the same name, making it a value rather than the type it is spelled like.
-private extension CallSiteScanner {
+extension CallSiteScanner {
     /// A `Self` call written in an extension of a type no asked one, held until the walk has seen every declaration in its file.
     struct HeldSelfCall {
         /// The type `Self` is written as there: the type the where clause pins `Self` to, or else the type extended.

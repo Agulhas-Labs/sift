@@ -70,7 +70,7 @@ struct InstallHookAllowRunTests {
 
         #expect(terminal.asked.isEmpty)
         #expect(try Self.allowRules(at: settings) == nil)
-        let lines = printed.split(separator: "\n").filter { $0.contains("sift install-hook --allow-run") }
+        let lines = printed.split(separator: "\n").filter { $0.contains(" install-hook --allow-run") }
         #expect(lines.count == 1)
     }
 

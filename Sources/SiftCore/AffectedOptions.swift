@@ -43,4 +43,14 @@ public extension AffectedOptions {
             "\(from)..\(to)"
         }
     }
+
+    /// The line saying how many uncommitted `.swift` files a range leaves out, newline-terminated; empty without a range or without such files.
+    ///
+    /// A range reads commits, so edits not yet committed are outside it, and the answer says so rather than read as a change that affects nothing.
+    internal func uncommittedNote(git: GitContext, enumerator: FileEnumerator) throws -> String {
+        guard range != nil else { return "" }
+        let count = try git.dirtySwiftFiles().filter { enumerator.isIndexable(relativePath: $0.path) }.count
+        guard count > 0 else { return "" }
+        return "\(count) uncommitted .swift file\(count == 1 ? " is" : "s are") not in this range; drop --from to include them, or commit first.\n"
+    }
 }

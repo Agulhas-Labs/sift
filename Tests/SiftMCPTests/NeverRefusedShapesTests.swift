@@ -228,7 +228,7 @@ struct NeverRefusedShapesTests {
 
     /// A member's declaration with context around it is the one shape this rule stands aside for: the hook runs the grep and hands that member's source back, one round trip, which is the best outcome on offer and strictly better than silence.
     ///
-    /// Withholding it deleted an answer rather than a useless nudge — `InPlaceShape.grepCall` allows context for a member's declaration precisely because the member's source accounts for every line printed — and `grep -n "func X" -A20 File.swift` is among the commonest shapes an agent writes.
+    /// Withholding it deleted an answer rather than a useless nudge — `InPlaceShape.grepReading` allows context for a member's declaration precisely because the member's source accounts for every line printed — and `grep -n "func X" -A20 File.swift` is among the commonest shapes an agent writes.
     @Test(arguments: [
         #"grep -n "func matchedLines" -A8 Sources/App/Depot.swift"#,
         #"grep -n "func matchedLines" -B2 -A2 Sources/App/Depot.swift"#,

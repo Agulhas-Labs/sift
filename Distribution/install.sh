@@ -3,6 +3,15 @@
 # Safe to re-run: that is the upgrade path.
 set -eu
 
+# The only flags: the two that answer the allow-rule questions without a terminal, handed to `install-hook` as given.
+# Anything else is refused before a byte is written.
+for flag in "$@"; do
+    case "$flag" in
+        --allow-run | --allow-lookups) ;;
+        *) echo "error: unknown option $flag (usage: sh install.sh [--allow-run] [--allow-lookups])"; exit 2 ;;
+    esac
+done
+
 DEST="${SIFT_DEST:-$HOME/.local/bin}"
 RULES="$HOME/.claude/rules"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -30,6 +39,32 @@ mv -f "$TMP" "$DEST/sift"
 trap - EXIT
 
 echo "installed: $DEST/sift ($("$DEST/sift" --version))"
+
+# One line in the deploy log for this install: when, which build, how big. Best effort by design: a missing
+# BUILD_INFO writes null fields, and a log that cannot be written never fails the install. The state directory
+# is resolved as the binary resolves it: SIFT_HOME, else .sift under CFFIXED_USER_HOME, else HOME.
+record_deploy() {
+    case "${SIFT_HOME:-}" in
+        /*) state="$SIFT_HOME" ;;
+        *) case "${CFFIXED_USER_HOME:-}" in
+            /*) state="$CFFIXED_USER_HOME/.sift" ;;
+            *) state="$HOME/.sift" ;;
+        esac ;;
+    esac
+    info="$HERE/BUILD_INFO"
+    field() {
+        value=""
+        [ -f "$info" ] && value="$(sed -n "s/^$1=//p" "$info" | head -1 | tr -cd 'A-Za-z0-9._+-')"
+        if [ -n "$value" ]; then printf '"%s"' "$value"; else printf 'null'; fi
+    }
+    size="$(wc -c < "$DEST/sift" | tr -d ' ')"
+    case "$size" in '' | *[!0-9]*) size=null ;; esac
+    mkdir -p "$state"
+    printf '{"ts":"%s","version":%s,"commit":%s,"tree":%s,"binarySize":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(field version)" "$(field commit)" "$(field tree)" "$size" \
+        >> "$state/deploys.jsonl"
+}
+record_deploy 2>/dev/null || echo "note: could not record this install in the deploy log"
 
 case ":$PATH:" in
     *":$DEST:"*) ;;
@@ -59,11 +94,12 @@ fi
 # configuration, it is shared with hooks this project does not own, and a corrupt write breaks every
 # session on the machine. The merge is covered by the test suite and needs no python3/jq on the host.
 #
-# No allow-rule flag is passed: `install-hook` asks the lookups question (default yes, or no after a
-# remembered no) and then the builds question (default no) on the terminal this script was started
-# from, and asks nothing, adding nothing, where there is none; its output names `--allow-run` and
-# `--allow-lookups` for that case.
-"$DEST/sift" install-hook
+# No allow-rule flag of its own: `install-hook` asks the lookups question (default yes, or no after a
+# remembered no) and then the builds question (default no) on the terminal this script was started from.
+# Where there is none it asks nothing and adds nothing, and its output names the command that adds them.
+# Run as `sh install.sh --allow-run` (both blocks) or `--allow-lookups` (the lookups alone), the flags
+# given here, checked above, answer for it.
+"$DEST/sift" install-hook "$@"
 
 if command -v claude >/dev/null 2>&1; then
     # `claude mcp add` FAILS when the name is already registered, so an upgrade must remove first.

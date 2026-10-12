@@ -27,7 +27,7 @@ struct WhereNoStoreMemberwiseHeadingTests {
             using: "func stock() -> Gizmo {\n    Gizmo(isReady: true)\n}\n\nfunc spare() -> Gizmo {\n    Gizmo(isReady: false)\n}\n"
         )
 
-        #expect(output.contains("\"isReady\" (no use by name, 2 calls passing it as isReady: to the memberwise init, in 1 file):"), "\(output)")
+        #expect(output.contains("\"isReady\" (0 uses by written name, 2 calls passing it as isReady: to the memberwise init, in 1 file):"), "\(output)")
         #expect(!output.contains("0 uses by name"), "\(output)")
         #expect(!output.contains("plus 2 calls"), "\(output)")
     }
@@ -53,7 +53,7 @@ struct WhereNoStoreMemberwiseHeadingTests {
             using: "func stock() -> Bool {\n    Gizmo().isReady\n}\n"
         )
 
-        #expect(output.contains("\"isReady\" (2 uses in 2 files):"), "\(output)")
+        #expect(output.contains("\"isReady\" (2 uses by written name in 2 files):"), "\(output)")
     }
 
     /// A private property written nowhere says so, with how the scan was narrowed, not that no call builds its type.

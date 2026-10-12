@@ -22,15 +22,21 @@ struct RevisionQuery {
     }
 
     /// The declaration surface of each target as of the revision; a module, `.` or a `.md` target is refused, since none of them is answerable from a few files.
-    func digest(targets: [String], options: DigestOptions) throws -> String {
+    func digest(targets: [String], options revisionless: DigestOptions) throws -> String {
+        var options = revisionless
+        options.servesModules = false
         let files = try RevisionSnapshot.indexableFiles(revision: revision, git: git, enumerator: enumerator)
         let moduleNames = Self.moduleNames(for: files.paths, resolver: resolver)
         let written = targets.map(relativeTarget)
         var paths: [String] = []
         var names: [String] = []
+        var bareModules: [String] = []
         for target in written {
             if let refusal = refusal(forDigestTarget: target, moduleNames: moduleNames) {
                 throw EngineError.revisionRefused(refusal)
+            }
+            if moduleNames.contains(target) {
+                bareModules.append(target)
             }
             if let range = DigestLineRange.parse(target) {
                 paths.append(range.path)
@@ -54,8 +60,13 @@ struct RevisionQuery {
         }
         let snapshot = try read(files: files, selecting: { path in paths.contains { Self.path(path, answers: $0) } }, naming: names)
         defer { snapshot.discard() }
+        // A bare name that is a module serves the type of that name where there is one, as in the working tree; with none it is the module, which a few files cannot answer.
+        for name in bareModules where try snapshot.store.typeDeclarations(named: name).isEmpty {
+            throw EngineError.revisionRefused(Self.refusal(of: name, as: "a module", revision: revision))
+        }
         var renderer = DigestRenderer(store: snapshot.store, moduleNames: moduleNames, repoRoot: snapshot.root)
         renderer.config = config
+        renderer.isUnreadablyRenamed = { [resolver] in resolver.isUnreadablyRenamed($0) }
         let rendered: String
         if notices.isEmpty {
             rendered = try renderer.render(targets: written, options: options)
@@ -114,13 +125,13 @@ struct RevisionQuery {
         defer { snapshot.discard() }
         let listing = FileEnumerator(repoRoot: snapshot.root, config: config, gitListing: { snapshot.paths })
         let scanner = CallSiteScanner(repoRoot: snapshot.root, enumerator: listing)
-        let renderer = WhereRenderer(store: snapshot.store, callSites: { await scanner.callSites(named: $0) })
+        var renderer = WhereRenderer(store: snapshot.store, callSites: { await scanner.callSites(named: $0) })
+        renderer.revision = revision
+        renderer.isUnreadablyRenamed = { [resolver] in resolver.isUnreadablyRenamed($0) }
         var syntactic = options
         syntactic.includeSemantic = false
         let output = try await renderer.render(query: symbol, semantic: .inactive(note: Self.semanticNote), options: syntactic)
-        // The renderer's call-site wording names the tree it scans, which here is the revision's files, never the working tree's.
-        let body = output.body.replacingOccurrences(of: " over the working tree", with: " over the files parsed at \(snapshot.commit.prefix(8))")
-        return try header(snapshot) + "\n" + readLine(snapshot, names: names, files: [], spellingSelfCalls: isInitializer) + "\n" + body
+        return try header(snapshot) + "\n" + readLine(snapshot, names: names, files: [], spellingSelfCalls: isInitializer) + "\n" + output.body
     }
 
     private func read(files: (commit: String, paths: [String]), selecting: (String) -> Bool, naming names: [String], spelling: (Data) -> Bool = { _ in false }) throws -> RevisionSnapshot {
@@ -188,12 +199,16 @@ struct RevisionQuery {
             subject = "the repository overview"
         } else if MarkdownOutline.names(target) {
             subject = "a document"
-        } else if moduleNames.contains(target) {
+        } else if target.hasSuffix("/"), moduleNames.contains(SymbolNaming.unbackticked(String(target.dropLast()))) {
             subject = "a module"
         } else {
             return nil
         }
-        return "digest --at answers a type, a member or a Swift file, and `\(target)` is \(subject) — ask it of a checkout of \(revision) (`git worktree add`)"
+        return Self.refusal(of: target, as: subject, revision: revision)
+    }
+
+    private static func refusal(of target: String, as subject: String, revision: String) -> String {
+        "digest --at answers a type, a member or a Swift file, and `\(target)` is \(subject) — ask it of a checkout of \(revision) (`git worktree add`)"
     }
 
     /// The revision's modules, resolved the way the working-tree indexer resolves them — per file, through the module resolver — never from the (possibly absent or stale) index store.

@@ -8,6 +8,12 @@ import Foundation
 ///
 /// Every owner's uses listed under one name answered a question about one of them at many times the length the question needed, most of it about declarations nobody asked for. The narrowing query is the step the reader takes next, so it is checked by resolving it rather than composed and trusted.
 extension WhereRenderer {
+    /// The query a plain no-store type answer names as the one listing the uses it counts: the query as written when qualified, else the first row's shortest name that tells it from the same-named declarations listed with it, as the store path's blocks name theirs.
+    func typeUsePointer(for row: SymbolRow?, among declarations: [SymbolRow], query: String, qualifiedName: (SymbolRow) throws -> String) throws -> String {
+        guard !query.contains("."), let row else { return query }
+        return try DeclarationShortNames(declarations, qualifiedName: qualifiedName).name(of: row)
+    }
+
     /// The owner path each declaration of a bare query sits under, keyed by row id, where they fall under two or more owners no written inheritance or conformance relates; `nil` where the query is qualified or every declaration is one owner's.
     ///
     /// Overloads share an owner, and an override or a witness is the member it implements reached by dispatch, so neither is several owners. An extension row is the type it extends rather than a declaration of its own, so it decides nothing.
@@ -59,11 +65,16 @@ extension WhereRenderer {
         guard let owners = try unrelatedOwners(of: declarations, query: query) else { return nil }
         let answer = try await severalOwnersLines(query: query, declarations: declarations, owners: owners, semantic: semantic)
         var lines = header + answer.lines
-        if case let .active(context) = semantic, !answer.answeredBy.isEmpty, let modeIndex = lines.firstIndex(where: { $0.hasPrefix("mode: ") }) {
-            lines[modeIndex] = WhereStoreLines.modeLine(context, answeredBy: answer.answeredBy)
+        var slot = bannerSlot
+        if case let .active(context) = semantic, WhereStoreLines.placeStoresNote(context, answeredBy: answer.answeredBy, in: &lines) {
+            slot += 1
+        }
+        if let note = answer.notCompiledNote {
+            lines.insert(note, at: 0)
+            slot += 1
         }
         let cited = declarations.prefix(Self.listCap).map(\.path)
-        return try Output(body: withParseNotices(lines, at: bannerSlot, citing: cited).joined(separator: "\n"), axis: answer.axis ?? axis)
+        return try Output(body: withParseNotices(lines, at: slot, citing: cited).joined(separator: "\n"), axis: answer.axis ?? axis)
     }
 
     /// The answer with the repository-wide floor note and the cited files' parse-error banner inserted at `slot`, the banner above the note.
@@ -92,22 +103,24 @@ extension WhereRenderer {
         let ownerCount = Set(owners.values).count
         var lines = ["declarations (\(declarations.count)) under \(ownerCount) owners — a bare name several owners declare lists no uses; each line ends with the query that narrows to its owner:"]
         var counter: OwnerUseCounter?
+        let targets = try SemanticTargets.of(declarations, in: store)
+        let counted = Set(targets.map(\.id))
         if case let .active(context) = semantic {
-            let wrapperSites = try await WrapperAttributeSites.find(for: declarations.prefix(Self.semanticDeclCap), in: store, callSites: callSites, context: context)
-            counter = OwnerUseCounter(primary: context, wrapperSites: wrapperSites, store: store)
+            let wrapperSites = try await WrapperAttributeSites.find(for: targets, in: store, callSites: callSites, context: context, projectDirectories: projectDirectories)
+            counter = OwnerUseCounter(primary: context, wrapperSites: wrapperSites, store: store, projectDirectories: projectDirectories)
         }
         var narrowingOf: [String: String] = [:]
-        for (index, row) in listed.enumerated() {
+        for row in listed {
             var fields = try ["  \(store.qualifiedName(of: row))", row.kind.rawValue, "\(row.path)\(row.rangeDescription)"]
             guard let owner = owners[row.id] else {
                 lines.append(fields.joined(separator: " — "))
                 continue
             }
             if counter != nil {
-                if index < Self.semanticDeclCap {
+                if counted.contains(row.id) {
                     try fields.append(counter?.count(of: row, renderer: self) ?? "")
                 } else {
-                    fields.append("uses not counted — past the first \(Self.semanticDeclCap) declarations")
+                    fields.append("uses not counted — past the first \(targets.count) declarations")
                 }
             }
             if narrowingOf[owner] == nil {
@@ -119,29 +132,70 @@ extension WhereRenderer {
         if declarations.count > Self.listCap {
             lines.append("  truncated: \(declarations.count - Self.listCap) more declarations")
         }
+        // The bare `extension Name` rows are declarations of the name and already lines above; what is left is written through a qualified path, and is an owner's only where that path ends the owner's own path (`Outer.Name` for `Beta.Outer`), the reading the owner's narrowing query lists it by.
+        let shown = Set(declarations.map(\.id))
+        let ownerPaths = Set(owners.values).sorted().map { ($0, QualifiedPath.components(of: $0)) }
+        var unlisted = 0
+        var pointedAt: [String] = []
+        for written in try ExtensionPaths.written(endingIn: query, in: store) where !shown.contains(written.row.id) {
+            let qualifier = Array(QualifiedPath.components(of: written.path).dropLast())
+            guard !qualifier.isEmpty else { continue }
+            // Several owners can end in the qualifier; as `ownerPath` does, the one in the extension's own module is the one extended, else the only match, and an extension that could be any of several is counted under none, since no one owner's query is known to list it.
+            let matching = ownerPaths.filter { Array($0.1.suffix(qualifier.count)) == qualifier }
+            let local = matching.filter { $0.1.first == written.row.module }
+            guard let owner = (local.count == 1 ? local.first : matching.count == 1 ? matching.first : nil)?.0 else { continue }
+            let narrowing = try narrowingOf[owner] ?? narrowingQuery(to: owner, query: query, owners: owners)
+            narrowingOf[owner] = narrowing
+            guard narrowing.hasPrefix("where ") else { continue }
+            unlisted += 1
+            if !pointedAt.contains(narrowing) {
+                pointedAt.append(narrowing)
+            }
+        }
+        if unlisted > 0 {
+            lines.append("extensions: \(unlisted) more written through a qualified name, not listed here — an owner's own query lists its extensions: \(pointedAt.joined(separator: ", "))")
+        }
         guard let counter else {
-            lines.append("uses: not counted — only the index store tells which of these a use names, and this answer has none (the mode line says why)")
+            lines.append("uses: not counted — only the index store tells which of these a use names, and this answer has none (the note above says why)")
             return SeveralOwnersAnswer(lines: lines, axis: nil, answeredBy: [])
         }
-        lines += [
-            counter.countedProperty ? Self.propertyUseBoundary : nil,
-            counter.countedCase ? Self.caseUseBoundary : nil,
-        ].compactMap(\.self)
         let primary = counter.primary
-        let waitsOnInTree = primary.inTreeWarming && counter.uncovered && !counter.refusals.contains { $0.reason == .modifiedSinceBuild }
+        // The counts are the store's, so a file no store holds a unit for, a new caller above all, has its lines writing the name listed after them and counted in the header, as the single-owner answer does.
+        let mentions = try WhereChangedFileMentions(
+            names: ScannedNames(rows: targets.filter { $0.kind != .extensionKind && $0.kind != .operatorKind }, in: store),
+            unbuilt: [],
+            refused: Set(counter.refusals.map(\.path)),
+            in: store,
+            context: primary,
+            judge: counter.declaringFiles,
+            listsEveryLine: false,
+            readsStoredFiles: false
+        )
+        lines = mentions.placed(in: lines)
+        var setAside = counter.setAside
+        setAside.merge(counter.wrapperSites.setAside)
+        if let line = setAside.line {
+            lines += ["", line]
+        }
+        let waitsOnInTree = primary.inTreeWarming && counter.uncovered && !counter.refusals.contains(where: \.reason.isStale)
         let axis: SemanticAxis = try waitsOnInTree ? .warming : .of(
             refusals: counter.refusals,
             occurrences: Array(counter.judges.values),
-            testFilesWithoutUnit: primary.testFileCoverage(in: store).partialCount
+            testFilesWithoutUnit: primary.testFileCoverage(in: store).partialCount,
+            listedByName: mentions.listedFiles
         )
-        return SeveralOwnersAnswer(lines: lines, axis: axis, answeredBy: counter.answeredBy)
+        let stale = SemanticAxis.countedFiles(refusals: counter.refusals, occurrences: Array(counter.judges.values), listedByName: mentions.listedFiles)
+        let note = try NotCompiledNote.line(for: stale, refused: Set(counter.refusals.map(\.path)), in: store, context: primary)
+        return SeveralOwnersAnswer(lines: lines, axis: axis, answeredBy: counter.answeredBy, notCompiledNote: note)
     }
 
-    /// The lines a several-owners answer adds, the header verdict its store counts leave (`nil` where none were read), and the in-tree stores that answered.
+    /// The lines a several-owners answer adds, the header verdict its store counts leave (`nil` where none were read), the in-tree stores that answered, and the note on modules a later build left out.
     struct SeveralOwnersAnswer {
         let lines: [String]
         let axis: SemanticAxis?
         let answeredBy: [String]
+        /// The note under the header naming the modules a later build left out (``NotCompiledNote``).
+        var notCompiledNote: String?
     }
 
     /// The shortest qualified query that resolves to declarations of `owner` alone, qualified by as few of its containers as tell it apart, or a sentence saying none does.
@@ -194,33 +248,38 @@ struct OwnerUseCounter {
     private(set) var refusals: [SemanticRefusal] = []
     private(set) var answeredBy: [String] = []
     private(set) var uncovered = false
-    private(set) var countedProperty = false
-    private(set) var countedCase = false
+    /// The sites the stores set aside for the declarations counted, which the answer says as a single owner's does.
+    private(set) var setAside = SetAsideSites()
     private var sources = SemanticStore.SourceLines()
+    /// Each declaring file, and each file the answer lists by name, judged against its own build, across every store the query reads.
+    let declaringFiles: OccurrenceFreshness
+    private let projectDirectories: [String]
 
-    init(primary: SemanticContext, wrapperSites: WrapperAttributeSites, store: IndexStore) {
+    init(primary: SemanticContext, wrapperSites: WrapperAttributeSites, store: IndexStore, projectDirectories: [String]) {
         self.primary = primary
         self.wrapperSites = wrapperSites
         self.store = store
-        judges[primary.store.cache.directory.path] = OccurrenceFreshness(store: store, buildAnchor: primary.buildAnchor, relativePath: primary.relativePath)
+        declaringFiles = OccurrenceFreshness(store: store, context: primary, projectDirectories: projectDirectories)
+        self.projectDirectories = projectDirectories
+        judges[primary.store.cache.directory.path] = OccurrenceFreshness(store: store, context: primary, projectDirectories: projectDirectories, citedBy: primary.store)
     }
 
     /// The count clause for `row`: `3 uses: 2 production · 1 test`, or why it was not counted.
     mutating func count(of row: SymbolRow, renderer: WhereRenderer) throws -> String {
         let qualified = try store.qualifiedName(of: row)
         let file = try store.fileRow(path: row.path)
-        let mtime = file?.mtime ?? 0
         // No build records an operator declaration, so none is refused with advice to build one.
         guard row.kind != .operatorKind else { return "uses not counted — the index store records no operator declaration" }
         guard let owned = primary.owner(of: row) else {
-            let refusal = SemanticRefusal.unowned(row, symbol: qualified, imports: file?.imports ?? [], modified: mtime > primary.buildAnchor, context: primary, source: renderer.fileSource)
+            let refusal = SemanticRefusal.unowned(row, symbol: qualified, file: file, kind: declaringFiles.kind(ofFile: row.path), context: primary, source: renderer.fileSource)
             refusals.append(refusal)
             if !primary.anyStoreHasUnit(forFile: row.path) {
                 uncovered = true
             }
             return switch refusal.reason {
             case .modifiedSinceBuild: "uses not counted — its file was changed since the last build"
-            case .unrecordedUnderCondition: "uses not counted — " + refusal.reason.shortClause(declarationCount: 1)
+            case .newSinceBuild: "uses not counted — its file is new since the last build"
+            case .unrecordedUnderCondition, .outsidePackage: "uses not counted — " + refusal.reason.shortClause(declarationCount: 1)
             case .noCoveringUnit: "uses not counted — no build in the store covers its file"
             }
         }
@@ -228,17 +287,17 @@ struct OwnerUseCounter {
         if context.store !== primary.store, !answeredBy.contains(context.store.provenance.name) {
             answeredBy.append(context.store.provenance.name)
         }
-        guard mtime <= context.buildAnchor else {
-            let rebuild = SemanticRefusal.Rebuild(provenance: context.store.provenance, imports: file?.imports ?? [])
-            refusals.append(SemanticRefusal(path: row.path, reason: .modifiedSinceBuild, symbol: qualified, kind: row.kind, rebuild: rebuild))
+        if let refusal = SemanticRefusal.changed(row, symbol: qualified, file: file, kind: declaringFiles.kind(ofFile: row.path, citedBy: context.store), holder: context.store) {
+            refusals.append(refusal)
             return "uses not counted — its file was changed since the last build"
         }
         let key = context.store.cache.directory.path
-        let occurrences = judges[key] ?? OccurrenceFreshness(store: store, buildAnchor: context.buildAnchor, relativePath: context.relativePath)
+        let occurrences = judges[key] ?? OccurrenceFreshness(store: store, context: primary, projectDirectories: projectDirectories, citedBy: context.store)
         judges[key] = occurrences
         guard let (hits, asked) = try hits(of: row, usr: owned.usr, context: context, renderer: renderer) else {
             return "uses not counted — the store is not asked about a \(row.kind.rawValue)"
         }
+        setAside.note(ofUSR: owned.usr, inStore: key, context.store.setAsideReferences(ofUSR: owned.usr), relativePath: context.relativePath)
         // A call or read made through a requirement the function, property or subscript implements is never recorded against it, so its count is of direct ones, and says why.
         let implemented = row.kind == .function || row.kind == .initializer || row.kind.isReadAndWritten ? context.store.implementedRequirements(ofUSR: owned.usr) : []
         let noun = implemented.isEmpty ? asked : "direct \(asked)"
@@ -267,18 +326,14 @@ struct OwnerUseCounter {
         case .function, .initializer:
             return (context.store.callers(ofUSR: usr), "call site")
         case .enumCase:
-            countedCase = true
             return (context.store.caseUses(ofUSR: usr).map(\.hit), "use")
         case .typealiasKind:
-            let references = context.store.references(ofUSR: usr, sources: &sources)
-            let fold = try renderer.aliasFold(referencedAt: references, named: row.name, excluding: usr, context: context, sources: &sources)
+            let (references, fold) = try renderer.foldedReferences(ofUSR: usr, named: row.name, excluding: usr, context: context, sources: &sources)
             return (WhereRenderer.excludingSites(references + fold.hits, inside: fold.declarationSpans, relativePath: context.relativePath).sites, "reference")
         case _ where row.kind.isReadAndWritten:
-            countedProperty = countedProperty || row.kind == .variable
             return (context.store.uses(ofUSR: usr, sources: &sources).map(\.hit), "use")
         case _ where row.kind.isTypeDeclaration:
-            let references = context.store.references(ofUSR: usr, sources: &sources)
-            let fold = try renderer.aliasFold(referencedAt: references, named: row.name, context: context, sources: &sources)
+            let (references, fold) = try renderer.foldedReferences(ofUSR: usr, named: row.name, context: context, sources: &sources)
             let spans = try renderer.ownSpans(of: row, extendedAt: context.store.extensionSites(ofUSR: usr), relativePath: context.relativePath)
             let own = WhereRenderer.excludingSites(references + fold.hits, inside: spans.spans, relativePath: context.relativePath)
             return (WhereRenderer.excludingSites(own.sites, inside: fold.declarationSpans, relativePath: context.relativePath).sites, "reference")

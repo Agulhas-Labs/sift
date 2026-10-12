@@ -4,8 +4,8 @@ Set sift up in Claude Code, Cursor and Codex with one command, and take it out a
 
 ## Overview
 
-With `sift` on your `PATH` (see <doc:GettingStarted>: until a release is published, that means building it
-and copying the binary there), one command sets it up in every agent you use:
+With `sift` on your `PATH` (see <doc:GettingStarted>: install it with Homebrew or npm, or build it from source
+and copy the binary there), one command sets it up in every agent you use:
 
 ```sh
 sift install

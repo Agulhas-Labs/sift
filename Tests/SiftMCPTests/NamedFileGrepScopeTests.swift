@@ -11,10 +11,16 @@ import Testing
 /// A grep whose operands are only Swift files it names is answered about those files or let through, never with a `where` that lists sites in files it did not name; a grep of a tree keeps the `where` it was always answered with.
 @Suite(.temporaryDirectories)
 struct NamedFileGrepScopeTests {
-    /// A package whose property `level` is declared and read in one file and read or written in two others, built with an index store so a `where` has its reads and writes to list.
+    /// A file under a deep directory reading `level` on many lines, so a search of the tree prints more than the `where` answering it.
+    private static var probes: String {
+        "Sources/App/Panels/Dials/Needles/Meters/Readouts/Displays/Monitors/Sensors/Probes.swift"
+    }
+
+    /// A package whose property `level` is declared and read in one file, read or written in two others, and read on many lines of a fourth (``probes``), built with an index store so a `where` has its reads and writes to list.
     private static func builtPackage() async throws -> URL {
         let root = try MCPTestRepo.make(declaring: "Alpha")
         try MCPTestRepo.add([
+            probes: (1 ... 24).map { "func probe\($0)(_ gauge: Gauge) -> Int { gauge.level }" }.joined(separator: "\n") + "\n",
             "Package.swift": "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"App\", targets: [.target(name: \"App\")])\n",
             "Sources/App/Gauge.swift": "public struct Gauge {\n    public var level: Int = 0\n    public func doubled() -> Int { self.level * 2 }\n}\n",
             "Sources/App/Reader.swift": "func read(_ gauge: Gauge) -> Int {\n    gauge.level\n}\n",
@@ -103,27 +109,30 @@ struct NamedFileGrepScopeTests {
         let reason = try #require(decided.verdict.reason)
         let body = reason.split(separator: "\n", omittingEmptySubsequences: false).drop { !$0.hasPrefix("tree: ") }.dropFirst().joined(separator: "\n")
 
-        #expect(decided.inPlace?.call == .symbols(names: ["level"], paths: ["Sources"]))
+        #expect(decided.inPlace?.call == .symbols(names: ["level"], paths: ["Sources"], proof: ShellGrep(arguments: ["-rn", #"\.level"#, "Sources"], rawArguments: ["-rn", #"'\.level'"#, "Sources"])))
         #expect(decided.verdict.token == "in-place")
         #expect(decided.verdict.call == "where level")
-        #expect(body == [
-            "where level",
-            "mode: syntactic + semantic (index store via .build)",
+        let opening: [String] = [
             "",
             "declarations (1):",
             "  App.Gauge.level — var — public var level: Int = 0 — Sources/App/Gauge.swift:2",
             "",
-            "reads and writes of App.Gauge.level (3):",
+            "reads and writes of App.Gauge.level (27):",
             "  Sources/App/Gauge.swift (1):",
             "    :3  doubled() — read  | public func doubled() -> Int { self.level * 2 }",
+            "  \(Self.probes) (24):",
+        ]
+        let probeReads: [String] = (1 ... 24).map { (line: Int) -> String in
+            "    :\(line)  probe\(line)(_:) — read  | func probe\(line)(_ gauge: Gauge) -> Int { gauge.level }"
+        }
+        let closing: [String] = [
             "  Sources/App/Reader.swift (1):",
             "    :2  read(_:) — read  | gauge.level",
             "  Sources/App/Writer.swift (1):",
             "    :2  write(_:) — write  | gauge.level = 3",
             "",
-            "reads and writes: written code only — the store records none made by a synthesized conformance (Equatable, Hashable, Codable) or by name at runtime, so a short or empty list is not proof a property is unused",
-            "",
             "No saving is claimed: a `where` answer stands in for a search's output, which was never produced, so there is nothing measured to set it against.",
-        ].joined(separator: "\n"))
+        ]
+        #expect(body == (opening + probeReads + closing).joined(separator: "\n"))
     }
 }

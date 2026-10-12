@@ -109,7 +109,7 @@ struct WhereStoreWrapperSitesTests {
         #expect(output.contains("semantic: fresh"), "\(output)")
         #expect(!output.contains("no callers"), "\(output)")
         #expect(output.contains(Self.heading), "\(output)")
-        #expect(output.contains("\"@Clamp\" (1 call site in 1 file — for init(wrappedValue:)):"), "\(output)")
+        #expect(output.contains("\"@Clamp\" (1 call site by written name in 1 file — for init(wrappedValue:)):"), "\(output)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).split(separator: "\n").contains("  Sources/Probe/Clamp.swift:2  in clamped(_:)"), "\(output)")
         // The block is read back as name-matched, never as a resolved caller.
         #expect(!NameMatchedSites.linesOutside(answer: output).contains { $0.contains("Clamp.swift:2") }, "\(output)")
@@ -201,7 +201,7 @@ struct WhereStoreWrapperSitesTests {
         #expect(!WhereStoreSiteTextTests.located(outer).contains("Clamp.swift:7 "), "\(outer)")
         #expect(!outer.contains("Sources/Other/"), "\(outer)")
 
-        #expect(other.contains("\"@Clamp\" (1 call site in 1 file — for init(wrappedValue:)):"), "\(other)")
+        #expect(other.contains("\"@Clamp\" (1 call site by written name in 1 file — for init(wrappedValue:)):"), "\(other)")
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(other).split(separator: "\n").contains("  Sources/Other/Clamp.swift:2  in other(_:)"), "\(other)")
         #expect(!other.contains("Sources/Probe/"), "\(other)")
     }
@@ -212,8 +212,8 @@ struct WhereStoreWrapperSitesTests {
         let root = try Self.repo(Self.sameNamed, targets: ["Other", "Probe"])
         let output = try await Self.lookup(["Probe.Clamp.init"], in: root)[0]
 
-        #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("\"@Clamp\" (1 call site in 1 file — for init(wrappedValue:)):\n  Sources/Probe/Clamp.swift:6  in clamped(_:)"), "\(output)")
-        #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("\"@Clamp\" (1 call site in 1 file — for init(wrappedValue:_:)):\n  Sources/Probe/Clamp.swift:7  in ranged(_:)"), "\(output)")
+        #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("\"@Clamp\" (1 call site by written name in 1 file — for init(wrappedValue:)):\n  Sources/Probe/Clamp.swift:6  in clamped(_:)"), "\(output)")
+        #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("\"@Clamp\" (1 call site by written name in 1 file — for init(wrappedValue:_:)):\n  Sources/Probe/Clamp.swift:7  in ranged(_:)"), "\(output)")
         #expect(Self.count(of: "Clamp.swift:6  in clamped(_:)", in: WhereAnswerRepetitionTests.sitesOnePerLine(output)) == 1, "\(output)")
         #expect(Self.count(of: "Clamp.swift:7  in ranged(_:)", in: WhereAnswerRepetitionTests.sitesOnePerLine(output)) == 1, "\(output)")
     }
@@ -231,7 +231,7 @@ struct WhereStoreWrapperSitesTests {
         """
         let output = try await Self.lookup("Clamp.init", source: source)
 
-        #expect(output.contains("\"@Clamp\" (1 call site in 1 file — for Probe.Clamp, no one initializer by its labels):"), "\(output)")
+        #expect(output.contains("\"@Clamp\" (1 call site by written name in 1 file — for Probe.Clamp, no one initializer by its labels):"), "\(output)")
         #expect(Self.count(of: "Clamp.swift:6  in clamped(_:)", in: WhereAnswerRepetitionTests.sitesOnePerLine(output)) == 1, "\(output)")
         #expect(!output.contains("no callers"), "\(output)")
     }
@@ -317,7 +317,7 @@ struct WhereStoreWrapperSitesTests {
         let output = try await Self.lookup("PV.init", source: source)
 
         #expect(!output.contains("no callers"), "\(output)")
-        #expect(output.contains("\"@PV\" (1 call site in 1 file — for init(projectedValue:)):"), "\(output)")
+        #expect(output.contains("\"@PV\" (1 call site by written name in 1 file — for init(projectedValue:)):"), "\(output)")
         #expect(Self.count(of: "Clamp.swift:6  in pv(_:)", in: WhereAnswerRepetitionTests.sitesOnePerLine(output)) == 1, "\(output)")
     }
 
@@ -334,7 +334,7 @@ struct WhereStoreWrapperSitesTests {
         let output = try await Self.lookup("Leg.init", source: source)
 
         #expect(!output.contains("no callers"), "\(output)")
-        #expect(output.contains("\"@Leg\" (1 call site in 1 file — for init(initialValue:)):"), "\(output)")
+        #expect(output.contains("\"@Leg\" (1 call site by written name in 1 file — for init(initialValue:)):"), "\(output)")
         #expect(Self.count(of: "Clamp.swift:5  in leg(_:)", in: WhereAnswerRepetitionTests.sitesOnePerLine(output)) == 1, "\(output)")
     }
 
@@ -352,7 +352,7 @@ struct WhereStoreWrapperSitesTests {
 
         #expect(!output.contains("no callers"), "\(output)")
         #expect(!output.contains("no one initializer by its labels"), "\(output)")
-        #expect(output.contains("\"@Clamp\" (1 call site in 1 file — for init(wrappedValue:_:)):"), "\(output)")
+        #expect(output.contains("\"@Clamp\" (1 call site by written name in 1 file — for init(wrappedValue:_:)):"), "\(output)")
         #expect(Self.count(of: "Clamp.swift:5  in clamped(_:)", in: WhereAnswerRepetitionTests.sitesOnePerLine(output)) == 1, "\(output)")
     }
 
@@ -401,7 +401,7 @@ struct WhereStoreWrapperSitesTests {
     func diffHeaderIsStaleWhenAReliedOnFileIsNewerThanTheBuild() async throws {
         let output = try await Self.staleDiff(writing: "Sources/Probe/Nested.swift")
 
-        #expect(output.contains("semantic: stale (1 file changed since last build)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Probe/Nested.swift)"), "\(output)")
     }
 
     /// A file both the callers and the reaching tests rely on is counted once in the header of `diff`.
@@ -409,7 +409,7 @@ struct WhereStoreWrapperSitesTests {
     func diffHeaderCountsAFileOnceWhenCallersAndTestsBothRelyOnIt() async throws {
         let output = try await Self.staleDiff(writing: "Sources/Probe/Use.swift")
 
-        #expect(output.contains("semantic: stale (1 file changed since last build)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Probe/Use.swift)"), "\(output)")
     }
 
     /// The `diff` answer over a changed wrapper initializer whose attributes the store records as calls, after the file at `touched` is written again unchanged since the build.

@@ -75,7 +75,7 @@ struct WhereRowReadabilityTests {
             "  App.make — func — Sources/App/A.swift:1",
             "",
             "\(NameMatchedSites.headingOpening) over the working tree, never stale — see sift help answers (call sites)",
-            "\"make\" (3 call sites in 1 file):",
+            "\"make\" (3 call sites by written name in 1 file):",
             "  Sources/App/Use.swift:",
             "    :2 (×2), :3  in make()",
             "    truncated: 1 more call site",

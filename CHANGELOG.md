@@ -1,5 +1,445 @@
 # Changelog
 
+## 0.1.4
+
+- The npm package now ships `Sift.md` beside its binary, so `npm install -g @agulhas-labs/sift && sift install` installs the
+  agent rule as the docs say; `Distribution/npm/build.sh` fails if the packed package lacks it. The README link in the
+  npm package points at the guide section that covers the scopes.
+- `sift run -- xcodebuild test` over a gitignored XcodeGen project that predates a Swift file its `project.yml` holds
+  used to run only the tests the stale project knew and report green; it now prints `project: … does not list N Swift
+  files its spec … holds (…) — run xcodegen generate` before the command's output. A note, never a verdict: the exit
+  code is unchanged, and nothing prints where the project lists every file or the spec cannot be read.
+- `sift run -- xcodebuild test -scheme <Name>-Package`, run in a package's own directory, carries the same
+  `inventory: N declared, M reported` line as a plain `swift test` of that package. Any other `xcodebuild` test run
+  that is not narrowed by `-only-testing`, `-skip-testing`, `-testPlan` or a test configuration now says
+  `inventory: not checked — …` and why, rather than nothing, which read as a run that was checked and found whole.
+  A package that keeps its own `<Name>-Package.xcscheme` under `.swiftpm/xcode` is not checked either, and the line
+  names that file. A Swift Testing ending `xcodebuild` printed with other output spliced in after the test's name is
+  read as that test's ending, and a started test whose ending cannot be read that way is lost rather than never
+  reported.
+- The hook no longer holds a lookup back with a pointer at an index call sent beside it ("sift held this lookup
+  back"): Claude Code returns a sift call before it runs the next tool of the same message, so the hold could
+  never fire, and a lookup beside a call already made is let through as any other.
+- `sift audit` excuses a grep of named Swift files as a search the hook let run (`named`) only where the hook
+  itself reads the line so, through the hook's own parser: `grep -n Depot A.swift B.swift 2>/dev/null` is no longer
+  counted as a miss, and an `rg`, an `egrep`, a flag the hook does not read or a bare number among the operands is no
+  longer excused.
+- The `totals:` line of a `sift run` that read per-test results states the skip count, `0 skipped` included, and each
+  skipped test is named under it as `skipped: Suite.test — reason` (ten at most, then `skipped: +N more`), so a gate
+  whose rule is that a skip blocks a pass no longer greps the log for them.
+- The bundle's `install.sh` records each install as one line in `~/.sift/deploys.jsonl` (time, version, commit, tree
+  state, binary size; the build's details come from a `BUILD_INFO` file in the bundle), and `sift report --deploys`
+  lists them, newest last, so a measurement can be split at the real moments the binary changed.
+- The hook lets a whole read of a smaller Swift file through without building its answer, where no answer could
+  be worth the turn, so such a read no longer waits on the index; its logged reason is `notWorthTheTurn`, where it
+  was sometimes `notSmaller` or `parseError`.
+- The hook answers a whole read of a Swift file with its digest only above a somewhat larger file size (about 10.8 KB at the
+  median context, from about 8.2 KB), because the follow-up cost is now the measured one: the median ranged follow-up
+  after such an answer is 1,330 tokens, where 700 had been assumed.
+- The hook lets a ranged `Read` of a Swift file (an `offset`/`limit` over less than three quarters of it) run
+  where its answer would spare less than the identical re-run is expected to cost, since nearly half of such
+  answers were followed by that re-run; the let-through is logged as `notWorthTheTurn`. `sed -n` windows are
+  answered as before.
+- A window of a Swift file the hook lets through because an index call located the file now writes a
+  `locatedWindow` row to `suppressions.jsonl`, and a window over 200 lines let through on the file's whole digest a
+  `digestHeldWindow` row, so how often each happens is a count rather than a transcript search. `--verdict` and a
+  replay name the call by that rule where they said `noLookup`; what the hook prints is unchanged.
+- The `raw:` line of a `sift run` answer opens with the tree and commit the run happened in, in the `tree:`
+  header's words (`raw: Widget @ cc94af6 (clean) · .sift/runs/…`), so a suite run in the wrong checkout no longer
+  reads as the merge gate.
+- The hook's in-place answer names the files its stripped `| tee` stages would have written in the order they are
+  written on the line, a tee inside a nested `$(…)` before the one ending the line around it.
+- The hook's grep walk skips the version-control directories and sift's binary database only for Claude Code, whose `grep` is `ugrep`; under
+  Cursor and Codex, whose shells run the system grep, it reads both, so a sweep matching the database is let through
+  instead of answered without the `Binary file … matches` line that grep prints.
+- `test --analyse` and the test inventory keep naming a test target as its build file spells it (`Demo Spaced Tests`) now that
+  the module the index attributes its files to is spelt as the build spells it (`Demo_Spaced_Tests`), so a plan still matches it.
+- Module resolution reads a target's `PRODUCT_MODULE_NAME` and `PRODUCT_NAME` settings, in XcodeGen specs and
+  `.xcodeproj` alike (`PRODUCT_NAME: My-App` builds `My_App`), and a rename it cannot expand leaves the target's files
+  guessed, so `where` no longer drops an extension written through a renamed module's real name. Each setting is
+  read from the level Xcode reads it from (target settings, its xcconfig, the project's settings and xcconfig), and a
+  name is spelt as Xcode spells it, measured: Unicode letters kept, a leading digit replaced (`Café Ünï` builds
+  `Café_Ünï`, `3D` builds `_D`), which also corrects the test-log module name for such targets. A target no setting renames is
+  spelt the same way, in XcodeGen specs and SwiftPM packages too. An xcconfig a name
+  is read from is watched like the build file naming it, so editing it, or writing one the build file names but
+  that is not there yet, re-attributes the files on the next query.
+- A file whose build file renames its module through a setting sift cannot read carries a banner saying so, not
+  that no build file declares it, and `init` lists it apart with no proposed module rather than proposing the
+  target's own name, the one the build replaces. `where`'s count of extensions in other modules, and its reason for
+  keeping an alias, say so too rather than that the module was guessed from the path.
+- `search` reads a dotted `calls:`/`uses:` value (`calls:Parser.parse`, `calls:.parse`, `calls:Parser.parse(source:)`) as its base name and says on a note line that the qualifier was dropped, where it answered "removed all" or refused.
+- A deeply nested Swift file no longer crashes every command with a stack overflow: every parse and every read of
+  its tree runs on a 64 MB thread, nesting past the parser's cap of 256 is indexed with that one parse error, and
+  only what the parser takes minutes or unbounded stack on is indexed as one parse error with no declarations: a
+  run of more than 10 `[`, generic arguments nested past 512, more than 4096 `try`/`await`-style keywords in a row,
+  function arrows in one declaration or `else if` arms in one block, and `#if` nested past 256. Shifts and `<=`
+  written without spaces no longer count as generic arguments, and a regex literal after `return`, `in`, `case` or
+  `throw` is read as one.
+- A Swift file with thousands of syntax errors no longer stalls indexing for minutes: past 100 errors they are
+  counted in one walk of the tree instead of each being worded, and the edit check lists them as one error naming
+  the count, at the first.
+- `doctor` takes a configured hook command for sift's only when its program word is sift (after any environment
+  assignments, `exec` or `env`) and the next word is a hook subcommand, so `cd ~/sift && make` and
+  `foo --name sift` no longer count as sift's hooks.
+- The hook reading a command run through `sh`, `bash` or `zsh` ends the shell's options at a bare `--`, as a POSIX
+  shell does: `sh -c -- 'cmd'` runs `cmd`, while `sh -- -c` names a script file called `-c`. A lone `-` ends them
+  too, as each of those shells does: `sh -c - 'cmd'` runs `cmd`.
+- A grep answered in place with a `where` whose per-file cap cut some sites now counts them as "N more sites past the
+  per-file cap" in its closing note, rather than as lines "no site accounts for", which stays for lines no site could be.
+- `digest --signatures-only` serves a stored property with a closure initialiser and observers as its declaration
+  through the initialiser, without the observers, instead of whole.
+  A quoted brace inside a string interpolation in that initialiser (`"\(f("{"))"`) no longer hides the observers.
+- A `where` answer for a bare name several unrelated owners declare now says how many extensions of the name are written through a qualified path and so listed under no owner ("extensions: N more written through a qualified name, not listed here — …"), pointing at each owner's own query that lists them (`where Outer.Configuration` for a nested owner); bare extensions already listed as rows, and extensions of a type that is not one of the owners, are not counted, and none unlisted prints nothing.
+- The hook's walk of a grep skips a version-control directory (`.git`, `.svn`, `.hg`, `.bzr`, `.jj`, `.sl`) for
+  every search shape, as the agents' `ugrep` does, so a large `.git` no longer counts toward the walk's file limit or
+  gets read; it passes over sift's own binary database too, which `ugrep -I` prints nothing from, so a word-anchored
+  sweep of a whole indexed repository (`grep -rnw Name .`) is answered in place instead of let through.
+- A `where` answer from the several-owners path, a diff's callers or a property wrapper's attribute sites now says
+  how many sites it set aside as recorded only by a build older than the file's last edit, as the per-declaration
+  answer already did; a single-owner answer about a wrapper's initializer counts its set-aside attribute sites too.
+- A property wrapper's set-aside attribute site is counted even after an edit added or removed lines above it: each
+  file counts its attributes no store records against the lines the older build recorded there, up to the smaller.
+- A property wrapper's moved set-aside attribute site is counted only against a line where the older build recorded a
+  call of one of the wrapper's initializers, so a debug-only `let probe: Clamp?` beside an attribute added since no
+  longer reads as `1 site … set aside` for each of `Clamp`'s initializers.
+- A diff touching two property wrapper types gives each type's initializer report only the sites set aside for its own type.
+- One site recorded by two stale configurations' stores counts once in the `N sites set aside` line, not twice.
+- A lower-bound `where` searches every changed or outside file for the name's bytes and reads only those that hold
+  it, so a tree with more files than the scan cap no longer prints "N files not scanned" when nothing matched, and a
+  mention past the cap is found; on the several-owners path a file the store holds takes no slot.
+- `where --refs` prints the unbuilt-mentions line and the new-since-last-build line on the first page only, and its
+  references heading says how many macro-generated lines it set aside ("N more lines a macro generated, not listed"),
+  counting those of the typealiases folded into a type; a later page repeats neither the "changed since last build,
+  written since the build, by name" line nor an empty "not code" heading.
+- `digest` of a declaration served whole cites its range from the first line served (its doc comment or
+  attributes), and the repository overview hints `digest <Module>/` for a module that shares its name with a type.
+- `digest --signatures-only` no longer serves the observer bodies of a stored property that has an initial value, keeps
+  the accessor clause of a property whose attribute string mentions an initializer, and stops a custom operator whose
+  last character is a non-ASCII operator character before its body.
+- The root `grep -rn Name .` the hook answers is counted even when git's index holds the name (a tracked file named
+  for it): version-control directories are left out of the names-search check, as the agents' grep leaves them out.
+- A split xcodebuild gate whose test leg runs inside `bash -c`, `bash -lc` or behind `env`/`nohup`/`exec` is read as
+  a split gate, so its build-for-testing leg is not wrapped as a lone build.
+- `sift install --allow-run` (or `--allow-lookups`) without Claude Code among the agents says the flag was ignored;
+  the no-terminal note names the command as it must be typed (the binary's path when its directory is not on PATH);
+  and `install-hook` with both allow flags adds the run rules even when the lookup rules are already there.
+- `sift usage`'s gross note says an answer is taken back only by a re-run or whole read the hook let through.
+- `where` no longer lists an extension of a framework type's nested name (the session type's configuration) under a local nested type of that name, as long as every module name of the tree is declared; a tree whose module names are guessed still lists it as one that may extend.
+- The paste lines `sift affected` prints to run what it lists are runnable and select exactly what they list: a
+  target whose tests are all affected, and a list collapsed to its target, each print a line of their own that runs
+  the whole target, and the filters for a target, a suite and a test are anchored at both ends, so one that is named
+  like another's suffix or prefix is no longer run along with it.
+- `sift doctor` counts a hook command as sift's only when a word of it ends in the binary's exact name, or the name with an at-sign and a version (a pinned npx package), so a path that merely contains the letters no longer counts; its index-store check probes the package directories an engine passes, and the discovery note in help reads as a clause.
+- The release bundle's link rewrite keeps a link's title and leaves code spans and fenced code blocks as written, and its link check reads Windows line endings, ignores a triple-backtick span at the start of a line, and warns when a fence is never closed.
+- The release bundle's link rewrite and link check read a document by its Markdown blocks, one shared reader: a code span may run across the lines of a paragraph but not past a heading, list item, table row, quote, break or indented code block, a list item's paragraphs are placed by the item's content column, a fence line indented as code opens no fence, a heading, fence or indented code block may start on a list item's marker line, and an indented code block is left as written.
+- `sift run -- xcodebuild test` (or `test-without-building`) on an `id=` destination reads the simulator's
+  accessibility flag before the run and, if it is off, prints `accessibility: off on <udid> — the first launch
+  will draw an empty tree; arm it and reboot the simulator first` before the command starts. Nothing is armed or
+  rebooted; an unreadable flag, or a named destination, prints nothing new.
+- An `affected` range says how many uncommitted .swift files it left out ("N uncommitted .swift files are not in this range; drop --from to include them, or commit first."), so an empty range no longer reads as a change that affects nothing.
+- A Swift lookup piped into a `tee` that ends its pipeline (`grep -rn Name . 2>&1 | tee notes.txt`) is answered and
+  counted as the lookup alone, since the lines still reach the context; a `tee` onto a Swift source file, one whose
+  output is redirected, or one with stages after it still reads as a write (a redirect of the `tee`'s own stderr, a
+  process substitution operand or a `.swift.bak` backup copy is not one). The answer ends its opening line with
+  `(not run: out.txt was not written)`, since the command never ran. The same reading applies to a teed lookup
+  re-run to get the file written (counted as a read anyway) and to a teed `sift where`/`sift search` (its files are
+  located), and to a `tee` inside a command substitution.
+- `sift run -- swift test` of a nested package, named by `--package-path` (either spelling), `-C` or run from
+  its own directory, prints the `inventory:` line for that package's manifest and tests instead of nothing.
+- The `inventory:` line of a root `sift run -- swift test` no longer counts a nested package's test target as
+  "outside this run's scope": a test under a directory holding its own `Package.swift` is left out of the root
+  run's counts, unless the root manifest declares its target, by name or by a `path:` into that directory, in which
+  case it stays the root's. A run that names the nested package with `--package-path` declares that package's test
+  bundles, a package directory spelled through a shell variable prints the "not checked" form, and
+  `--package-path` wins over `-C` in either order.
+- Answers open with one header line and stop repeating the call: `digest`'s header drops `semantic:` (it never
+  consults the store, so the field always read `syntactic-only`); `search` and `strings` read `source: live`;
+  `where` and `strings` no longer echo the query, and `search` echoes it only where the parse read it as other
+  than sent (an alternation, a regex, a bare word as `name:`); `strings` heads its literals `source literals:`.
+  A `where` with no store says which in its header: `none (no index store in this worktree)` or `none (no
+  index store for this tree yet)`. The hook's answer for several names labels each part `where <name>`.
+  Measured on this repository: a `digest` 1,099 → 1,073 B, a `search` 382 → 297 B, a `strings` 615 → 475 B.
+- A `where` whose store's relations are withheld (no store, still loading, failed to open, `--syntactic`, `--at`)
+  carries one note under its header saying why, what was withheld and the remedy, in place of the `mode:` line, the
+  `NOT ANSWERED` notice and the `references:` lines; "by written name" is said only above a list matched that way. A
+  `stores:` note appears only when more than one store answered, one is still loading, or a setting was passed over.
+- What holds of every answer is said once per session, not on each answer: the references boundary ("this repo's
+  own build only" and the `not code` pointer), the property and case "written code only" lines, "split on the
+  XCTest or Testing import, never the path", "which is not use", the `not code` heading's "over the working tree,
+  never stale" and `search`'s caveat line leave the answers, and one text carrying them, with the written-name
+  limits ("may miss protocol, closure, unfolded-typealias uses", "an empty list is not proof it is unused"), goes
+  into the session-start primer, the `where` and `search` tool descriptions and `sift help answers`. A no-store
+  type answer keeps "an empty list is not unused". The primer grows by 684 B. Nor is a site said twice: a
+  function's `where --refs` lists under `references to` only the lines `callers of` did not show, headed `N in M
+  files, K of them the call sites above`, and pages over the rest (three callers and one function handed on
+  unapplied: 861 → 712 B).
+- `where` with an index store no longer drops a site in a file written since the last build that the store cites
+  nothing in, such as a new, untracked file calling the function: such a file's lines that write the name are listed
+  as `changed since last build, not in the store, mention the name: <path>:<line>`, under the default answer,
+  `--refs` and the several-owners answer alike, and the header's stale count includes
+  the file. A changed file the store holds is listed only where it now refers to the name more often than the
+  store recorded, as `written since the build, by name: :6` under its `(file changed since last build)` mark, so a
+  name common across unrelated edited files, bound in a tuple pattern or labelling a tuple's element, or in a file
+  only touched, lists none of them; where a cited line has moved, the surplus is given as `1 more than the build
+  recorded, among :3, :7`. A new file writing the name only in a string or a comment is neither listed nor counted.
+- `where --refs` on a type no longer lists an `@Observable` attribute line as a reference, nor counts it as a
+  production use: the storage and observation accessors the macro generates name each property's type there,
+  with nothing written to rename. A mention written on that line, such as a conformance, is still listed.
+- `strings` matches Swift string literals ignoring case, as it already did catalog values: the smart-case rule (an
+  uppercase letter in the query made the match case-sensitive) is gone, so `strings "Warnings"` finds the
+  on-screen `"WARNINGS"` and `"Many warnings"` in one call instead of answering "no Swift string literal
+  contains it".
+- `digest <Type>` for a small type, which serves source instead of a digest, now includes the type's doc comment and
+  attributes (it served the declaration alone, dropping the one paragraph saying what the type is), counts them in the
+  size comparison, and says "the declaration's source follows" rather than "the source itself", since the file's header
+  and imports are not served. A whole-file digest that is served keeps its wording.
+- `where --refs` is now a complete rename sweep: with an index store it lists every line of every file instead of
+  capping a file at 30 and sending the rest to a grep, and its not-code section reads the Markdown under hidden
+  directories (`.agents`, `.github`, `.claude`), not only visible ones. `.git`, `.build`, `.swiftpm` and `.sift`
+  are still skipped, and Swift in a hidden directory is still never indexed.
+- Discovery finds the index store of a SwiftPM package nested below the repo root (`swift build --package-path
+  Kit --build-tests` leaves it at `Kit/.build/out`) with nothing to configure: `status` reports it
+  and `where` answers semantically, where it took an `indexStorePath` in a hand-written `.sift.json`. The nested
+  package is probed at the paths the root package is, after DerivedData and only where the root's `.build` holds none. The builds `where`, `affected` and `status` tell
+  you to run for it carry `--package-path Kit` (SwiftPM finds no manifest from the root), and `status` labels the store `Kit/.build`.
+- `sift run`'s `raw:` line now says how long its log lives (`kept for the next 4 runs`, or `kept until it passes or 5
+  newer failures`), and the log of a run that built and failed is kept in a pool of its own until a later run of the same
+  command passes or five newer failures push it out, so a path cited in a prompt no longer dangles after five more runs.
+  Logs are kept in the order their runs finished, so a slow run's log is no longer the first pruned by quick runs that
+  finished during it; a run that ran nothing (exit 4) is not kept as a failure.
+- `sift run` shows every warning and every `error:` line a tool logs with a timestamp while the build runs
+  (`<date> <time> tool[pid:tid] error: …`), which it used to drop: listed under `tool log (N):` as `tool: error: …`,
+  the timestamp and pid gone, deduplicated and capped at twenty. They are shown, never judged: no verdict, exit
+  code, selector check, proof or explanation of a failure reads them, and the same shape printed once a test has
+  started (a line a test logged itself) is left to the raw log.
+- A failing test's expectation message, with its expansion, is shown whole up to 1 KiB (it was cut at 240 bytes);
+  past that it is truncated with the same pointer to the raw log. Notes and arguments keep their 240-byte cap.
+- The answer to a filtered run that matched nothing (exit 4) is its headline and the `raw:` line: the `totals:`
+  line, the tool's `Build complete!` and its own `No matching test cases were run` no longer repeat it.
+- A whole-file `Read` the hook answers is answered with the file's whole digest, not its first sixty member lines
+  and an `offset` cursor: the agent no longer needs a second call to see the rest of the type it was denied. The
+  saving floor is weighed against the whole digest, so a file whose full digest does not save enough runs; a
+  digest past the 10 kB budget is still cut to fit, unless it is at most two fifths of the file's bytes (24 kB at
+  most), when it is served whole. `sift digest` and the MCP `digest` keep their paging.
+- `usage` and `audit` say what they counted in the same terms: both headers name `1 session (+2 subagents)`, a parent
+  with its subagents beside it, `audit`'s adds how many of its Swift lookups sift served, and `usage` adds a `counted:`
+  line saying a call is one logged answer, failures and Markdown outlines included, where `audit` counts lookups by any
+  route. A trial had read "13 calls by 2 subagents" against "1 session, 28 Swift lookups" as the two disagreeing.
+- `where` keeps a type's references and its usage line when five or more of its extensions sit in files that
+  sort before the type's own: an extension no longer takes one of the five places semantic relations are
+  resolved for, and a declaration left past them is named in the note, with the query that resolves it.
+  Overloads sharing one qualified name are resolved together, never split by the five (a set larger than one
+  answer resolves is given by file and line, since no query narrows it); an extension of a type the tree does
+  not declare keeps its place; and a name several owners declare counts the declarations those places pick.
+- `affected` right after an edit, before a rebuild, seeds each file the store refuses from the declarations the
+  diff touched (a removed or renamed one by its old name) and walks to their call sites as syntactic `where` finds
+  them, labelled `syntactic, lower bound`, instead of name-matching every declaration in the file: a three-call-site
+  rename in a 354-test target now names its 4 tests at depth 1 and 6 at depth 2, where it named 283. A target the
+  walk still cannot narrow (half its tests or more, past the list cap) is said to be one in two lines with the names
+  and the command, not listed. That collapse now applies on every path (resolved, name-matched, after-edit), a
+  target named by its own commands is not repeated in the `xcodebuild` and `swift test` sections, and the limits
+  block is two lines (how the answer was made, that it is a lower bound, and what is specific to it); the standing
+  list of what the index cannot see is `sift help affected-limits`. The walk still reaches what no site calls by
+  name: an operator, a witness the language calls (`description`, `hash(into:)`, `wrappedValue`) or a stored
+  property seeds its type too, a typealias or associated type is followed where it is written as a type, a function
+  handed on as a value (`map(T().f(x:))`) counts at every hop, and a file left with no name to scan is seeded whole.
+  Beside a target named by its own command, the `xcodebuild` and `swift test` lines say they cover the listed
+  targets only.
+- `where`, `affected` and `diff` no longer list a caller, reference or conformance at a line the file held
+  before its last edit: where a store keeps several builds of one file (an Xcode store's simulator builds for
+  two architectures, debug and release units in one native store), a unit built before the file last changed
+  no longer answers beside one built after it. Every build made since the edit still answers, so a call only
+  one configuration compiles is still listed.
+- `usage`, the report page and `audit` price a saving only where the counterfactual was observed: a read the advice hook
+  intercepted and answered in place, a whole file (the bytes of its first 2,000 lines, what one `Read` returns, as the hook
+  measured them) or a window of lines, less the answer served. Every other call, a grep the hook answered and every
+  voluntary `digest`, `where`, `search` and `strings`, is counted and its served bytes stated, never priced; hook lines
+  logged before the field their pricing needs are unpriced. An answer read anyway is taken back: when the hook lets the
+  same context re-run the command it answered, or read the file whole, it writes a `readAnyway` line naming the answer's
+  call id, and that answer is left unpriced. The headline reads `~2.5k tokens saved on 2 intercepted reads (file or window
+  asked for − answer served); 1 read anyway, 4 other calls unpriced`, and no longer claims the figure leans high.
+  Markdown outlines stay on a line of their own. `audit` no longer prints a saving of its own beside the read-anyway rate.
+- `where --refs` ends with a `not code` section: the DocC links, doc comments, comments, string literals, Markdown
+  lines and file names that write the name, read from the working tree's Swift and Markdown files, one row per file
+  paged on the answer's offset. A rename no longer has to grep for them; nothing found says which files were read.
+- `install.sh` and `sift install` take `--allow-run` and `--allow-lookups`, so "install sift and allow it" is one command
+  where nothing can be asked (an agent's shell), and the permissions line printed there names the exact command to run,
+  and the form to type it in from Claude Code (`! sift install-hook --allow-run`).
+- The release bundle's documents no longer carry dead links: the README opens its Install section with the
+  release routes (Homebrew, npm, the bundle's `sh install.sh`) before the source build, `make-dist.sh` rewrites a
+  relative link to a document the bundle does not ship (Design.md, Benchmarks/) into a link to the public repository
+  at the release tag, and fails the build on any relative link in the staged bundle that does not resolve.
+  INSTALL.md now describes the installer as copy-to-a-temporary-name-then-rename, which is what it does.
+- `affected` names a target whose every test is affected in one line with its count and both runners' commands
+  (`LibTests: all 661 tests — --filter 'LibTests' — -only-testing:LibTests`) instead of listing its suites; a
+  partly affected target past the suite cap prints its heading, an over-cap line and one command per runner
+  (`swift test --filter …`, `xcodebuild test -only-testing:Target/Suite …`) that runs exactly the affected suites,
+  with no per-test rows, suite list or `truncated:` line. A changed file the store refuses is no longer expanded
+  into its declarations: the answer counts the declarations the name match used.
+- Discovery finds an `xcodebuild -derivedDataPath <Pkg>/.build/DerivedData` build, for the repo root and
+  each SwiftPM package in the tree, after every other probe, so `status`, `affected` and `where` answer from
+  it with nothing set where they used to say `index store: none found`. The no-store hint names the places
+  searched, no longer implies a store in any ignored directory is found, and gives the `.sift.json` line for
+  anywhere else.
+- A paged answer whose `--offset` skips every item now says so: `search` and `where --refs` (with or without an
+  index store) print `offset 5000 is past the last of 80 matches — drop offset to see them` in place of the
+  `(…80 matches skipped)` note under an empty page, which read as an answer.
+- `sift doctor` no longer fails a correct Claude-only install on a machine that also has Cursor or Codex: an agent
+  found with nothing of sift's in it prints `found, sift not installed — sift install --agent <name> adds it` and
+  isn't counted, while one with any piece installed but something missing still fails, and `--agent` still
+  checks the agent it names. When no agent found has sift installed at all, doctor fails and says so.
+- The hook wraps a lone `xcodebuild build-for-testing` in `sift run --` like any other build: in a package
+  that builds only for a simulator it is the everyday build, and it used to run raw. `test-without-building`,
+  and a line running both actions (a split gate), are still left alone and logged as `gateLeg`, including
+  when the `test-without-building` leg is written behind a wrapper (`xcrun xcodebuild …`, `env FOO=1 …`, `time …`).
+- `sift run -- xcodebuild build-for-testing -scheme X -derivedDataPath build` reports a green build as a pass:
+  the value of an option known to take one (`-derivedDataPath`, `-scheme`, `-configuration` and the rest of
+  `xcodebuild -help`'s) is never read as the action, where it used to draw `⚠ … could not tell which verdict
+  the command owed`. An action word behind an option no table names still refuses.
+- `digest` with `--signatures-only` (`signaturesOnly` on the MCP face) on a `Type.member` target now serves the
+  member's header and its declaration through the signature, up to the body's opening brace, and no body. It used
+  to serve the whole body, so asking for the signatures of several members to choose one returned every body.
+- `digest Name` serves the type where `Name` is both a module and a type, with one closing line (`a module named
+  Name also exists — digest Name/ serves it`); `digest Name/` is the explicit module spelling, on the CLI and
+  over MCP. A name that is only a module is unchanged; several types of the name keep the ambiguity answer plus
+  the same module line.
+- `sift audit` leaves out sessions recorded in scratch roots (temporary directories, `~/Library/Caches`, any
+  `.build` directory) as `usage` and `report` already do, with a line saying how many sessions, and takes
+  `--include-scratch` to count them. Its share and its logged saving no longer count a probe repository's
+  lookups.
+- A grep answered in place with a `where` counts the matching lines the answer does not show under the paths
+  searched, `7 comment lines under Pkg/Sources also match, not shown here — re-run the identical command to see
+  them`, where they used to be left out in silence; and an answer showing sites outside the paths searched says
+  so, `answered across the tree: 1 of 11 sites shown is under Pkg/Sources`, rather than reading as theirs, naming
+  a `Grep`'s path as it was given. A matching line is counted once however many operands print it, a comment only
+  in a Swift or C-family file, and not at all where the answer shows its doc summary; where the lines cannot be
+  counted (a `Grep`, a cut whose order grep leaves unfixed, a search past the print limit) the answer says so
+  rather than reading as though nothing else matched, and sift's own `.sift/` no longer leaves a search of the
+  whole repository uncounted.
+- `where` names the lines its lower bound leaves out: where a test build ran and test files still have no unit
+  in the store (a test target the build skipped, or a file outside any built target), it scans those files
+  alone for the symbol's name as a whole word, in code or strings, not comments, and adds `not in the build, mention the name: Tests/Fixtures/GizmoTests.swift:48,176 · …`, ten files at
+  most, the rest counted; it reads at most 200 such files and counts the rest as not scanned. A rename trusting `where --refs` used to miss those lines behind an honest but
+  unactionable `a lower bound (24 test files outside any built target)`.
+- The hook answers a grep sweep for a name in place in a tree with no index store (a fresh install, an agent
+  worktree, an app whose build has not run), with the syntactic `where`, under the same rules as a built tree:
+  every line the grep prints must be a line the answer shows, and the whole refusal must be smaller than what
+  the grep prints. Such a sweep used to run unanswered, logged as `noStore`.
+- A line of several sweeps answered in place is weighed whole: its refusal must be smaller than what all its
+  greps print together, as well as each answer smaller than its own grep, or the line runs as not smaller.
+- `sift help refusals` says what a command the hook lets through means: no smaller answer was found for that
+  call, not a recommendation of the whole read, and `digest` and `where` are still the cheaper first call.
+- Tests: the shell's sample of a function's name-matched sites is pinned to say how many it cut off for the
+  places the name is written with no call, as it already was for the calls. A reviewer's "callers cut short,
+  no marker" on `where` was a marked cut (`truncated: N more`) that sits under the last file's rows.
+- `strings` lists a line of a multiline block literal as a key's literal occurrence when the line, its
+  indentation stripped, spells the key: `Hello \(x)` inside a `"""` block now matches the key `Hello %@`, as it
+  already showed under the source literals.
+- `strings` finds a plain catalog key holding a quote, a backslash or a control character at the literal that
+  escapes it: the key `He said "hi"` is listed at `String(localized: "He said \"hi\"")`, where it used to be
+  reported as referenced through a generated accessor because the scan looked for the key's unescaped text.
+- `strings` reads the `\'` escape in a Swift literal as the apostrophe it prints: a key such as `it's %@` is
+  listed at the interpolated literal `"it\'s \(x)"` rather than as referenced through a generated accessor, and
+  `sift strings "it's"` lists that line among the source literals.
+- `sift run` no longer reads a line a test prints in a diagnostic's shape as a failure or a compiler error:
+  `/bin/echo said /x/T.swift:12: error: -[T.A b] : …` failed no test and `said /x/T.swift:13: error: boom`
+  listed no error. A diagnostic counts only where its path opens the line: a relative path holding no space,
+  or one absolute path with no second one after a space, so a real path such as `/Users/x/My Project/…` still
+  counts.
+- `where` counts a clause written through a typealias as written through it: a subclass alone in its file
+  through the class's alias no longer counts as a line of the class's own name, losing its "written as", nor
+  is it listed in the class's `--refs` sweep, and one written through an alias of an alias is written as the
+  alias it spells only. The store's reference queries (callers, uses, references, overrides, extension sites)
+  no longer drop an implicit occurrence in no declaration as a copy of an unrelated one written beside it.
+- `digest Module.Type` no longer lists, or counts in `(+N extensions)`, an extension of another module's type
+  of the same name: its extensions are placed the way `where` places them, and one the code cannot place is
+  listed with `where`'s "may extend another module's" mark. A member miss ranks no member of another module's
+  extension, and an external-type answer attributes each local extension to the type it extends.
+- The hook's short cold-start back-off arms only where the first index build is what ran out of time: a
+  document outline, or a search still running before the index is touched, that overruns in a repository never
+  indexed now holds its shape off for the full window, as it does anywhere else.
+- Audit: the replay's own tally names the lookups the hook stood aside from, as the scan's does, and the scan
+  dump and scan diff count batched and stood-aside windows as the cold misses they are: a context that could not
+  reach the index relabels them `unreachable`, and the diff's cold summary includes them.
+- A sibling repository whose first index build was stopped partway no longer answers the hook's "the one file
+  declaring this name" from the files stored so far: it names no file until a build has finished, since a
+  name seen once may be declared again in a file not yet reached.
+- The hook answers a grep sweep for a name in place (`grep -rnw Name Dir`, `grep -rn Name Dir`) only where
+  its whole refusal is smaller than what the grep prints after its `head`, `tail` or `sed -n` cut; otherwise
+  the grep runs, logged as not smaller. Measured, answered sweeps cost 2 to 3.5 times the output they replaced
+  and saved too few follow-ups to pay for it. A names search over a tree past the walk's file or byte
+  limit is answered unweighed, as before, since what it prints was never measured.
+- The hook weighs a window that prints at least three quarters of a Swift file's lines (`sed -n '1,200p'`,
+  `head -n 200`, a `Read` with a range past the file's end) as it weighs a whole read of the file: where the
+  digest spares less than the further turn it costs, the read runs, as the whole read of the same file already
+  did. A narrower window is judged as before.
+- `where` with no index store shows a function's name written with no call (`let r = restock`) beside the list
+  of its calls, not only when no call is listed, plain and under `--refs`: a sweep for a rename or delete no
+  longer misses the reference a store's answer lists as `referenced, not called`.
+- `sift diff` does the same for a changed function: a name written with no call is shown beside its calls,
+  where it used to show only when no call was listed.
+- A first index build cut off partway, as the hook's in-place answer does at its time budget, is resumed by
+  the next build rather than started again: each batch of parses is stored as it lands, and the next build
+  keeps every stored file that still matches and parses only the rest. `index --full` still parses every file.
+- The hook backs off for one minute, not five, after an answer runs past its time budget in a repository whose
+  index has never finished a build, so a first build gets another chance soon. Its `overTime` log row names
+  the shapes it charged and the back-off it armed.
+- `sift audit` names the lookups the hook stood aside from under cold, backed off or over time, with the
+  overruns behind them, counted within the audited span and root.
+- A first index build resumed after the hook stopped it re-attributes its stored rows once per module
+  resolver, recorded in the store, rather than on every attempt, and reads and hashes the rows it keeps in
+  parallel: on a throttled 3,236-file app repository an attempt with nothing left to parse spends about a
+  second less before it writes the head. What every attempt still pays first (the build files, git's listing
+  and status) can on its own fill the hook's three seconds there, and then the head waits for a call with no
+  deadline, as before.
+- A `where` for a type lists the type's own declaration first, above its extensions, where it used to sit
+  wherever its file sorted: a long list of extensions read from its head no longer hides the row that says
+  what the name is.
+- A nested package's store answers only for that package's files: a `where` about declarations outside it
+  takes the no-store path, its note naming the store passed over (`Kit/.build answers only for files in Kit`),
+  where it once judged them against that package's build and could resolve a root file to the package's file
+  of the same trailing path. The header now reads `none (no index store covers these files; Kit/.build answers
+  only for files in Kit)`; `diff` and `affected` match such a declaration by written name instead of listing
+  the package's callers as resolved; a bare-name `where` refuses it as outside the store's package with no
+  rebuild advice; an `xcodebuild` store in a nested package's `.build` is scoped to that package too; and a
+  declaration is matched to the store's occurrences by its exact path, so a dependency's file of the same
+  trailing path no longer answers for it.
+- `install-hook` registers a binary started by a path under `/private` (`/private/tmp/…`) with that spelling, where
+  it used to write `/tmp/…`.
+- An audit scans its transcripts on up to eight threads at once, so a fortnight's window that took minutes
+  finishes in under one, and files of one name in different directories are listed in the order of their
+  paths, so two runs over the same transcripts print the same report.
+- An extension written through a framework its file imports, which the tree neither declares as a module
+  nor writes as a type, is that framework's type: `where` leaves it out of the tree's type of the same name,
+  as a type digest already did, instead of listing it as one that may extend another module's. Only where a
+  build file named every file's module: a module named from its directory, or a qualifier that is a module's
+  name as the compiler spells it (a hyphen as an underscore), keeps the extension listed and marked.
+- An audit holds about a third of the memory it did: each transcript is scanned a line at a time instead of
+  read whole, and the working directory read from every transcript's opening lines is let go as soon as it
+  is read rather than when the audit ends.
+- A semantic `where` for a function or an initializer lists, in its by-name lines for files outside the build
+  or written since it, only the lines that call it or reference it with its labels: the base name followed
+  by `(` and an argument label it takes, `(` alone where that argument is unlabelled, `()` where none need
+  passing, `{` or `() {` for a trailing closure, or after a `.` as an unapplied reference through a type, `self` or `Self`, never through a lowercase value; comments inside the
+  parenthesis are skipped, and an initializer is also found through its type name, `Box(label:)`. A local or a
+  word spelling the same name is no longer listed; a property, case or type keeps its bare-name match. A file
+  written since the build counts the build's references over the same shapes, so a reference the scan cannot
+  see no longer cancels a new call.
+- A green run no longer stands for a tree that differs from it in a build setting, a C, Objective-C or Metal source, a version-specific package manifest, an Xcode workspace or project file, or a resource a build compiles (a plist, an asset catalog, strings, a storyboard, a Core Data model), so `sift stop` asks for a build after such a change; notes, docs and loose images still do not. `sift stop` also asks when the only files a context edited were such inputs (an xcconfig, a plist, a C source), naming them "build inputs" where it names Swift files otherwise.
+- Every file an answer cites is judged against its own build, not the store's newest one, so a partial build (one
+  target built after another's file was edited) no longer answers fresh for a file it skipped. The stale header
+  counts the files by kind, `stale since last build (1 file changed: <path>)`, `(2 new files)`, `(4 files: 1
+  changed, 1 deleted, 2 new)`, and `affected` and `diff` count them the same way; a refusal after a partial build
+  names the module the build skipped. `status` still judges from the store's newest build and says in its note
+  that a file a partial build skipped shows only on a query.
+- `sift stop` no longer asks for a build while a `sift run` of the tree as it stands is in progress, judged by the run's process being alive rather than its heartbeat being recent; a run whose process is gone is ignored.
+- A crashed full `swift test` run names the test bundle and the signal (`SiftMCPTests test process exited on signal 5 (SIGTRAP)`), also when SwiftPM's signal line is glued to the end of a test-case line, and lists the last five tests that started there and never ended instead of thousands.
+- A build the hook rewrites to `sift run -- …` no longer ends in `--sift-rewritten`: the notice that the hook ran the build rides in the hook's own output as context beside the replaced command, so an older `sift` first on the shell's PATH can no longer reject it, and the allow rules `install-hook` writes (and exact rules for the plain wrapping) match the rewrite as before. `sift run` still accepts the flag from an older hook.
+- A search that overflows its page prints the names past it grouped by path once, in order of first appearance, and an extension there carries its line range, so a follow-up digest of that range serves it.
+- `sift install` with both `--allow-run` and `--allow-lookups` and no Claude Code names both flags in its "ignored" note, not only `--allow-run`.
+- The no-terminal permissions note prints the bare `sift` only where the first `sift` on the PATH is this binary; behind a different `sift` earlier on the PATH it prints the absolute path.
+- The first `sift` on the PATH is looked up as the shell does: a relative entry, and an empty one anywhere in the list, is taken against the current directory, so the no-terminal note prints the bare `sift` where `PATH=.:…` runs this binary and the absolute path where it runs another.
+
 ## 0.1.3
 
 - `sift install` no longer hangs on `claude mcp add` until its 60-second deadline: every child sift spawns

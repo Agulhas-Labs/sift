@@ -12,10 +12,11 @@ import SwiftSyntax
 struct ImportLines {
     /// Every import declaration's lines in `source`, in source order.
     static func of(source: String) -> [ClosedRange<Int>] {
-        let tree = Parser.parse(source: source)
-        let visitor = Visitor(converter: SourceLocationConverter(fileName: "", tree: tree))
-        visitor.walk(tree)
-        return visitor.lines
+        NestingGate.parseOrEmpty(source) { tree in
+            let visitor = Visitor(converter: SourceLocationConverter(fileName: "", tree: tree))
+            visitor.walk(tree)
+            return visitor.lines
+        }
     }
 }
 

@@ -47,6 +47,11 @@ the design depends on, carried over from [../Docs/Design.md](../Docs/Design.md):
   cannot rule it out. Arming a watch, `kill(getpid(), …)`, `pthread_kill` and `pthread_sigmask` go in a
   scenario run in a child that runs nothing else (`Tests/SiftMCPTests/SignalScenarioProcess.swift`, an exit
   test). A signal sent to a process the test started is fine.
+- **A stack-depth regression is pinned with a release binary as well as a test.** A test that overflows the
+  stack on regression takes the whole `swift test` process down rather than failing one test, so confirm the
+  old code fails it once and say so in the report. SwiftSyntax caps nesting at 20 in a debug build and 256
+  in release, so a crash that needs the release depth never shows in a debug test: probe the release binary
+  on the same input.
 - **An answer's outcome wording is never a substring of a line every answer carries, and a number that
   decides an answer is asserted where it is rendered.** Assert on wording only that outcome prints, and
   render at least one answer of each outcome that carries a number.

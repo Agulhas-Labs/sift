@@ -54,7 +54,7 @@ struct RunInventoryNoteTests {
         #expect(!recorded.printed.contains("inventory:"))
     }
 
-    /// `-C`/`--chdir` moves the run to another package as `--package-path` does, so the manifest beside the reader is not the one that ran: a run naming one is not reconciled.
+    /// `-C`/`--chdir` moves the run to another directory as `--package-path` does, so the package is the one at or above it: a run naming a directory with no manifest there or above is not reconciled.
     @Test(arguments: ["-C", "--chdir"])
     func aRunInAnotherDirectoryIsNotReconciled(flag: String) async throws {
         let repository = try await Self.indexedPackage()
@@ -147,9 +147,9 @@ struct RunInventoryNoteTests {
         #expect(!printedFrom.contains { $0.hasSuffix(".cooperative") }, "\(printedFrom)")
     }
 
-    /// A nested package's own manifest bounds it, not the repository root's, so its run is never reconciled against the outer package.
+    /// A nested package's own manifest bounds it, not the repository root's, so its run is reconciled against that package and never the outer one.
     @Test
-    func aNestedPackageRunIsNotReconciled() throws {
+    func aNestedPackageRunIsReconciledAgainstItsOwnPackage() throws {
         let repository = try Self.package()
         let nested = repository.appendingPathComponent("Nested")
         try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
@@ -160,7 +160,9 @@ struct RunInventoryNoteTests {
         let package = Package(name: "widget", targets: [.testTarget(name: "WidgetTests")])
         """.write(to: nested.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
 
-        #expect(!RunInventoryCheck.applies(to: ["swift", "test"], report: Self.nonEmptyReport, workingDirectory: nested, repositoryRoot: repository))
+        let tested = RunInventoryCheck.testedPackage(by: ["swift", "test"], report: Self.nonEmptyReport, workingDirectory: nested)
+
+        #expect(tested.map { CanonicalPath.of($0.path) } == CanonicalPath.of(nested.path))
     }
 
     /// A run in a directory with no manifest at or above it is not one the inventory bounds: the walk up ends at `/`, whose parent is spelled `/..`, and never loops there.
@@ -169,7 +171,7 @@ struct RunInventoryNoteTests {
         let directory = try TemporaryDirectory.make("run-inventory-no-manifest")
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        #expect(!RunInventoryCheck.applies(to: ["swift", "test"], report: Self.nonEmptyReport, workingDirectory: directory, repositoryRoot: directory))
+        #expect(RunInventoryCheck.testedPackage(by: ["swift", "test"], report: Self.nonEmptyReport, workingDirectory: directory) == nil)
     }
 
     /// An `xcodebuild` run's set is its scheme's, never the root manifest's, so it is never reconciled.
@@ -177,7 +179,7 @@ struct RunInventoryNoteTests {
     func anXcodebuildRunIsNotReconciled() throws {
         let repository = try Self.package()
 
-        #expect(!RunInventoryCheck.applies(to: ["xcodebuild", "test"], report: Self.nonEmptyReport, workingDirectory: repository, repositoryRoot: repository))
+        #expect(RunInventoryCheck.testedPackage(by: ["xcodebuild", "test"], report: Self.nonEmptyReport, workingDirectory: repository) == nil)
     }
 
     /// An index that will not read says so and keeps the wrapped command's exit code, the same as one that is simply not there.

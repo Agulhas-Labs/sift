@@ -70,7 +70,7 @@ struct SemanticOccurrenceTests {
 
         #expect(output.contains("Sources/Lib/Extra.swift"))
         #expect(output.contains("(file deleted since last build)"))
-        #expect(output.contains("semantic: stale (1 occurrence file deleted since last build)"))
+        #expect(output.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Extra.swift)"))
         #expect(!output.contains("semantic: fresh"))
     }
 
@@ -160,7 +160,7 @@ struct SemanticOccurrenceTests {
         let output = try await engine.lookup(symbol: "helper()", freshness: freshness)
 
         #expect(output.contains("(file changed since last build)"))
-        #expect(output.contains("semantic: stale (1 file changed since last build)"))
+        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Lib/Extra.swift)"))
         #expect(!output.contains("semantic: fresh"))
     }
 
@@ -251,12 +251,12 @@ struct SemanticOccurrenceTests {
     /// Both counts are separate facts about the same store, and a header naming only the louder one claims less than its own body.
     @Test
     func theHeaderNamesBothStalenessCountsWhenBothApply() {
-        #expect(SemanticAxis.stale(newerFiles: 2, deletedOccurrenceFiles: 3).rendered
-            == "stale (2 files changed since last build, 3 occurrence files deleted since last build)")
-        #expect(SemanticAxis.stale(newerFiles: 1, deletedOccurrenceFiles: 0).rendered
-            == "stale (1 file changed since last build)")
-        #expect(SemanticAxis.stale(newerFiles: 0, deletedOccurrenceFiles: 1).rendered
-            == "stale (1 occurrence file deleted since last build)")
+        #expect(SemanticAxis.stale(StaleFiles(changed: 2, deleted: 3)).rendered
+            == "stale since last build (5 files: 2 changed, 3 deleted)")
+        #expect(SemanticAxis.stale(StaleFiles(changed: 1)).rendered
+            == "stale since last build (1 file changed)")
+        #expect(SemanticAxis.stale(StaleFiles(deleted: 1)).rendered
+            == "stale since last build (1 file deleted)")
     }
 
     /// The over-claim this axis knowingly carries, pinned so it is a specified behaviour rather than a surprise.

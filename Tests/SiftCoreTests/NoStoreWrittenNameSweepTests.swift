@@ -19,15 +19,15 @@ struct NoStoreWrittenNameSweepTests {
 
     private static func answer(_ symbol: String, in directory: URL, references: Bool = true) async throws -> String {
         let engine = try SiftEngine(directory: directory)
-        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh(), options: WhereOptions(includeReferences: references))
+        return try await engine.lookup(symbol: symbol, freshness: engine.ensureFresh(), options: WhereOptions(includeReferences: references, standsInForSearch: !references))
     }
 
     /// A plain `where` stands in with the same lines, since the uses a store would list are what it is asked for too.
     @Test
-    func aPlainLookupOfAnAssociatedTypeListsTheLinesWritingItsName() async throws {
+    func aLookupStandingInForASearchListsTheLinesWritingAnAssociatedTypesName() async throws {
         let output = try await Self.answer("Probe.Reading", in: Self.makeWorktree(named: "agent-9d8c7b6a"), references: false)
 
-        #expect(output.contains("used by: NOT ANSWERED from the index store"), "\(output)")
+        #expect(output.contains("no store for uses; sites by written name"), "\(output)")
         #expect(output.contains("func sample<P: Probe>(_ probe: P) -> P.Reading.Type"), "\(output)")
     }
 
@@ -36,9 +36,9 @@ struct NoStoreWrittenNameSweepTests {
         let output = try await Self.answer("Probe.Reading", in: Self.makeWorktree(named: "agent-1f2e3d4c"))
 
         #expect(output.contains("no index store in this worktree"), "\(output)")
-        #expect(output.contains("references: all sites by written name, paged by file"), "\(output)")
+        #expect(output.contains("no store for uses; sites by written name"), "\(output)")
         #expect(!output.contains("references: UNAVAILABLE"), "\(output)")
-        #expect(output.contains("used by: NOT ANSWERED from the index store"), "\(output)")
+        #expect(output.contains("an empty list is not \"unused\""), "\(output)")
         #expect(output.contains(":1  | func sample<P: Probe>(_ probe: P) -> P.Reading.Type { P.Reading.self }"), "\(output)")
     }
 
@@ -47,7 +47,7 @@ struct NoStoreWrittenNameSweepTests {
     func anExtensionOfATypeTheTreeDoesNotDeclareIsSweptByEveryLineWritingIt() async throws {
         let output = try await Self.answer("URL", in: Self.makeWorktree(named: "agent-5b6a7988"))
 
-        #expect(output.contains("references: all sites by written name, paged by file"), "\(output)")
+        #expect(output.contains("no store for uses; sites by written name"), "\(output)")
         #expect(!output.contains("references: UNAVAILABLE"), "\(output)")
         #expect(output.contains(":5  | extension URL {"), "\(output)")
         #expect(output.contains(":2  | let home = URL(fileURLWithPath: \"/\")"), "\(output)")

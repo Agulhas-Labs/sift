@@ -15,6 +15,9 @@ struct RunDiagnosticRecord {
 
     private(set) var errors: [RunDiagnostic] = []
     private(set) var warnings: [RunDiagnostic] = []
+    /// The warnings and `error:` lines a tool logged with a timestamp while the build ran, each once — shown and never judged, so kept apart from ``errors`` and ``warnings``, which decide verdicts.
+    private(set) var toolLog: [RunDiagnostic] = []
+    private var seenToolLog: Set<String> = []
     private var seenErrors: Set<RunDiagnostic.Identity> = []
     private var seenWarnings: Set<RunDiagnostic.Identity> = []
     private var linkerBlock: [String] = []
@@ -78,8 +81,15 @@ extension RunDiagnosticRecord {
 // MARK: - Diagnostics
 
 extension RunDiagnosticRecord {
-    mutating func record(_ line: String) {
-        guard let diagnostic = RunDiagnostic.parse(line) else {
+    /// - Parameter building: Whether no test process has started yet. A timestamped tool-log line is kept only then: once a test runs, the same shape is a line the test logged itself, which is its text and no tool's.
+    mutating func record(_ line: String, building: Bool) {
+        // A tool-log line goes on as the line nothing claimed it always was, so it closes a heading's continuation
+        // and leaves a macro expansion's note to come exactly as before it was read.
+        let parsed = RunDiagnostic.parse(line)
+        guard let diagnostic = parsed, diagnostic.source == nil else {
+            if building, let logged = parsed, seenToolLog.insert(logged.described).inserted {
+                toolLog.append(logged)
+            }
             if !recordExpansionSite(line) {
                 appendColonContinuation(line)
             }

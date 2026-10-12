@@ -131,6 +131,32 @@ struct AuditRepeatableTests {
             #expect(read.locator == LocatingCall(tool: "answer", call: "\(name)-window"), "\(name): \(read)")
         }
     }
+
+    /// Files of one name in different directories, each counted once, are listed in the order of their paths, never the order a dictionary yields them, so the rows a cut-short list keeps are the same in every run.
+    @Test
+    func filesSharingANameAreListedInTheOrderOfTheirPaths() {
+        let paths = (10 ..< 30).map { "/repo/Module\($0)/Shared.swift" }
+        let entries = paths.reversed().map { (path: $0, day: Optional("2026-08-\($0.dropFirst("/repo/Module".count).prefix(2))")) }
+
+        let counted = TranscriptAudit.countedEntries(entries)
+
+        #expect(counted.map(\.last) == (10 ..< 30).map { "2026-08-\($0)" }, "\(counted.map(\.last))")
+    }
+
+    /// Files of one name opened cold in the same number of contexts are listed in the order of their paths, so the ten rows the list keeps are the same in every run.
+    @Test
+    func coldFilesSharingANameAreListedInTheOrderOfTheirPaths() {
+        let paths = (10 ..< 30).map { "/repo/Module\($0)/Package.swift" }
+        let scans = ["a", "b"].map { label -> TranscriptAudit.Scan in
+            var scan = TranscriptAudit.Scan(label: label, session: label, transcript: label)
+            scan.coldFiles = paths.reversed().map { (path: $0, day: Optional("2026-08-\($0.dropFirst("/repo/Module".count).prefix(2))")) }
+            return scan
+        }
+
+        let repeated = TranscriptAudit.repeatedColdFiles(in: scans)
+
+        #expect(repeated.map(\.last) == (10 ..< 30).map { "2026-08-\($0)" }, "\(repeated.map(\.last))")
+    }
 }
 
 private extension AuditRepeatableTests {

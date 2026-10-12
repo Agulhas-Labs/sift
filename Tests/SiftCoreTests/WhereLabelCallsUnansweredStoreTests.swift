@@ -27,8 +27,8 @@ struct WhereLabelCallsUnansweredStoreTests {
 
         let output = try await engine.lookup(symbol: "Gizmo.isReady", freshness: freshness, options: WhereOptions(includeReferences: true))
 
-        #expect(output.contains(store == .loading ? "still warming" : "failed to open"), "\(output)")
-        #expect(output.contains("\"isReady\" (no use by name, 1 call passing it as isReady: to the memberwise init, in 1 file):"), "\(output)")
+        #expect(output.contains(store == .loading ? "index store still loading" : "index store failed to open ("), "\(output)")
+        #expect(output.contains("\"isReady\" (0 uses by written name, 1 call passing it as isReady: to the memberwise init, in 1 file):"), "\(output)")
         #expect(output.contains("    :2  in stock()  | Gizmo(weight: 2, isReady: true)"), "\(output)")
         #expect(!output.contains("lists them"), "\(output)")
     }

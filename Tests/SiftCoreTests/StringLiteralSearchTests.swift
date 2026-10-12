@@ -36,7 +36,7 @@ struct StringLiteralSearchTests {
         let output = try engine.strings(query: "did not complete")
 
         #expect(output.contains("no string catalogs (.xcstrings / .strings) in this repo"))
-        #expect(output.contains("source literals (Swift string literals holding the wording, not catalog entries):"))
+        #expect(output.contains("source literals:"))
         #expect(output.contains("  DepotStore.restock(underlying:) — Sources/Depot/DepotStore.swift:4: \"refused — \\(underlying) did not complete\""))
     }
 
@@ -58,7 +58,7 @@ struct StringLiteralSearchTests {
         let acrossIt = try engine.strings(query: "underlying) did")
 
         #expect(expressionAlone.contains("no Swift string literal contains it either"))
-        #expect(!acrossIt.contains("source literals (Swift string literals holding the wording"))
+        #expect(!acrossIt.contains("source literals:"))
         #expect(acrossIt.contains("literals with interpolations, matched around them on only one word of literal text"))
     }
 
@@ -92,7 +92,7 @@ struct StringLiteralSearchTests {
         let output = try engine.strings(query: "restock failed")
 
         let catalogLine = try #require(output.range(of: "restock.failed = \"Restock failed\""))
-        let heading = try #require(output.range(of: "source literals (Swift string literals holding the wording, not catalog entries):"))
+        let heading = try #require(output.range(of: "source literals:"))
 
         #expect(catalogLine.upperBound < heading.lowerBound)
         #expect(output.contains("  DepotStore.restock() — Sources/Depot/DepotStore.swift:3: \"restock failed at the depot\""))
@@ -296,7 +296,7 @@ struct StringLiteralSearchTests {
 
         #expect(output.contains(Self.aroundHeading))
         #expect(output.contains(Self.footerSite))
-        #expect(!output.contains("source literals (Swift string literals holding the wording"))
+        #expect(!output.contains("source literals:"))
     }
 
     @Test
@@ -313,7 +313,7 @@ struct StringLiteralSearchTests {
 
         let output = try engine.strings(query: "more ")
 
-        #expect(output.contains("source literals (Swift string literals holding the wording, not catalog entries):"))
+        #expect(output.contains("source literals:"))
         #expect(output.contains(Self.footerSite))
         #expect(!output.contains(Self.aroundHeading))
     }

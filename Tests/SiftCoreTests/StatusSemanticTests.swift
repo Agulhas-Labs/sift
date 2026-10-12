@@ -94,8 +94,8 @@ struct StatusSemanticTests {
         let greet = try await SemanticStoreWarmUp.settled { try await engine.lookup(symbol: "greet()", freshness: freshness) }
         let status = try engine.statusText(freshness: freshness)
 
-        #expect(greet.contains("semantic: stale (1 file changed since last build)"))
-        #expect(status.contains("semantic: stale (1 file changed since last build)"))
+        #expect(greet.contains("semantic: stale since last build (1 file changed: Sources/Lib/Base.swift)"))
+        #expect(status.contains("semantic: stale since last build (1 file changed: Sources/Lib/Base.swift)"))
     }
 
     /// `status` must never open the index store to answer — a discovered store this call would corrupt an open of (an empty `v5/units`, no real index-store-db content) still answers promptly, from file state alone, because opening it for real is the one thing this path must never do.
@@ -116,7 +116,7 @@ struct StatusSemanticTests {
         let status = try engine.statusText(freshness: freshness)
 
         // The units directory holds no unit, so there is no build for the one indexed file to be newer than.
-        #expect(status.contains("semantic: stale (1 file changed since last build)"))
+        #expect(status.contains("semantic: stale since last build (1 file changed: Sources/App/Widget.swift)"))
         #expect(status.contains("index store: .build"))
         // Answering from file state is not enough on its own: an implementation that also opened the store would
         // pass every line above, and only the cache an open writes tells the two apart.
@@ -168,8 +168,8 @@ struct StatusSemanticTests {
         let greet = try await SemanticStoreWarmUp.settled { try await engine.lookup(symbol: "greet()", freshness: freshness) }
         let status = try engine.statusText(freshness: freshness)
 
-        #expect(greet.contains("semantic: stale (1 occurrence file deleted since last build)"))
-        #expect(status.contains("semantic: stale (1 file deleted since last build)"))
+        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
     /// `sift reset` between a deletion and the next query loses the ledger's only record of it — the fresh store's first full index never held a row for `Caller.swift` to drop, so `deleteFiles` alone cannot see the deletion.
@@ -191,8 +191,8 @@ struct StatusSemanticTests {
         let greet = try await SemanticStoreWarmUp.settled { try await fresh.lookup(symbol: "greet()", freshness: freshness) }
         let status = try fresh.statusText(freshness: freshness)
 
-        #expect(greet.contains("semantic: stale (1 occurrence file deleted since last build)"))
-        #expect(status.contains("semantic: stale (1 file deleted since last build)"))
+        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
     /// `git rm` takes the file out of what git tracks as well as off the disk, so after a reset no tracked-but-missing path names it — only the staged deletion still does.
@@ -202,8 +202,8 @@ struct StatusSemanticTests {
             try TestSources.runGit(["rm", "-q", "Sources/Lib/Caller.swift"], in: root)
         }
 
-        #expect(greet.contains("semantic: stale (1 occurrence file deleted since last build)"))
-        #expect(status.contains("semantic: stale (1 file deleted since last build)"))
+        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
     /// Once the deletion is committed git stages nothing either, and only the history since the build still names it.
@@ -214,8 +214,8 @@ struct StatusSemanticTests {
             try TestSources.commitAll(in: root, message: "delete the caller")
         }
 
-        #expect(greet.contains("semantic: stale (1 occurrence file deleted since last build)"))
-        #expect(status.contains("semantic: stale (1 file deleted since last build)"))
+        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
     /// A store written by a binary from before the ledger, which noticed a deletion and dropped the file's rows without recording it, is upgraded in place rather than rebuilt — so a full index never runs to seed it, and the first query under the new binary has to.
@@ -231,8 +231,8 @@ struct StatusSemanticTests {
         let status = try upgraded.statusText(freshness: freshness)
         let greet = try await SemanticStoreWarmUp.settled { try await upgraded.lookup(symbol: "greet()", freshness: freshness) }
 
-        #expect(greet.contains("semantic: stale (1 occurrence file deleted since last build)"))
-        #expect(status.contains("semantic: stale (1 file deleted since last build)"))
+        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
     /// The residual the once-only seed cannot close.
@@ -250,7 +250,7 @@ struct StatusSemanticTests {
         let greet = try await SemanticStoreWarmUp.settled { try await reread.lookup(symbol: "greet()", freshness: freshness) }
         let status = try reread.statusText(freshness: freshness)
 
-        #expect(greet.contains("semantic: stale (1 occurrence file deleted since last build)"))
+        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
         #expect(status.contains("semantic: fresh"))
     }
 
@@ -282,7 +282,7 @@ struct StatusSemanticTests {
 
         let status = try engine.statusText(freshness: freshness)
 
-        #expect(status.contains("semantic: stale (1 file changed since last build)"))
+        #expect(status.contains("semantic: stale since last build (1 file changed: Sources/Lib/Caller.swift)"))
         #expect(!status.contains("deleted since last build"))
     }
 }

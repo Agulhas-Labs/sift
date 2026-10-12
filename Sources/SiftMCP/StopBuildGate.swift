@@ -5,7 +5,7 @@
 import Foundation
 import SiftCore
 
-/// The stop-time validation gate: a context that edited Swift and is stopping on a tree no green `sift run` stands for is sent back, once, to build it.
+/// The stop-time validation gate: a context that edited Swift or another build input and is stopping on a tree no green `sift run` stands for is sent back, once, to build it.
 ///
 /// Whether the tree is validated is the question `sift run --proved` asks — a ``RunLedger`` record whose ``TreeKey`` is the tree as it stands — widened to any command and to the checkout's ``RunLedger/greenBuilds(inCheckout:)``, where every green `sift run` build or test records the tree it saw however the shell around it was written. The context's own transcript is the fallback, for a run no record reached: a green `sift run` build or test after its last Swift edit, placed in its repository and vouched for by the call's result, answers it too. Every way the question cannot be put answers "no block": the gate is advice with teeth, and one that guessed would stop sessions on its own mistakes.
 public struct StopBuildGate {
@@ -21,7 +21,7 @@ public struct StopBuildGate {
         guard payload["stop_hook_active"] as? Bool != true,
               let sessionID = payload["session_id"] as? String, !sessionID.isEmpty,
               let transcript = transcript(of: payload),
-              let scan = SwiftEditsSinceGreenRun.scan(transcript: transcript.url, skippingSidechains: !transcript.isSubagent)
+              let scan = BuildInputEditsSinceGreenRun.scan(transcript: transcript.url, skippingSidechains: !transcript.isSubagent)
         else {
             return nil
         }
@@ -35,11 +35,13 @@ public struct StopBuildGate {
             guard let tree = TreeKey.of(repositoryRoot: rootURL), !isValidated(tree, in: rootURL) else {
                 continue
             }
-            // A run of this very tree is going on in this checkout: its verdict lands on record when it ends, and the next stop judges it.
-            // Nothing is claimed, so a red verdict is still advised on.
-            let running = RunProgressPaths.liveRuns(inRepositoryAt: rootURL, at: now).filter { $0.tree != nil }
-            guard !running.contains(where: { $0.tree == tree.value }),
-                  let command = command(root: rootURL, xcodebuild: scan.xcodebuild),
+            // A run of this very tree is going on in this checkout, judged by its process rather than its heartbeat: its verdict lands on record when it ends, and the next stop judges it.
+            // Nothing is claimed, so a red verdict is still advised on, and nothing is printed, since the only line this hook has blocks the stop.
+            if RunProgressPaths.runs(inRepositoryAt: rootURL).contains(where: { $0.tree == tree.value && $0.processIsGoingOn(at: now) }) {
+                continue
+            }
+            let running = RunProgressPaths.liveRuns(inRepositoryAt: rootURL, at: now).filter { $0.tree != nil && $0.processIsGoingOn(at: now) }
+            guard let command = command(root: rootURL, xcodebuild: scan.xcodebuild),
                   marks.claim(context: context.key, file: root, declaration: running.isEmpty ? "stop \(tree.value)" : "stop waiting \(tree.value)")
             else {
                 continue
@@ -88,7 +90,7 @@ private extension StopBuildGate {
             guard FileManager.default.fileExists(atPath: file),
                   let root = CallerRoot.root(forCallerIn: URL(fileURLWithPath: file).deletingLastPathComponent().path),
                   CanonicalPath.of(file).hasPrefix(CanonicalPath.of(root) + "/"),
-                  EditParseCheck.indexCovers(file, under: root)
+                  EditParseCheck.indexCovers(file, under: root) || EditParseCheck.buildInputCovers(file, under: root)
             else {
                 continue
             }
@@ -136,10 +138,11 @@ private extension StopBuildGate {
             + "Run `\(command.command)` from \(command.directory) and fix what it reports before reporting done. (Asked once for this tree; SIFT_NO_ADVICE=1 turns it off.)"
     }
 
-    /// How many Swift files the context changed, as a phrase, and the first three by name.
+    /// How many files the context changed, as a phrase, and the first three by name: Swift files where every one is Swift, build inputs once any is not.
     static func summary(of edited: [String]) -> (files: String, shown: String) {
         let names = edited.map { URL(fileURLWithPath: $0).lastPathComponent }
         let shown = names.count > 3 ? names.prefix(3).joined(separator: ", ") + ", …" : names.joined(separator: ", ")
-        return (edited.count == 1 ? "1 Swift file" : "\(edited.count) Swift files", shown)
+        let kind = names.allSatisfy { $0.hasSuffix(".swift") } ? "Swift file" : "build input"
+        return ("\(edited.count) \(kind)\(edited.count == 1 ? "" : "s")", shown)
     }
 }

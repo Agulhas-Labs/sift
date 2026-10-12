@@ -95,7 +95,7 @@ struct WhereStoreSiteTextTests {
     @Test
     func usageAtOrUnderTheCapListsEveryLineWithItsText() async throws {
         try await Self.fixture().withEngine { engine in
-            let output = try await engine.lookup(symbol: "Widget", freshness: engine.ensureFresh())
+            let output = try await engine.lookup(symbol: "Widget", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
 
             #expect(output.contains("used by Lib.Widget: 35 references in 1 file — "), "\(output)")
             let expected = ["Sources/Lib/Many.swift (35):"] + (1 ... 35).map { "  :\($0)  | public let item\($0) = Widget()" }
@@ -109,7 +109,7 @@ struct WhereStoreSiteTextTests {
     @Test
     func usageAboveTheCapKeepsTheCompactForm() async throws {
         try await Self.fixture().withEngine { engine in
-            let output = try await engine.lookup(symbol: "Gadget", freshness: engine.ensureFresh())
+            let output = try await engine.lookup(symbol: "Gadget", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
 
             let listed = (1 ... 30).map(String.init).joined(separator: ", ")
 
@@ -138,27 +138,18 @@ struct WhereStoreSiteTextTests {
         }
     }
 
-    /// A page of the sweep past its first file lists the rest with their text, under the same total.
+    /// A page of the sweep past its first file keeps the same total; a function's lines are each a call site listed above, so neither page lists them again (`CallersReferencesFoldTests` pins a later page's text).
     @Test
-    func aLaterPageOfTheSweepKeepsItsText() async throws {
+    func aLaterPageOfTheSweepKeepsItsTotal() async throws {
         try await Self.fixture().withEngine { engine in
             let freshness = try await engine.ensureFresh()
             let whole = try await engine.lookup(symbol: "pulse", freshness: freshness, options: WhereOptions(includeReferences: true))
             let paged = try await engine.lookup(symbol: "pulse", freshness: freshness, options: WhereOptions(includeReferences: true, offset: 1))
 
-            #expect(Self.rowsUnder("references to Lib.pulse() (3 in 2 files):", in: whole) == [
-                "Sources/Lib/Pace.swift (1):",
-                "  :2  | pulse()",
-                "Sources/Lib/Step.swift (2):",
-                "  :2  | pulse()",
-                "  :3  | pulse()",
-            ], "\(whole)")
-            #expect(Self.rowsUnder("references to Lib.pulse() (3 in 2 files):", in: paged) == [
-                "(…1 file skipped)",
-                "Sources/Lib/Step.swift (2):",
-                "  :2  | pulse()",
-                "  :3  | pulse()",
-            ], "\(paged)")
+            let heading = "references to Lib.pulse() (3 in 2 files, 3 of them the call sites above):"
+            #expect(whole.contains(heading) && paged.contains(heading))
+            #expect(Self.rowsUnder(heading, in: whole) == [], "\(whole)")
+            #expect(Self.rowsUnder(heading, in: paged) == [], "\(paged)")
         }
     }
 
@@ -172,9 +163,7 @@ struct WhereStoreSiteTextTests {
             declarations (1):
               Lib.helper() — func — public func helper() -> Int — Sources/Lib/Helper.swift:1
 
-            syntactic call sites — by written name over the working tree, never stale — see sift help answers (call sites)
-
-            "helper" (2 call sites in 1 file):
+            "helper" (2 call sites by written name in 1 file):
               Sources/Lib/Drill.swift:
                 :2  in drill().first  | let first = helper()
                 :3  in drill().second  | let second = helper()
@@ -209,12 +198,12 @@ struct WhereStoreSiteTextTests {
         _ = try await engine.ensureFresh()
         try TestSources.write("// moved\n" + use, to: "Sources/Lib/Use.swift", in: root)
 
-        let callers = try await engine.lookup(symbol: "glow", freshness: engine.ensureFresh())
+        let callers = try await engine.lookup(symbol: "glow", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
         #expect(Self.rowsUnder("callers of Lib.glow() (1, 1 file changed since last build):", in: callers) == [
             "Sources/Lib/Use.swift (1):  (file changed since last build)",
             "  :2  light()",
         ], "\(callers)")
-        let usage = try await engine.lookup(symbol: "Spark", freshness: engine.ensureFresh())
+        let usage = try await engine.lookup(symbol: "Spark", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
         #expect(Self.rowsUnder("used by Lib.Spark:", in: usage) == [
             "Sources/Lib/Use.swift (2):  (file changed since last build)",
             "  :1",

@@ -39,6 +39,9 @@ public struct ReportData: Sendable, Equatable {
     /// What the measured answers saved, over the calls that measured themselves.
     public let savings: UsageScan.Savings?
 
+    /// The Markdown outlines that measured themselves, which `savings` leaves out and which may be the only measured calls a window holds.
+    public let markdown: UsageScan.Savings.Markdown?
+
     /// What the wrapped toolchain runs in scope add up to, or `nil` when there were none.
     ///
     /// Its own field beside `savings` rather than folded into it: both are compression measured against a real original, but one is source a digest stood in for and the other is build output a filter dropped, and adding them would produce a number about nothing.
@@ -99,6 +102,7 @@ public struct ReportData: Sendable, Equatable {
         var rootUse: [RootUse] = []
         var targets: [TargetUse] = []
         var savings: UsageScan.Savings?
+        var markdown: UsageScan.Savings.Markdown?
         var logNote: String?
         var scratchNote: String?
         var resolvedRoot: String?
@@ -125,6 +129,7 @@ public struct ReportData: Sendable, Equatable {
                 scratchNote = scan.scratchNote
                 calls = scan.entries.count
                 savings = scan.savings
+                markdown = scan.markdown
                 failures = scan.failureGroups
                 let total = scan.entries.count
                 let byRoot = scan.grouped(by: \.root)
@@ -174,6 +179,7 @@ public struct ReportData: Sendable, Equatable {
             conditions: conditions(roots: scopedRoots, moduleHealth: moduleHealth),
             share: share(from: tallies),
             savings: savings,
+            markdown: markdown,
             runs: runs,
             calls: calls,
             failures: failures,

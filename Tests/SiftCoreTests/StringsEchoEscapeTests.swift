@@ -6,7 +6,7 @@ import Foundation
 @testable import SiftCore
 import Testing
 
-/// Covers the strings answer keeping its echo line and each catalog line to one line, however the query or a catalog value is spelled.
+/// Covers the strings answer keeping each catalog line to one line, and echoing no query, however the query or a catalog value is spelled.
 @Suite(.temporaryDirectories)
 struct StringsEchoEscapeTests {
     private static func makeRepo() throws -> SiftEngine {
@@ -24,16 +24,12 @@ struct StringsEchoEscapeTests {
         return try SiftEngine(directory: root)
     }
 
-    @Test(arguments: [
-        ("\n1 2", #"strings "\n1 2""#),
-        ("Hel\0lo", #"strings "Hel\0lo""#),
-        ("a\tb\r", #"strings "a\tb\r""#),
-        ("a\u{1B}b", #"strings "a\u{1B}b""#),
-    ])
-    func theEchoWritesEachControlCharacterAsAnEscape(query: String, echo: String) throws {
+    /// The answer does not echo the query (the call carries it), so a control character in it cannot break a line of the answer.
+    @Test(arguments: ["\n1 2", "Hel\0lo", "a\tb\r", "a\u{1B}b"])
+    func aQueryWithAControlCharacterIsNotEchoed(query: String) throws {
         let lines = try Self.makeRepo().strings(query: query).split(separator: "\n", omittingEmptySubsequences: false)
 
-        #expect(lines.count > 2 && lines[1] == echo, "\(lines)")
+        #expect(lines.count == 3 && !lines.contains { $0.hasPrefix("strings ") }, "\(lines)")
     }
 
     @Test(arguments: [

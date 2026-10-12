@@ -33,7 +33,7 @@ struct WhereConstructionQualifierKeepTests {
     func theInitializersFallbackKeepsACallReadAsASupertypesType() async throws {
         let output = try await Self.answer("Search.Item.init", source: Self.supertype(item: "init() {}; ", call: "Sub.Item()"))
 
-        #expect(output.contains("\"Item.init\" (1 call site by name, \(Self.readAsBase), in 1 file):"), "\(output)")
+        #expect(output.contains("\"Item.init\" (1 call site by written name, \(Self.readAsBase), in 1 file):"), "\(output)")
         #expect(output.contains("\n    :4  in build()  | func build() { Sub.Item().searched() }"), "\(output)")
         #expect(!output.contains("dropped"), "\(output)")
     }
@@ -43,7 +43,7 @@ struct WhereConstructionQualifierKeepTests {
     func aTypeWithNoInitKeepsACallReadAsASupertypesType() async throws {
         let output = try await Self.answer("Search.Item.init", source: Self.supertype(item: "", call: "Sub.Item()"))
 
-        #expect(output.contains("\"Item.init\" (1 call site by name, \(Self.readAsBase), in 1 file):"), "\(output)")
+        #expect(output.contains("\"Item.init\" (1 call site by written name, \(Self.readAsBase), in 1 file):"), "\(output)")
         #expect(output.contains("\n    :4  in build()  | func build() { Sub.Item().searched() }"), "\(output)")
         #expect(!output.contains("dropped"), "\(output)")
     }
@@ -64,7 +64,7 @@ struct WhereConstructionQualifierKeepTests {
         let source = "enum Search { struct Item { init() {}; func searched() {} } }\nprotocol Shelf { associatedtype Item; func make(_: Item) }\nstruct Box: Shelf { func make(_: Search.Item) {} }\nfunc build() { Box.Item().searched() }\n"
         let output = try await Self.answer("Search.Item.init", source: source)
 
-        #expect(output.contains("\"Item.init\" (1 call site by name, 1 of them writes \"Item\" behind a qualifier the index reads as Box, which declares no \"Item\", so may call no Item.init — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file):"), "\(output)")
+        #expect(output.contains("\"Item.init\" (1 call site by written name, 1 of them writes \"Item\" behind a qualifier the index reads as Box, which declares no \"Item\", so may call no Item.init — counted all the same, as a qualifier read from the index alone may name another type in Swift, in 1 file):"), "\(output)")
         #expect(output.contains("\n    :4  in build()  | func build() { Box.Item().searched() }"), "\(output)")
         #expect(!output.contains("calling no Item.init dropped"), "\(output)")
     }

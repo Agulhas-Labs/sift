@@ -21,7 +21,7 @@ struct InPlaceShapeTests {
         case let .declarations(file, _)?: "declarations \(file)"
         case let .members(search)?: "members \(search.paths.joined(separator: " "))"
         case let .references(name, _)?: "references \(name)"
-        case let .symbols(names, _, _, _, _)?: "symbols \(names.joined(separator: " "))"
+        case let .symbols(names, _, _, _, _, _)?: "symbols \(names.joined(separator: " "))"
         case .memberRange?: "member range"
         case nil: nil
         }
@@ -56,7 +56,6 @@ struct InPlaceShapeTests {
         #expect(InPlaceShape.match(forRead: "/repo/Docs/Design.md", in: "/repo")?.call == .documentOutline(path: "/repo/Docs/Design.md"))
         #expect(InPlaceShape.match(forRead: "/repo/Docs/Design.md", in: "/repo")?.isWholeCommand == true)
         #expect(InPlaceCall.documentOutline(path: "x").shape == .outline)
-        #expect(InPlaceCall.Shape.outline.needsIndexStore == false)
         #expect(InPlaceShape.call(forRead: "/repo/Docs/notes.txt") == nil)
     }
 

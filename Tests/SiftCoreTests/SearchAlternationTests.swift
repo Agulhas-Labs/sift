@@ -190,7 +190,8 @@ struct SearchAlternationTests {
         let query = try StructuralQuery("sig:||")
 
         #expect(query.readingNote == nil)
-        #expect(try Self.echo("sig:||") == "search sig:||")
+        // Read as sent, so the answer does not echo it.
+        #expect(query.echo == nil)
     }
 }
 

@@ -45,6 +45,7 @@ public extension RunAnswerPaths {
             line: diagnostic.line,
             column: diagnostic.column,
             message: diagnostic.message,
+            source: diagnostic.source,
             detail: diagnostic.detail,
             expansion: diagnostic.expansion.map { RunDiagnostic.ExpansionSite(path: shown($0.path), line: $0.line) }
         )

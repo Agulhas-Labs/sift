@@ -41,21 +41,49 @@ struct FileParser {
 
     /// Parses `source` for its syntax errors alone, placed under `path`, without walking its declarations.
     static func errors(inSource source: String, path: String) -> [ParseErrorSite] {
-        let tree = Parser.parse(source: source)
-        return errors(in: tree, converter: SourceLocationConverter(fileName: path, tree: tree))
+        NestingGate.parse(source) { tree in errors(in: tree, converter: SourceLocationConverter(fileName: path, tree: tree)).sites }
+            ?? [ParseErrorSite(line: 1, column: 1, message: NestingGate.message)]
     }
 
-    /// The errors the parser recovered from in `tree`, in source order, each placed by `converter`.
+    /// Sites past which the diagnostics generator is not run: its work per error grows with the errors before it, so this bounds it to a fraction of a second.
+    static var listedCap: Int {
+        100
+    }
+
+    /// The one error a file with more than ``listedCap`` sites is listed as, placed at the first of them.
+    static func tooManyMessage(count: Int) -> String {
+        "\(count) syntax errors, too many to list; the first is here"
+    }
+
+    /// The errors the parser recovered from in `tree`, in source order, each placed by `converter`, and how many there are.
     ///
-    /// The one reading of a parse's errors, so the index's count and the edit check's list never disagree about whether a file parses.
-    private static func errors(in tree: SourceFileSyntax, converter: SourceLocationConverter) -> [ParseErrorSite] {
-        guard tree.hasError else { return [] }
-        return ParseDiagnosticsGenerator.diagnostics(for: tree)
+    /// The one reading of a parse's errors, so the index's count and the edit check's list never disagree about whether a file parses. `count` is the length of `sites` except past ``listedCap``, where `sites` is the one error naming the count.
+    ///
+    /// A tree nested past the parser's cap gives the one error the cap records, where it was reached: the diagnostics generator walks every string literal's whole subtree, so on a few hundred nested interpolations it takes minutes.
+    private static func errors(in tree: SourceFileSyntax, converter: SourceLocationConverter) -> (count: Int, sites: [ParseErrorSite]) {
+        guard tree.hasError else { return (0, []) }
+        if tree.hasMaximumNestingLevelOverflow {
+            var node = Syntax(tree)
+            while !node.is(UnexpectedNodesSyntax.self),
+                  let next = node.children(viewMode: .sourceAccurate).first(where: \.hasMaximumNestingLevelOverflow)
+            {
+                node = next
+            }
+            let location = converter.location(for: node.positionAfterSkippingLeadingTrivia)
+            return (1, [ParseErrorSite(line: location.line, column: location.column, message: StaticParserError.maximumNestingLevelOverflow.message)])
+        }
+        let tally = ParseErrorTally(walking: tree)
+        if tally.count > listedCap, let first = tally.first {
+            let location = converter.location(for: first)
+            return (tally.count, [ParseErrorSite(line: location.line, column: location.column, message: tooManyMessage(count: tally.count))])
+        }
+        let sites = ParseDiagnosticsGenerator.diagnostics(for: tree)
             .filter { $0.diagMessage.severity == .error }
             .map { diagnostic in
                 let location = diagnostic.location(converter: converter)
                 return ParseErrorSite(line: location.line, column: location.column, message: diagnostic.message)
             }
+        return (sites.count, sites)
     }
 
     /// The walk every overload shares, with `bytes` as the content the recorded size and hash describe.
@@ -70,21 +98,25 @@ struct FileParser {
         let hashDigest = SHA256.hash(data: data)
         let hash = hashDigest.map { String(format: "%02x", $0) }.joined()
 
-        let tree = Parser.parse(source: source)
-        let converter = SourceLocationConverter(fileName: repoRelativePath, tree: tree)
-        let errorCount = errors(in: tree, converter: converter).count
-        let visitor = SymbolVisitor(converter: converter, sourceBytes: Array(source.utf8), signatures: signatures)
-        visitor.walk(tree)
-        extra(tree, converter)
+        // A file the gate refuses is walked as an empty one and counted as one parse error, so it is stored with no declarations rather than holding the parser for minutes.
+        let admitted = NestingGate.admits(source)
+        let (errorCount, symbols, imports) = ParseThread.parse(admitted ? source : "") { tree in
+            let converter = SourceLocationConverter(fileName: repoRelativePath, tree: tree)
+            let errorCount = admitted ? errors(in: tree, converter: converter).count : 1
+            let visitor = SymbolVisitor(converter: converter, sourceBytes: Array(source.utf8), signatures: signatures)
+            visitor.walk(tree)
+            extra(tree, converter)
+            return (errorCount, visitor.symbols, visitor.imports)
+        }
 
         return ParsedFile(
             path: repoRelativePath,
             size: data.count,
             mtime: mtime,
             contentHash: hash,
-            imports: visitor.imports,
+            imports: imports,
             parseErrorCount: errorCount,
-            symbols: visitor.symbols
+            symbols: symbols
         )
     }
 }

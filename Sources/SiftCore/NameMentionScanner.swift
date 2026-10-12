@@ -49,11 +49,12 @@ struct NameMentionScanner {
               let source = String(data: data, encoding: .utf8) else { return [:] }
         // A file that never spells the name cannot mention it, and the substring check is far cheaper than a parse — the difference between scanning a monorepo and scanning the few files that could possibly match.
         guard names.contains(where: { source.contains($0) }) else { return [:] }
-        let tree = Parser.parse(source: source)
-        let converter = SourceLocationConverter(fileName: path, tree: tree)
-        let visitor = Visitor(names: names, path: path, converter: converter)
-        visitor.walk(tree)
-        return visitor.found
+        return NestingGate.parseOrEmpty(source) { tree in
+            let converter = SourceLocationConverter(fileName: path, tree: tree)
+            let visitor = Visitor(names: names, path: path, converter: converter)
+            visitor.walk(tree)
+            return visitor.found
+        }
     }
 }
 

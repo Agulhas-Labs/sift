@@ -56,6 +56,11 @@ struct DigestMemberMissAnswer {
     }
 
     private func elsewhereLine(baseName: String, elsewhere: Int) -> String {
+        Self.elsewhereClause(baseName: baseName, elsewhere: elsewhere)
+    }
+
+    /// `<name> is declared N time(s) on other types — where <name> lists them`, the one phrase every answer that points at same-named declarations uses.
+    static func elsewhereClause(baseName: String, elsewhere: Int) -> String {
         "\(baseName) is declared \(elsewhere) time\(elsewhere == 1 ? "" : "s") on other types — where \(baseName) lists them"
     }
 

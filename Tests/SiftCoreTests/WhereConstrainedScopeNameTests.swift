@@ -137,7 +137,7 @@ struct WhereConstrainedScopeNameTests {
     func aNameAMacroMayReshapeIsKept() async throws {
         let output = try await Self.answer(Self.macros)
 
-        #expect(output.contains("on types outside the tree"), "\(output)")
+        #expect(output.contains("on names an attached macro may supply or reshape"), "\(output)")
         for member in ["Row.held", "Use.crated"] {
             #expect(output.contains("in \(member)"), "\(member)\n\(output)")
         }

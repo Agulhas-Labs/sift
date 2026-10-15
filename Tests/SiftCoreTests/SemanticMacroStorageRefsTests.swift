@@ -9,7 +9,7 @@ import Testing
 /// The storage `@Observable` generates for each property names the property's type at the attribute, and a reference sweep lists none of it — while every mention written in source, the attribute's own line included, stays listed and counted.
 @Suite(.temporaryDirectories, .serialized)
 struct SemanticMacroStorageRefsTests {
-    /// A protocol held by an `@Observable` class's property, and conformed to by another `@Observable` class on the attribute's own line, which holds one too.
+    /// A protocol held by an `@Observable` class's property, and held by another `@Observable` class's property written on the attribute's own line (a conformance there would be folded into the conformers block, so the line names the protocol as a plain use).
     static func writePackage(in root: URL) throws {
         try TestSources.write(
             """
@@ -37,8 +37,8 @@ struct SemanticMacroStorageRefsTests {
                 public init() {}
             }
 
-            @Observable public final class Relay: Feed {
-                public var upstream: (any Feed)?
+            @Observable public final class Relay { public var upstream: (any Feed)?
+                public var backup: (any Feed)?
                 public init() {}
             }
             """,
@@ -47,7 +47,7 @@ struct SemanticMacroStorageRefsTests {
         )
     }
 
-    /// `Station`'s `@Observable` line names nothing written, so it is never listed or counted; the property's line is, and so is `Relay`'s attribute line, where the conformance is written.
+    /// `Station`'s `@Observable` line names nothing written, so it is never listed or counted; the property's line is, and so is `Relay`'s attribute line, where the property's type is written.
     @Test
     func aMacroStorageMentionIsNotAReferenceAndAWrittenOneOnItsLineIs() async throws {
         let fixture = try await SharedBuiltFixtures.process.fixture(for: Self.self, named: "semantic-macro-storage") { root in
@@ -61,8 +61,8 @@ struct SemanticMacroStorageRefsTests {
 
             #expect(!sweep.contains(":5  | @Observable"), "\(sweep)")
             #expect(sweep.contains(":7  | public var feed: (any Feed)?"), "\(sweep)")
-            #expect(sweep.contains(":11  | @Observable public final class Relay: Feed {"), "\(sweep)")
-            #expect(sweep.contains(":12  | public var upstream: (any Feed)?"), "\(sweep)")
+            #expect(sweep.contains(":11  | @Observable public final class Relay { public var upstream: (any Feed)?"), "\(sweep)")
+            #expect(sweep.contains(":12  | public var backup: (any Feed)?"), "\(sweep)")
             #expect(sweep.contains("references to GizmoCore.Feed (3 in 1 file, 1 more line a macro generated, not listed):"), "\(sweep)")
             #expect(sweep.contains("used by GizmoCore.Feed: 3 references in 1 file — 3 production · 0 tests"), "\(sweep)")
         }

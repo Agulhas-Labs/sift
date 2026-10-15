@@ -9,7 +9,7 @@ paths:
 | Reach for | When |
 |---|---|
 | `digest` | before the first look at a Swift file: a type, path, module or `Type.member`, several per call; what every answer promises: `sift help answers` |
-| `where` | where X is defined, who conforms, what calls or overrides it; `where --refs` for a rename or delete sweep: the code sites, then comments, strings, Markdown and file names under `not code` |
+| `where` | where X is defined, who conforms, what calls or overrides it; `where --refs` for a rename or delete sweep: the code sites, then comments, strings, Markdown and file names under `not code`; `where --files` when the question is only which files |
 | `search` | code by shape, not name (`sift help queries`); before writing a helper |
 | `sift similar` / `sift dupes` | then, near-duplicate bodies: a lower bound, never a verdict |
 | `strings` | UI text, to its key or Swift literal |

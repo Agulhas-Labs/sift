@@ -33,11 +33,19 @@ struct AffectedHelpTopic {
         **\(AffectedBlindSpots.conclusion)**
 
         **A target named by commands, once.** A target past the list cap is never listed test by test. \
-        Where every test in it is affected the answer says `all N tests` with both runners' commands; \
+        Where every test in it is affected the answer says `all N tests` with the runner's command; \
         where half its tests or more are reached it says it could not narrow below the target and gives \
-        `--filter '<Target>'` and `-only-testing:<Target>`; below half it gives the commands that run \
-        exactly the affected suites. A target named this way is not repeated in the `xcodebuild` and \
-        `swift test` sections, which carry only the targets that are listed.
+        `--filter '<Target>'` or `-only-testing:<Target>`; below half it gives the commands that run \
+        exactly the affected suites, or, where one runner's list of them would pass 2,000 characters, \
+        that runner's filter for the whole target with the count of tests it runs beyond the affected \
+        ones (`--suites` lists the suites one by one at any length). A target named this way is not \
+        repeated in the `xcodebuild` and `swift test` sections, which carry only the targets that are listed.
+
+        **Only the repository's runner.** The index store says which one the repository builds with: a \
+        SwiftPM `.build` store prints `swift test` commands only, a DerivedData or `buildServer.json` \
+        store `xcodebuild` ones only, and any other store, or none, both. Where one is left out the \
+        `affected tests` heading says so and names the store. The `-only-testing:` caveats above print \
+        only with the `xcodebuild` runner.
 
         **Right after an edit** the store is older than your change and refuses the changed files; the \
         answer then walks from the declarations the diff touched to their call sites as syntactic `where` \

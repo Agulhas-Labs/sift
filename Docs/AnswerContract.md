@@ -59,19 +59,25 @@ A `where` site answered from the index store carries its text the same way while
 sites: `  <path> (<n>):`, followed by `  (file changed since last build)` or `  (file deleted since last
 build)` where the file changed, then one row per line, ascending — `    :<line>  <caller or declaration>[ —
 <access>][  ×<N> units][  | <text>]` under a callers, uses, reads-and-writes or overrides block, and
-`    :<line>[  | <text>]` under `used by` and the `--refs` sweep, whose file heading may end `— written as
-<alias>`. A row in a changed file has no text. Above 40 sites a block keeps its compact rows: `  <caller> —
+`    :<line>[  <enclosing>][  | <text>]` under `used by` and the `--refs` sweep, whose file heading may end
+`— written as <alias>`; `<enclosing>` is the declaration the store records the reference inside, and is left out
+where it records none. A row in a changed file has no text but keeps its enclosing declaration. Above 40 sites a block keeps its compact rows: `  <caller> —
 <path>:<line>[ — <access>][  ×<N> units][ (<k> sites)][<mark>]` per caller, or `  <path> (<n>): <line>,
-<line>, …[<mark>]` per file under `used by`. A protocol's `used by` verdict line inserts `, <k> of them the
-conformance(s) listed below` after its reference and file counts, and its rows leave those lines out.
+<line>, …[<mark>]` per file under `used by` and the `--refs` sweep, except that a file holding 1 or 2 of the
+block's sites keeps its heading and rows, enclosing declaration and text included. A protocol's `used by` verdict line inserts `, <k> of them the
+conformance(s) listed below` after its reference and file counts, and its rows leave those lines out. Under `--refs` the `references to` heading carries the same clause, and the
+sweep leaves those rows out only where the clause is on the first line of the conformer's span as the conformers block
+prints it (a clause on a later line, after an attribute or wrapped, keeps its row and is not counted); a file holding only
+such lines has no file heading.
 
-A plain `where <Type>` lists no rows under its `used by` verdict line, which ends `— where --refs <Type> lists
-them` (the qualified name where the bare query has several owners); the rows above and below are those of
-`where --refs` and of the hook's in-place answer. `where --refs` then ends with one `not code` section, once
+A plain `where <Type>` whose uses, beyond a protocol's conformance lines, number 8 or fewer lists them as rows
+under its `used by` verdict line, which then ends without a pointer; above 8 it lists no rows and ends `— where
+--refs <Type> lists them` (the qualified name where the bare query has several owners). The rows above and below
+are those of `where --refs` and of the hook's in-place answer. `where --refs` then ends with one `not code` section, once
 per answer, after every declaration's sections. Its header is `not code, by written name — <n> DocC-link
 line(s), <n> doc-comment line(s), <n> comment line(s), <n> string-literal line(s), <n> Markdown line(s), <n>
 file name(s)[ (<k> a lead)][; <k> of these lines are also code lines listed above]:`, kinds with none left out,
-and it says `over the working tree, never stale` and `may include same-named symbols'` where several owners
+and it says `over the working tree, never stale` and `may include same-named symbols` where several owners
 or a qualified query make it ambiguous. A file's row is `  <path> (<n>): DocC <line>, … · doc <line>, … ·
 comment <line>, … · string <line>, …` (a Markdown file's row lists bare line numbers), each kind capped at the
 store's per-file line cap and ending `+<N> more`; the `file names:` row, on offset 0 only, lists the matching
@@ -96,7 +102,7 @@ unchanged since the build, for a row the store records no conformance of the pro
 to another declaration`, not direct); a conformer the index has no declaration for is `  <name> — <path>:<line> —
 <mark>`, and one only the store has in a file deleted since the build, or changed since so that its clause no longer
 writes an entry where the store recorded one, nor anywhere the name the store recorded there, has no `<mark>` (the heading counts it as `<k> in a deleted file` or
-`<k> in a changed file without its clause`). Past the cap, `  truncated: <k> more conformers`.
+`<k> in a changed file without its clause`). Past the cap, `  truncated: <k> more conformers`. The block's last line accounts for every Swift file a text search for the name finds, `every Swift file that writes <Name> is accounted for (<T>, a text search of the Swift files git shows[, manifests included])[: <c> declare a conformer (above)][, …]`, each class counting files of `<T>` once and the classes summing to `<T>`, a class with no file left out, each residue class naming at most five files, then `+<k> more`, under `--refs` the comments-or-strings files the `not code` section lists counted as `(<k> under not code, below)` and only the rest named, a file that could not be read named outside `<T>`; past the first page it gives counts only. It is left out at a revision, in the `--files` view, where git cannot list the tree, and past the scan's bounds (Design.md: the store's conformers block).
 `inherited through <Name>` marks a conformer reached through the listed protocol or class `<Name>` (a refiner's
 conformer, a subclass, to any depth); those rows follow every other. Every other conformers block, by written name
 (for a class, with no store, or beside a second protocol's store block), is headed `conformers of <Type> (<N>, by
@@ -169,30 +175,30 @@ containment; `sift help run-output` has the tags and when each applies.)
   it names. A report over time (`usage`, `flakes`, `audit`, `report`) dates what it reports on, because
   the span is its subject.
 
-## Amendment: one header line, standing caveats said once (in force)
+## Amendment: one header line, standing caveats said where they apply (in force)
 
 **In force since 0.1.4:** the header-line part: §1's last sentence below (a header field written only where
 it can vary, so `digest` carries no `semantic:`), §1's live header (`source: live`), and §3's echo rule for
 `search`, `where` and `strings`; and `where`'s degraded notes: §1's last paragraph (*degraded notes*), with `where`
 carrying one note under its header in place of the `mode:` line, the `NOT ANSWERED` notice and the
 `references:` lines, and a `stores:` note only where the stores have something to say; and the standing
-caveats: §1's added paragraph, §3's `where` sections and §6's missing sites, said once per session in the
-primer, the `where` and `search` tool descriptions and `sift help answers`; and §3's `where`'s `references to`
+caveats: §1's added paragraph, §3's `where` sections and §6's missing sites, said in full in
+`sift help answers`, and on an answer only where it applies: every empty `where` verdict (no callers, uses or `--refs` code sites; only the type's own lines; only its aliases; only the requirement it implements; a several-owners row counting none; a no-store sweep that found nothing), and every `search` whose query has a `calls:` or `uses:` term, empty or not (neither the primer nor the tool descriptions carry it); and §3's `where`'s `references to`
 (the callers/references fold). Where it differs from the sections above, the amendment is the contract.
 The design and its measurements are in [Design.md](Design.md), *Proposed: one header line, standing caveats
-said once per session*.
+said where they apply*.
 
 **§1, added after "goes under the header, never above it":** What is true of every answer of a kind — a
 boundary of the evidence, a gloss on how a count was split, the limits of matching by written name — is
-said once per session, where the tool can say it before the first answer (a session-start primer, a tool
-description), and not on each answer. An answer repeats such a caveat only where it is true of that answer
+said in the answer it applies to (an empty or no-uses `where` verdict; a `calls:` or `uses:` `search`), never in the
+primer or a tool description, and not on each answer. An answer carries such a caveat only where it is true of that answer
 in particular: it was matched by written name because the stronger source was missing, it is stale or
 partial, it was cut short. Notes that are true of this answer share one line under the header where they
 can. A field of the header is written where it can vary for the verb; one that is the same on every answer
-of a verb (sift's `semantic: syntactic-only` on `digest`) is said in the session-level text instead.
+of a verb (sift's `semantic: syntactic-only` on `digest`) is said in `sift help answers` instead.
 
 **§1, the live header:** an answer read live names the artifact and says so in one field (sift:
-`source: live`); that nothing stored can go stale is said at session level.
+`source: live`); that nothing stored can go stale is said in `sift help answers`.
 
 **§3, `search`'s echo:** the line under the header echoes the query only where the parse read it as
 something other than what was sent — an alternation, a pattern, a bare word read as `name:`, a regex read
@@ -200,16 +206,20 @@ as plain words — with the readings as today. A query read as sent is not echoe
 not echo the query.
 
 **§3, `where`'s sections:** the `not code` section's header drops `over the working tree, never stale`
-(said at session level) and keeps `may include same-named symbols'` where several owners or a qualified
+(said in `sift help answers`) and keeps `may include same-named symbols` where several owners or a qualified
 query make it ambiguous. A type's `used by` line drops `split on the XCTest or Testing import, never the
 path` and `which is not use`, keeping the tally and the count; a name-matched section's count line says
 `by written name` in place of the heading line above it.
+
+**§3, `where`'s `callers of` heading:** a store-backed heading whose base name other types also declare adds `resolved to this declaration — <name> is declared <N> time(s) on other types, not counted here; where <name> lists them` inside its parenthesis, after the count and any hedge, joined by `; `. A bare-name query (`where f`) leaves off `; where <name> lists them`, since that answer is the list. The no-store answer and an initializer's never say it.
+
+**§3, `where`'s no-declaration answer:** where the queried name equals the basename (without `.swift`) of one or more indexed Swift files, `no declarations found` is followed by one line, `no declaration named <Name>; a file has that name: digest <path>` (`<k> files have that name: digest <path1>, digest <path2>`, three paths at most, then `, and <m> more`); nothing is added where no file matches.
 
 **§3, `where`'s `references to`:** a function's `--refs` answer lists under `references to` only the sites not
 already shown under `callers of`, headed "N in M files, K of them the call sites above". A site is shown once,
 and every page of a paged sweep shows each site once, above or under `references to`.
 
-**§6, missing sites:** the caveats on written-name matches are said at session level and are part of the
+**§6, missing sites:** the caveats on written-name matches are said in the answer they apply to (an empty verdict, or a `calls:`/`uses:` search) and are part of the
 contract's "nothing silently under-reported": a written-name list may miss protocol, closure and
 unfolded-typealias uses and unapplied instance-method references, and an empty one is not proof of "unused"; property and case uses by name at runtime
 are not seen. A type's answer from no store keeps "an empty list is not unused" on the answer itself.
@@ -228,11 +238,26 @@ against the build that did, so a partial build never makes an edited file read a
 
 **§1, what a stale header counts:** the distinct files the answer cites that differ from their build, by
 kind, in the order changed, deleted, new, kinds with none left out, and the file's path when it counts
-exactly one: `stale since last build (1 file changed: <path>)`, `(3 files changed)`, `(4 files: 1 changed,
-1 deleted, 2 new)`. A file the answer stands on is counted whatever cites it: the declaration's own, a
+exactly one: `stale since last build (1 cited file changed: <path>)`, `(3 cited files changed)`, `(2 new cited
+files)`, `(4 cited files: 1 changed, 1 deleted, 2 new)`. The word `cited` says whose count it is: the files this answer
+cites, not every file in the tree (#788). `status` counts every file and keeps `(1 file changed: <path>)`, `(4 files: 1
+changed, 1 deleted, 2 new)`. A file the answer stands on is counted whatever cites it: the declaration's own, a
 caller's, a conformer's, one listed by written name. A file without a unit is not stale when no build of a
 store's project compiles its module (another project in the tree, a module the manifest declares no target
 for), or when a build ran after its last change and left it out; it is declared as before (§6).
+
+**§1, what a partial header names:** a header never says `fresh` while the answer is a lower bound for want of
+a build. Where indexed test files have no unit it says `partial (N test files have no unit in the store —
+references from tests are a lower bound)`; where a non-test target the store's project declares has files,
+none of them has a unit, and some of them write the asked name, it names the target and how many of its lines
+write the name, `partial (target Extra not built — 2 lines there name Gizmo, not counted)`, three names at most
+and then `+<k> more`; where both hold, one parenthesis carries both, joined by `; `. An empty verdict or a count
+that is a lower bound for the same reason names the target in its own clause. Where the asked declaration is a
+subscript, an operator function, `callAsFunction` or a `dynamicMember` subscript, whose uses spell no name a scan
+could find, every such target is named without the scan, `partial (target Extra not built — its uses of
+A.subscript cannot be found by name, not counted)`. A target that never writes the name hides nothing from the answer and is not named, nor is a `.plugin` or `.macro` target, which SwiftPM builds
+for the host and no build indexes: a clause that tells the reader nothing would teach them to check every
+answer by hand. An answer with every target built carries none of this, and `affected` names no target.
 
 **§5, a freshness ambiguity is refused, not guessed:** a declaration in a changed or new file is refused,
 with the build that makes the same request answer, naming what the last build left out where it did. A

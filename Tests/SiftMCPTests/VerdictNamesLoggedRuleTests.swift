@@ -17,7 +17,7 @@ struct VerdictNamesLoggedRuleTests {
         let scratch = try TemporaryDirectory.make("verdict-rule")
         let log = scratch.appendingPathComponent("suppressions.jsonl")
 
-        let verdict = Self.decided("grep -n 'Depot' Sources/App/Depot.swift", scratch: scratch, log: log, declared: false)
+        let verdict = try Self.decided("grep -n 'Depot' Sources/App/Depot.swift", scratch: scratch, log: log, declared: false)
 
         #expect(verdict.line == "allowed\t\tunknownName")
         #expect(try Self.rules(in: log) == ["unknownName"])
@@ -29,7 +29,7 @@ struct VerdictNamesLoggedRuleTests {
         let scratch = try TemporaryDirectory.make("verdict-rule")
         let log = scratch.appendingPathComponent("suppressions.jsonl")
 
-        let verdict = Self.decided("ls Sources", scratch: scratch, log: log, declared: true)
+        let verdict = try Self.decided("ls Sources", scratch: scratch, log: log, declared: true)
 
         #expect(verdict.line == "allowed\t\tnoLookup")
         #expect(try Self.rules(in: log).isEmpty)
@@ -38,14 +38,14 @@ struct VerdictNamesLoggedRuleTests {
 
 private extension VerdictNamesLoggedRuleTests {
     /// `command` decided as `run` decides it, against stores under `scratch` and the suppression log at `log`.
-    static func decided(_ command: String, scratch: URL, log: URL, declared: Bool) -> PreToolUseCommand.Verdict {
-        PreToolUseCommand.decided(
+    static func decided(_ command: String, scratch: URL, log: URL, declared: Bool) throws -> PreToolUseCommand.Verdict {
+        try PreToolUseCommand.decided(
             command: command,
             payload: [:],
             cwd: "/repo",
             session: "s1",
             context: AdviceContext.resolve(sessionID: "s1", transcriptPath: nil, agentID: nil),
-            ledger: AdviceLedger(directory: scratch.appendingPathComponent("advice")),
+            answerer: InPlaceAnswerTests.scratchAnswerer(), ledger: AdviceLedger(directory: scratch.appendingPathComponent("advice")),
             usage: UsageLog(fileURL: scratch.appendingPathComponent("usage.jsonl")),
             suppressions: log,
             runPermission: { _ in WrappedRunPermission(allowed: [], vetoed: []) },

@@ -23,7 +23,7 @@ $ sift run -- swift test
 ✔ swift test
 totals: ✔ passed · Swift Testing 3 tests in 1 suite, 0 skipped
 inventory: 3 declared, 3 reported
-raw: Shelf @ ec26cde (clean) · .sift/runs/run-20261012-114242Z-22220e76.log (20 lines in, 4 out), kept for the next 4 runs
+raw: Shelf @ ec26cde (Swift clean) · .sift/runs/run-20261012-114242Z-22220e76.log (20 lines in, 4 out), kept for the next 4 runs
 ```
 
 - The first line is the verdict.
@@ -33,15 +33,15 @@ raw: Shelf @ ec26cde (clean) · .sift/runs/run-20261012-114242Z-22220e76.log (20
 - `inventory:` appears on an unfiltered `swift test`. It sets the tests the index declares against the ones
   the run reported, so a test that silently never ran shows up as a difference. Without an index it says it
   was not checked.
-- `raw:` names the tree and commit the run happened in (`Shelf @ ec26cde (clean)`, as the `tree:` header
-  words them), then the complete output, written as it arrived, with the number of lines it stands for and the
+- `raw:` names the tree and commit the run happened in (`Shelf @ ec26cde (Swift clean)`, the word Swift saying the count covers only Swift files; the `tree:` header
+  words the rest), then the complete output, written as it arrived, with the number of lines it stands for and the
   number shown. Nothing is lost: one file per run under `.sift/runs/`, kept for the next four runs, and a failed run's
   log until that run passes or five newer failures follow it.
 
 ### A failing run
 
 A failure keeps what you can act on: errors with file and line, test failures with their messages, and
-warnings deduplicated, and drops the rest. To reproduce this one in the sample package, change `== 1` to
+warnings grouped by message (the first site shown with `×N`, the others in the raw log), and drops the rest. To reproduce this one in the sample package, change `== 1` to
 `== 2` on the `overdue` line of `LibraryTests.swift`.
 
 ```text
@@ -51,7 +51,7 @@ $ sift run -- swift test
     Expectation failed: library.overdue(after: 14).count == 2 → false library.overdue(after: 14).count → 1
 totals: ✘ failed · Swift Testing 3 tests in 1 suite, 1 failure, 0 skipped
 inventory: 3 declared, 3 reported
-raw: Shelf @ ec26cde (dirty: 1) · .sift/runs/failed-8dd8a8d4-run-20261012-114245Z-372ad573.log (25 lines in, 6 out), kept until it passes or 5 newer failures
+raw: Shelf @ ec26cde (Swift dirty: 1) · .sift/runs/failed-8dd8a8d4-run-20261012-114245Z-372ad573.log (25 lines in, 6 out), kept until it passes or 5 newer failures
 ```
 
 The heading names the file and line and, where the failure is inside the test's own body, that body's range.
@@ -66,16 +66,18 @@ Name tests the way `swift test` does, with `sift run -- swift test --filter`:
 $ sift run -- swift test --filter overdueCountsLongLoans
 ✔ swift test
 totals: ✔ passed · Swift Testing 1 test in 1 suite, 0 skipped
-raw: Shelf @ ec26cde (clean) · .sift/runs/run-20261012-114244Z-27c3ca3a.log (10 lines in, 3 out), kept for the next 4 runs
+raw: Shelf @ ec26cde (Swift clean) · .sift/runs/run-20261012-114244Z-27c3ca3a.log (10 lines in, 3 out), kept for the next 4 runs
 ```
 
 A filtered run does not print `inventory:`, since it was asked to run fewer tests than are declared. For
 `xcodebuild test` the equivalent is `-only-testing:`.
 
-The one place sift overrides the exit code is a run that names its tests and executes none of them, such
-as a filter that matches nothing. `swift test` itself exits 0 there, which reads as success. Sift answers
-`✘ swift test — nothing ran`, says which filter matched no test, and exits 4. Exit 5 means such a run did
-not build. Both are sift's own.
+Sift overrides the wrapped exit code in these cases only. A run that names its tests and executes none of
+them, such as a filter that matches nothing, or one of several filters matching no test, exits 4 with
+`✘ swift test — nothing ran`, naming the filter; `swift test` itself exits 0 there, which reads as success. An
+unfiltered `swift test` of a package that declares test targets and executes no test exits 4 as well. Exit 5
+means a run that names its tests failed to build before any test started. All are sift's own; a run that names
+no tests keeps the wrapped command's exit when its build fails.
 
 ### Ask whether a tree already passed
 

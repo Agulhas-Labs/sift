@@ -2,7 +2,7 @@
 // Copyright © Agulhas Labs
 //
 
-/// Renders structural search results: grouped one block per file, budgeted, with what a shape match is and isn't said once per session (Docs/Design.md §2, *standing caveats*).
+/// Renders structural search results: grouped one block per file, budgeted, with what a `calls:` or `uses:` match is and isn't said in the answers that use those terms (Docs/Design.md §2, *standing caveats*).
 struct SearchRenderer {
     /// Matches listed before the remainder is counted instead — the same budgeting discipline the digest applies, for the same reason.
     static var matchCap: Int {
@@ -15,7 +15,7 @@ struct SearchRenderer {
         guard !result.matches.isEmpty else {
             lines.append(missLine(result: result, query: query))
             lines.append(contentsOf: typeBodyNote.map { [$0] } ?? [])
-            return lines.joined(separator: "\n")
+            return withClause(lines, query: query)
         }
 
         lines.append(summaryLine(result: result))
@@ -49,7 +49,13 @@ struct SearchRenderer {
                 lines.append("… truncated: \(remaining) more matches — pass offset \(next)")
             }
         }
-        return lines.joined(separator: "\n")
+        return withClause(lines, query: query)
+    }
+
+    /// `lines` joined, ending in the clause on what `calls:` and `uses:` match when the query has such a term, empty answer or not, and on no other search answer.
+    private static func withClause(_ lines: [String], query: StructuralQuery) -> String {
+        let matchesWrittenNames = query.terms.contains { $0.field == .calls || $0.field == .uses }
+        return (matchesWrittenNames ? lines + [StandingCaveats.searchClause] : lines).joined(separator: "\n")
     }
 
     /// The bytes the remainder's names may take before the truncation line stands in for them: about 135 names in 130 files.
@@ -84,7 +90,7 @@ struct SearchRenderer {
         guard !result.matches.isEmpty else {
             lines.append(missLine(result: result, query: query))
             lines.append(contentsOf: typeBodyNote.map { [$0] } ?? [])
-            return lines.joined(separator: "\n")
+            return withClause(lines, query: query)
         }
 
         lines.append(summaryLine(result: result))
@@ -99,7 +105,7 @@ struct SearchRenderer {
                 lines.append("  \(matchCount) \(module)")
             }
         }
-        return lines.joined(separator: "\n")
+        return withClause(lines, query: query)
     }
 
     /// The count of matches and files over the files scanned, then — where a `name:` pattern matched some names whole and others only in part — how many lead the answer for matching whole.

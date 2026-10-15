@@ -165,6 +165,12 @@ public actor MCPServer {
         // the log below records what the call actually resolved to rather than what it was literally sent
         // under (Docs/Design.md §4: a healed `path:` must log as the `target:` it was read as).
         var arguments = sent
+        // A blank target is refused before any lookup and before the log is written: it names nothing, so no
+        // call was made to record.
+        if let message = Self.blankTargetMessage(tool: name, arguments: arguments) {
+            emit(resultID: id, result: ["content": [["type": "text", "text": message]], "isError": true])
+            return
+        }
         let started = Date()
         // Filled in by dispatch as it learns it, so a call that fails after resolving still logs where it resolved.
         var root = defaultRoot.standardizedFileURL.path
@@ -333,9 +339,11 @@ public actor MCPServer {
                     tool: "where", wanted: "symbol", arguments: arguments
                 ))
             }
+            let filesOnly = arguments["files"] as? Bool ?? false
             let options = WhereOptions(
-                includeReferences: arguments["refs"] as? Bool ?? false,
-                offset: arguments["offset"] as? Int ?? 0
+                includeReferences: filesOnly || arguments["refs"] as? Bool ?? false,
+                offset: arguments["offset"] as? Int ?? 0,
+                filesOnly: filesOnly
             )
             if let revision = try Self.atRevision(tool: "where", arguments: arguments) {
                 return try await MeasuredAnswer(text: engine.lookup(symbol: symbol, at: revision, options: options))
@@ -394,6 +402,14 @@ public actor MCPServer {
             throw MCPError(message: "digest's targets: takes an array of strings, one target each — [\"Type.a\", \"Type.b\"]")
         }
         return single + targets
+    }
+
+    /// The refusal for a call whose target is empty or only whitespace, read from the arguments as they would be resolved, or `nil` when it names something (or nothing at all, which the missing-argument message answers).
+    static func blankTargetMessage(tool: String, arguments sent: [String: Any]) -> String? {
+        guard let key = ArgumentAlias.nameArgument[tool] else { return nil }
+        let arguments = tool == "digest" && sent["targets"] != nil ? sent : ArgumentAlias.resolved(tool: tool, arguments: sent).arguments
+        let targets = tool == "digest" ? (try? digestTargets(in: arguments)) ?? [] : (arguments[key] as? String).map { [$0] } ?? []
+        return BlankTargetRefusal.message(tool: tool, targets: targets)
     }
 
     /// The revision an `at:` argument names, or `nil` when it is absent — never silently, when it is sent but isn't a string.

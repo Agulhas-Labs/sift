@@ -74,7 +74,7 @@ struct WitnessRestatedRequirementTests {
             let function = try await engine.lookup(symbol: "Refined.greet", freshness: engine.ensureFresh())
 
             #expect(property.contains("direct reads and writes of GizmoCore.Refined.name (1, it restates Named.name, so a use made through Named, including one a library makes, is not recorded against it):"), "\(property)")
-            #expect(function.contains("direct callers of GizmoCore.Refined.greet() (1, it restates Named.greet(), so a call made through Named, including one a library makes, is not recorded against it):"), "\(function)")
+            #expect(function.contains("direct callers of GizmoCore.Refined.greet() (1, it restates Named.greet(), so a call made through Named, including one a library makes, is not recorded against it; resolved to this declaration — greet is declared 2 times on other types, not counted here; where greet lists them):"), "\(function)")
             #expect(!property.contains("satisfies"), "\(property)")
             #expect(!function.contains("satisfies"), "\(function)")
         }

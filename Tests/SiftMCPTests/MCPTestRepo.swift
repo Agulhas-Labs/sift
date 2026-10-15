@@ -3,7 +3,7 @@
 //
 
 import Foundation
-import SiftCore
+@testable import SiftCore
 import Testing
 
 /// Assertion-free plumbing: a disposable committed git repo with one Swift type for server tests.
@@ -19,6 +19,10 @@ struct MCPTestRepo {
             at: root.appendingPathComponent("Sources/App"),
             withIntermediateDirectories: true
         )
+        // A git read the code under test makes here may outlast the two seconds production gives it, on a
+        // machine too loaded to schedule it sooner; only this repository's reads are widened, so a test
+        // pinning the production bound keeps it by making its repository elsewhere.
+        ChildDeadline.widenGitReads(under: root, to: 120)
         try "/// The test type.\nstruct \(type) {\n    let one = 1\n    func go() {}\n}\n".write(
             to: root.appendingPathComponent("Sources/App/\(type).swift"),
             atomically: true,
@@ -57,8 +61,10 @@ struct MCPTestRepo {
     ///
     /// Sited outside the repository rather than inside it, so the worktree's own file enumeration cannot pick up the parent's sources and make the two trees look alike for the wrong reason — in a temporary directory of its own, which the test's scope removes, rather than loose beside the repository in `$TMPDIR`, where nothing would.
     static func worktree(of root: URL, named name: String) throws -> URL {
-        let path = try TemporaryDirectory.make("worktree")
-            .appendingPathComponent("\(root.lastPathComponent)-\(name)")
+        let container = try TemporaryDirectory.make("worktree")
+        // Its own temporary directory, so widened as the repository is (`make(at:)` says why).
+        ChildDeadline.widenGitReads(under: container, to: 120)
+        let path = container.appendingPathComponent("\(root.lastPathComponent)-\(name)")
         try run(git: ["worktree", "add", "-b", name, path.path, "HEAD"], in: root)
         return path.resolvingSymlinksInPath()
     }
@@ -101,13 +107,19 @@ struct MCPTestRepo {
         }
     }
 
+    /// Commits as a fixed identity, so no fixture depends on the user's git config.
     static func run(git arguments: [String], in directory: URL) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = arguments
         process.currentDirectoryURL = directory
         // A suite run from a git hook inherits that hook's repository through these, and would commit into it.
-        process.environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("GIT_") }
+        var environment = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("GIT_") }
+        environment["GIT_AUTHOR_NAME"] = "Tester"
+        environment["GIT_AUTHOR_EMAIL"] = "test@example.com"
+        environment["GIT_COMMITTER_NAME"] = "Tester"
+        environment["GIT_COMMITTER_EMAIL"] = "test@example.com"
+        process.environment = environment
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout

@@ -93,12 +93,19 @@ struct BuildCommandTests {
         return (repoRoot.resolvingSymlinksInPath(), packageRoot.resolvingSymlinksInPath())
     }
 
+    /// Commits as a fixed identity, so no fixture depends on the user's git config.
     @discardableResult
     private static func runGit(_ arguments: [String], in directory: URL) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = arguments
         process.currentDirectoryURL = directory
+        var environment = ProcessInfo.processInfo.environment
+        environment["GIT_AUTHOR_NAME"] = "Tester"
+        environment["GIT_AUTHOR_EMAIL"] = "test@example.com"
+        environment["GIT_COMMITTER_NAME"] = "Tester"
+        environment["GIT_COMMITTER_EMAIL"] = "test@example.com"
+        process.environment = environment
         let sink = Pipe()
         process.standardOutput = sink
         process.standardError = sink
@@ -184,6 +191,8 @@ struct BuildCommandTests {
         #expect(asked.hasPrefix("swift build --build-system native --scratch-path .build/sift-timing "))
         #expect(asked.contains("-Xswiftc -Xfrontend -Xswiftc -debug-time-function-bodies"))
         #expect(asked.contains("-Xswiftc -Xfrontend -Xswiftc -debug-time-expression-type-checking"))
+        // A batch job's output is printed once per file of the batch, so every count would be multiplied.
+        #expect(asked.contains("-Xswiftc -disable-batch-mode"))
         #expect(output.printed.contains(" — raw output at .sift/runs/"))
     }
 

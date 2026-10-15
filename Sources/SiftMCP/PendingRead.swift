@@ -43,6 +43,9 @@ public struct PendingRead: Sendable, Equatable {
     /// The directory the call was made in, which is what places a digest the hook answered in the call's place (``FloorVerdict``).
     var directory: String?
 
+    /// The instant of the line the call was made on, which a correction of it is dated by — `nil` where the line carried no time.
+    var calledAt: Date?
+
     /// What this call looked like, captured on the way out so a refusal of it can be classified — its shape, and whether whatever follows it is the identical call re-run.
     var shape = RefusedCallShape(tool: "", text: "", kind: .other)
 }

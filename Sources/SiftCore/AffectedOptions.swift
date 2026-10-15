@@ -12,9 +12,12 @@ public struct AffectedOptions: Sendable {
     ///
     /// A name given twice is kept once.
     public let probes: [String]
+    /// Whether a partly affected target is named by every affected suite's filter at any length, rather than by its own filter where the suite list would pass 2,000 characters.
+    public var listSuites: Bool
 
-    public init(range: CommitRange? = nil, depth: Int = AffectedOptions.defaultDepth, probes: [String] = []) {
+    public init(range: CommitRange? = nil, depth: Int = AffectedOptions.defaultDepth, probes: [String] = [], listSuites: Bool = false) {
         self.range = range
+        self.listSuites = listSuites
         self.depth = max(1, depth)
         var seen: Set<String> = []
         self.probes = probes.filter { seen.insert($0).inserted }

@@ -15,8 +15,8 @@ struct BuildCommand: ParsableCommand {
             discussion: """
             `--analyse` is the only mode. Unlike `sift test --analyse`, which builds nothing, this one \
             builds: it deletes .build/sift-timing, runs `swift build --build-system native` into that \
-            scratch path with -debug-time-function-bodies and -debug-time-expression-type-checking passed \
-            on the command line (the manifest is never edited, and your own .build products are \
+            scratch path with -debug-time-function-bodies, -debug-time-expression-type-checking and \
+            -disable-batch-mode passed on the command line (the manifest is never edited, and your own .build products are \
             untouched). --build-system native is deprecated by SwiftPM, but it is the only one that \
             prints these timing lines on Swift 6.4. It answers with the slowest function bodies and the \
             slowest expressions, each \
@@ -61,7 +61,7 @@ struct BuildCommand: ParsableCommand {
         ".build/sift-timing"
     }
 
-    /// The build `--analyse` runs: the native build system, which prints the timing lines one per line where the default one drops them.
+    /// The build `--analyse` runs: the native build system, which prints the timing lines one per line where the default one drops them, with batch mode off, since it prints a batch job's whole output once per file of the batch.
     static let arguments = arguments(buildingTests: false)
 
     /// ``arguments``, with `--build-tests` after the scratch path when the test targets are to be timed too.
@@ -73,6 +73,7 @@ struct BuildCommand: ParsableCommand {
         ] + (buildingTests ? ["--build-tests"] : []) + [
             "-Xswiftc", "-Xfrontend", "-Xswiftc", "-debug-time-function-bodies",
             "-Xswiftc", "-Xfrontend", "-Xswiftc", "-debug-time-expression-type-checking",
+            "-Xswiftc", "-disable-batch-mode",
         ]
     }
 

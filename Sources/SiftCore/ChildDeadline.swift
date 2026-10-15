@@ -17,6 +17,22 @@ public struct ChildDeadline: Sendable {
     /// How long a git read may run: well under the 8 seconds a hook is given in all, so that a hook which asks git more than once still answers inside them.
     public static let git: TimeInterval = 2
 
+    /// What a git read in `directory` is held to where its caller names no bound: ``git``, unless a test widened the bound for a root `directory` is at or under.
+    ///
+    /// The one place a wall-clock bound on a git child can be moved, so a test on a loaded machine is not decided by how long `git rev-parse` took to be scheduled. Keyed by directory rather than set for the whole process, so the bound a read gets depends only on where its repository lives, never on which fixture ran first: a test that pins ``git`` or ``gitBulk`` makes its repository where no fixture registered one. Production registers nothing, and with nothing registered no path is resolved.
+    static func gitRead(in directory: URL) -> TimeInterval {
+        widened.seconds(at: directory) ?? git
+    }
+
+    /// Holds every defaulted git read in `root`, or anywhere under it, to `seconds`.
+    ///
+    /// For test fixtures only, once `root` exists: it is resolved the way the code under test sees it (`/var` → `/private/var`), and a path that is not there yet would keep its unresolved spelling.
+    static func widenGitReads(under root: URL, to seconds: TimeInterval) {
+        widened.register(CanonicalPath.of(root.path), seconds: seconds)
+    }
+
+    private static let widened = Widened()
+
     /// How long a git read whose answer grows with the repository or with its input may run (a file listing, a status, a diff, a history walk, blobs, a batch of paths): long enough that a large repository is not cut off, still finite so that a hook is never left on a git that cannot finish.
     public static let gitBulk: TimeInterval = 60
 
@@ -46,6 +62,35 @@ public struct ChildDeadline: Sendable {
             process.waitUntilExit()
         }
         return wasRunning
+    }
+}
+
+extension ChildDeadline {
+    /// The widened roots, behind a lock: a fixture registers one on its thread and the code under test reads them on others.
+    ///
+    /// An entry is never removed, which is harmless: each is a fixture's temporary directory, whose name carries a fresh UUID and is never made again, and a suite's few thousand short paths are not worth reclaiming.
+    private final class Widened: @unchecked Sendable {
+        private let lock = NSLock()
+        private var roots: [String: TimeInterval] = [:]
+
+        func register(_ root: String, seconds: TimeInterval) {
+            lock.withLock { roots[root] = seconds }
+        }
+
+        /// The seconds registered for the nearest root at or above `directory`, looked up one ancestor at a time.
+        func seconds(at directory: URL) -> TimeInterval? {
+            let registered = lock.withLock { roots }
+            guard !registered.isEmpty else { return nil }
+            var path = CanonicalPath.of(directory.path)
+            while true {
+                if let seconds = registered[path] {
+                    return seconds
+                }
+                let parent = (path as NSString).deletingLastPathComponent
+                guard !parent.isEmpty, parent != path else { return nil }
+                path = parent
+            }
+        }
     }
 }
 

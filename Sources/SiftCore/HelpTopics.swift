@@ -128,15 +128,7 @@ public struct HelpTopics {
 
         \(AnswerHeaderNotes.body)
 
-        **The header's `semantic:` is the mode that produced this answer, not a property of the tree.** \
-        `digest` never opens the store, so its header carries no `semantic:` field; `status` judges from file \
-        timestamps, so it can say `stale since last build (2 files changed)`; `where` consults the store, so it \
-        can say `fresh`. A file counts as changed when its contents or its file status moved past the build, so a \
-        copy that preserves modification times still reads as changed. On one tree you can therefore see `status` \
-        stale and `where` fresh (it asked about a symbol in a file no edit touched). In a tree with no index store \
-        yet, `where` says `\(SemanticAxis.noStore(inWorktree: false).rendered)`, and in a fresh worktree \
-        `\(SemanticAxis.noStore(inWorktree: true).rendered)`: it asked and found none. They do not contradict; \
-        read the one on the answer you are acting on.
+        \(StatusAxisNotes.body)
 
         **Syntactic answers** — digests, declarations, extensions — are never stale. Files dirty in the \
         working tree are reparsed before the answer is built, so an edit you just made is already reflected.
@@ -258,7 +250,7 @@ public struct HelpTopics {
         inheriting from such a type, may hand on any member, so a site written on it or inside it is kept. \
         So is a site written on a type the repository does not declare, which a framework may give one \
         (SwiftUI's Binding), unless it is a standard library, Foundation or Dispatch type known to have \
-        none; the name line counts those kept as "on types outside the tree". \
+        none. The name line counts the sites kept only because their receiver could not be shown to be another type, one clause for each reason, naming the three receivers written most: "on types the tree does not declare"; "on types behind a qualifier the scan does not resolve" (App.Orchard.m, whose qualifier may be a module); "on tree types out of the site's sight" (declared only in another module, nested, under an #if, or private to another file); "on tree types a supertype outside the tree may hand it on" (a tree type conforming to or inheriting from a framework's or a dependency's); and, for a name a scope around the site may supply ahead of the tree's type of it, "on names a type declared in a function may supply", "on names an extension of a type outside the tree may supply", "on names a supertype outside the tree of a type around them may supply" and "on names an attached macro may supply or reshape". \
         A receiver the scan cannot type is kept, and nothing is dropped where T is a protocol or \
         a type the repository does not declare. One leading-dot call is dropped and counted the same way \
         under any query, on any type: .m(x) with nothing applied after it — no member, call, subscript, ? \
@@ -287,7 +279,7 @@ public struct HelpTopics {
         keeps every occurrence the last build compiled, deleted files included, so `where` can name a caller \
         in a file that no longer exists. Those rows carry `(file deleted since last build)` — or `(file \
         changed since last build)` where the file survives but has been written since — sort after the live \
-        ones, and are counted out in the section heading and in the header's `stale since last build (…)`. The changed label is decided on the later of the file's mtime and its \
+        ones, and are counted out in the section heading and in the header's `stale since last build (…)`, which counts the files the answer cites and says so (`1 cited file changed: <path>`, `3 cited files changed`). The changed label is decided on the later of the file's mtime and its \
         ctime, so an edit whose mtime was put back (`touch -r`, `cp -p`) still carries it, and so does a file \
         rewritten with the bytes that were built — it over-warns and never under-warns. **Read the label as "do \
         not act on this row"**: an unlabelled row in the same section is unaffected and still resolved. \
@@ -372,9 +364,10 @@ private extension HelpTopics {
 
         **`where refs`, for a rename or delete sweep.** Callers alone cannot do that job: a *type* has no \
         callers at all, and test payloads never appear among them — `refs` lists every reference site, \
-        one line per file, not just the calls. Mind the boundary anyway: the index store records **code \
-        occurrences only**, so doc comments and string literals naming the symbol are invisible to it. \
-        Grep for those before you delete.
+        one line per file, not just the calls (a protocol's conformances: counted, listed as conformers). The store records code occurrences only, so the doc \
+        comments, strings, Markdown lines and file names naming the symbol come after the code sites, \
+        under `not code`. For only which files, `where --files` (`files: true` on the MCP tool) lists \
+        the files the sweep names, one row each, with counts.
 
         **`where` on a property lists its reads and writes, not its callers.** A `var`, a `let` or a \
         subscript is read and written through its accessors, never called, so the store has no call to \
@@ -743,11 +736,8 @@ private extension HelpTopics {
         lines over 87 files`. Under it, the slowest function bodies, then the slowest expressions, each \
         `file:line · ms · enclosing declaration`, with `(×N)` where one site was timed N times (a stored \
         property's initializer is checked in every frontend job that needs it; its synthesized accessors \
-        are separate bodies at one place). An expression row names its shape too, when it is one of three \
-        named at the site from the same parse — `long literal chain` (three or more `+` over literals), \
-        `untyped mixed collection literal` (an array or dictionary literal with no type annotation on its \
-        binding and elements of more than one literal kind), or `ternary chain` (a ternary whose then or \
-        else branch is itself a ternary). Then the files holding the most body time, and the totals: \
+        are separate bodies at one place; batch mode is off, since a batch job's output is printed once per file of the batch). An expression row names its shape too, when it is one of three named at the site from the same parse — `long literal chain` (three or more `+` over literals), \
+        `untyped mixed collection literal` (an array or dictionary literal with no type annotation on its binding and elements of more than one literal kind), or `ternary chain` (a ternary whose then or else branch is itself a ternary). Then the files holding the most body time, and the totals: \
         `bodies 12.4s of which the 10 listed are 61% · expressions 3.1s, listed 74%`. **A body's time \
         includes its expressions', so the two totals are never added.** Time spent in dependencies is \
         counted on a line of its own, function bodies and expressions outside any body apart, and never ranked. \

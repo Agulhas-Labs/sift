@@ -833,13 +833,20 @@ extension RunWithoutCommandTests {
     }
 
     /// Runs git in `root` with none of the test process's own git environment, and answers what it printed.
+    ///
+    /// It commits as a fixed identity, so no fixture depends on the user's git config.
     @discardableResult
     static func git(_ arguments: [String], in root: URL) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = arguments
         process.currentDirectoryURL = root
-        process.environment = ProcessEnvironment.withoutGit()
+        var environment = ProcessEnvironment.withoutGit()
+        environment["GIT_AUTHOR_NAME"] = "Tester"
+        environment["GIT_AUTHOR_EMAIL"] = "test@example.com"
+        environment["GIT_COMMITTER_NAME"] = "Tester"
+        environment["GIT_COMMITTER_EMAIL"] = "test@example.com"
+        process.environment = environment
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout

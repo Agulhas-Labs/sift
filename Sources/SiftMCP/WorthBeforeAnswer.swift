@@ -22,6 +22,12 @@ public final class WorthBeforeAnswer: @unchecked Sendable {
         self.payload = payload
     }
 
+    /// Whether a whole read of a file of so many bytes, answered with a digest of so many, is worth the turn in this call's context: the judgement each file of a `cat` of several is held to (``InPlaceShape/Match/weighsEachRead``), with the context's size read once.
+    func eachRead() -> @Sendable (_ fileBytes: Int, _ digestBytes: Int) -> Bool {
+        let context = ContextSize.ofCall(payload)
+        return { WholeReadWorth.isWorthTheTurn(fileBytes: $0, digestBytes: $1, contextTokens: context) }
+    }
+
     /// Whether `reading` is withheld as `notWorthTheTurn` before its answer is built: it is a shape ``WholeReadWorth`` weighs, and an answer of no bytes would not be worth the turn.
     func settles(_ reading: InPlaceShape.Match) -> Bool {
         Self.settles(reading, payload: payload)
@@ -29,6 +35,13 @@ public final class WorthBeforeAnswer: @unchecked Sendable {
 
     /// Whether `reading`, asked by the call `payload` describes, is never worth the turn whatever its answer: false for every reading ``WholeReadWorth/weighing(_:of:payload:)`` would not weigh, for a window a shell command asks for, and where the file or a window's lines cannot be read.
     public static func settles(_ reading: InPlaceShape.Match, payload: [String: Any]) -> Bool {
+        if reading.weighsEachRead {
+            // A `cat` of several files is let through only where no file's digest could be worth the turn.
+            let files = reading.calls.map { $0.readPath.flatMap { OperandFile.onDisk($0, in: reading.directory) } }
+            guard files.allSatisfy({ $0 != nil }) else { return false }
+            let context = ContextSize.ofCall(payload)
+            return files.compactMap(\.self).allSatisfy { WholeReadWorth.margin(fileBytes: $0.bytes, digestBytes: 0, contextTokens: context) <= 0 }
+        }
         guard reading.calls.count == 1, case let .fileDigest(path, windows) = reading.calls[0] else { return false }
         if windows.isEmpty {
             guard !reading.windowed.contains(true), let file = OperandFile.onDisk(path, in: reading.directory) else { return false }

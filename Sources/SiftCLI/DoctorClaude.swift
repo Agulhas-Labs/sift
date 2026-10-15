@@ -10,6 +10,8 @@ import SiftMCP
 struct DoctorClaude {
     let environment: [String: String]
     let probe: DoctorProbe
+    /// Where `claude` is not on PATH, the command that registers the running binary's server by hand, which `sift install` cannot run; `nil` where it is.
+    var manualRegistration: String?
 
     private var agent: InstallAgent {
         .claude
@@ -42,7 +44,8 @@ struct DoctorClaude {
         let config = SiftPaths.claudeConfig(environment: environment)
         let server = Self.registeredServer(in: config)
         guard let server else {
-            return checks + [.fail(agent, "server", "no MCP server named sift of this tool's in \(config.path); run `sift install --agent claude`")]
+            let remedy = manualRegistration.map { "claude is not on PATH, so `sift install` cannot register the server: run `\($0)` where claude is" } ?? "run `sift install --agent claude`"
+            return checks + [.fail(agent, "server", "no MCP server named sift of this tool's in \(config.path); \(remedy)")]
         }
         checks.append(.pass(agent, "server", "sift — \(server.command) \(server.arguments.joined(separator: " "))"))
         checks += DoctorRun(agent: agent, probe: probe).binaryChecks(server.command)

@@ -176,7 +176,7 @@ struct PatternReading {
         /\s*\(/
     }
 
-    /// A type and a member joined by a dot, escaped or bare — the regex and the plain spelling of a member access — and nothing else beside an optional word boundary on either side: `DepotStore\.comparison\b`, `DepotStore.comparison`.
+    /// A type and a member joined by a dot, escaped or bare — the regex and the plain spelling of a member access — and nothing else beside an optional word boundary on either side, or a call's open paren after it: `DepotStore\.comparison\b`, `DepotStore.comparison`, `DepotStore\.comparison\(`.
     nonisolated(unsafe) static let qualifiedMemberPattern = Regex {
         Anchor.startOfSubject
         Optionally { wordBoundary }
@@ -184,8 +184,25 @@ struct PatternReading {
         Optionally { "\\" }
         "."
         Capture { IndexSuggestion.identifier }
-        Optionally { wordBoundary }
+        Optionally {
+            ChoiceOf {
+                wordBoundary
+                callTail
+            }
+        }
         Anchor.endOfSubject
+    }
+
+    /// A call's open paren closing a pattern, escaped or bare, and the first argument's label where one follows it — `\(`, `(`, `\(for:` — which asks for the calls of the name in front of it, so the pattern reads as that name.
+    ///
+    /// Only at the close: an unescaped `(` anywhere else opens a group in an extended pattern, and a paren followed by more than a label is an argument list, which is text.
+    nonisolated(unsafe) static let callTail = Regex {
+        Optionally { "\\" }
+        "("
+        Optionally {
+            IndexSuggestion.identifier
+            ":"
+        }
     }
 
     /// `text`'s own `Type.member` path, where it spells one this literally — see ``qualifiedMemberPattern``.

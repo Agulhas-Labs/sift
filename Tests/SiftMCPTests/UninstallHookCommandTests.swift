@@ -188,7 +188,7 @@ struct UninstallHookCommandTests {
         let hooks = try #require(Self.settingsObject(at: settings)["hooks"] as? [String: Any])
         let entries = try #require(hooks["PostToolUse"] as? [[String: Any]])
         #expect(entries.count == 1)
-        #expect(entries.first?["matcher"] as? String == "Write|Edit|MultiEdit|mcp__sift__digest")
+        #expect(entries.first?["matcher"] as? String == "Write|Edit|MultiEdit|mcp__sift__digest|Grep|Bash")
         let inner = try #require(entries.first?["hooks"] as? [[String: Any]])
         #expect(inner.count == 1)
         #expect(inner.first?["command"] as? String == "/bin/sift post-tool-use")

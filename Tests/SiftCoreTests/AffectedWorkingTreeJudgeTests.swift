@@ -16,7 +16,7 @@ struct AffectedWorkingTreeJudgeTests {
 
         let output = try await Self.affected(root)
 
-        #expect(output.contains("semantic: stale since last build (2 files: 1 changed, 1 new)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (2 cited files: 1 changed, 1 new)"), "\(output)")
         #expect(output.contains("Sources/Beta/Other.swift was changed since the last build"), "\(output)")
         #expect(output.contains("Sources/Beta/Gizmo.swift is new since the last build"), "\(output)")
         #expect(output.contains("answered by the after-edit walk"), "\(output)")
@@ -31,7 +31,7 @@ struct AffectedWorkingTreeJudgeTests {
 
         let range = try await Self.affected(root, range: AffectedOptions.CommitRange(from: "HEAD~1", to: "HEAD"))
 
-        #expect(Self.semanticField(of: workingTree) == "stale since last build (2 files: 1 changed, 1 new)", "\(workingTree)")
+        #expect(Self.semanticField(of: workingTree) == "stale since last build (2 cited files: 1 changed, 1 new)", "\(workingTree)")
         #expect(Self.semanticField(of: range) == Self.semanticField(of: workingTree), "\(range)")
     }
 

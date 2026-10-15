@@ -1,3 +1,7 @@
+//
+// Copyright © Agulhas Labs
+//
+
 import Foundation
 @testable import SiftMCP
 import Testing

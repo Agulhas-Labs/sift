@@ -106,7 +106,7 @@ struct OtherStatementsRunTests {
         let match = try #require(InPlaceShape.match(forShell: command, in: "/repo", ridingAlong: { $0.hasPrefix("grep") }))
 
         #expect(match.calls.map(\.readPath) == ["Sources/App/Depot.swift"])
-        #expect(Self.withheld(InPlaceAnswerer.answer(match)) == "otherStatementsRun")
+        #expect(try Self.withheld(InPlaceAnswerer.answer(match, backoff: InPlaceAnswerTests.backoff())) == "otherStatementsRun")
     }
 
     /// A window of a located file dropped beside another lookup prints lines the answer leaves out, so the line runs.
@@ -115,8 +115,8 @@ struct OtherStatementsRunTests {
         let match = try #require(InPlaceShape.match(forShell: "sed -n 1,5p Sources/App/Alpha.swift; cat Sources/App/Depot.swift", in: "/repo"))
         let rest = try #require(match.droppingWindows { $0.hasSuffix("Alpha.swift") })
 
-        #expect(Self.withheld(InPlaceAnswerer.answer(match)) != "otherStatementsRun")
-        #expect(Self.withheld(InPlaceAnswerer.answer(rest)) == "otherStatementsRun")
+        #expect(try Self.withheld(InPlaceAnswerer.answer(match, backoff: InPlaceAnswerTests.backoff())) != "otherStatementsRun")
+        #expect(try Self.withheld(InPlaceAnswerer.answer(rest, backoff: InPlaceAnswerTests.backoff())) == "otherStatementsRun")
     }
 
     /// A compound line with no Swift lookup on it is no lookup at all, so the hook never touches it.

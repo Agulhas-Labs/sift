@@ -121,8 +121,8 @@ struct AffectedTests {
         #expect(output.contains("LibTests.DirectTests/usesWidgetDirectly() — 1 hop"))
         // The transitive case, and the reason the default depth is two: nothing in IndirectTests spells `Widget`.
         #expect(output.contains("LibTests.IndirectTests/reachesWidgetThroughTheHelper() — 2 hops"))
-        #expect(output.contains("-only-testing:LibTests/DirectTests/usesWidgetDirectly()"))
-        #expect(output.contains("-only-testing:LibTests/IndirectTests/reachesWidgetThroughTheHelper()"))
+        // A SwiftPM `.build` store prints `swift test` commands only.
+        #expect(!output.contains("-only-testing:"))
         #expect(output.contains(#"swift test --filter '^LibTests\.DirectTests/usesWidgetDirectly\(\)'"#))
         // The limits ride the strongest answer this command can produce, which is where over-trust starts.
         #expect(output.contains(AffectedBlindSpots.heading))
@@ -143,7 +143,8 @@ struct AffectedTests {
     func everyAnswerStatesItsOwnIncompletenessBeforeItListsAnything() async throws {
         let output = try await Self.affected(Self.makeRepo())
 
-        #expect(output.contains("what this cannot see — read before trusting the list below: answered by a name match."))
+        #expect(output.contains("what this cannot see — read before trusting the list below: answered by a name match. this is a lower bound"))
+        #expect(!output.contains(".this is"))
         #expect(output.contains("this is a lower bound, not a safe-to-skip set"))
         #expect(output.contains("`sift help affected-limits`"))
         // The standing list is in the help topic, not repeated in every answer.
@@ -167,7 +168,7 @@ struct AffectedTests {
 
         #expect(output.contains("semantic REFUSED"))
         #expect(output.contains("was changed since the last build; rebuild with `sift run -- swift build`, then retry"))
-        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Lib/Core.swift)"))
+        #expect(output.contains("semantic: stale since last build (1 cited file changed: Sources/Lib/Core.swift)"))
         #expect(!output.contains("semantic: fresh"))
         // What it offers instead is spelled as a different kind of claim, never as a weaker version of the same one.
         #expect(output.contains("**A name is not a symbol**"))

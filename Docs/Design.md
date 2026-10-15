@@ -212,6 +212,8 @@ notice — worded for one, it would tell a literal reader the others are *not* f
 the repository holds a parse error at all, even at a count of zero, which is the worst case rather than
 the exempt one.
 
+A `where` that finds no declaration for a name that is the basename of an indexed Swift file adds one line after `no declarations found`, `no declaration named <Name>; a file has that name: digest <path>`, so the file is one call away; with no such file it adds nothing.
+
 **List or count, by one rule:** the notice lists the affected files where it stands alone, and counts
 them, pointing at `sift status`, where a scoped banner is already present and a list would nest inside it.
 The ambiguity answers carry no other banner, so they list; a type digest and a `where` answer usually do,
@@ -477,7 +479,7 @@ working tree, read live — nothing stored to go stale`) and carries none of the
 other answer's is:
 
 ```
-tree: Orchard  head: a1b2c3d  dirty: 3  parse_errors: 1  semantic: stale since last build (2 files changed)
+tree: Orchard  head: a1b2c3d  dirty: 3  parse_errors: 1  semantic: stale since last build (2 cited files changed)
 ```
 
 **`index` and `reconcile` are the exception, and it is deliberate**: each writes an index, so which
@@ -518,14 +520,40 @@ The header's `semantic:` field reads `syntactic-only` when the store was never o
 semantic query ran without one (the detail says whether none was found or one was found and failed to open,
 since a build fixes only the first), `warming (…)` when one was found and is still being read past the
 query's budget, `fresh`, `stale since last build (…)` counting the distinct files the answer cites that differ from
-their own build, by kind in the order changed, deleted, new (`1 file changed: <path>`, `3 files changed`, `2 new
-files`, `4 files: 1 changed, 1 deleted, 2 new`), and `fresh, N declarations not found in the store` when nothing is stale but the store
+their own build, by kind in the order changed, deleted, new (`1 cited file changed: <path>`, `3 cited files changed`, `2 new
+cited files`, `4 cited files: 1 changed, 1 deleted, 2 new`), and `fresh, N declarations not found in the store` when nothing is stale but the store
 has no unit covering a declaration — a different fact from staleness, and one a rebuild may not fix.
 **`partial (N test files have no unit in the store — references from tests are a lower bound)`** when
 nothing is stale but some indexed test file (one importing XCTest or Testing) has no unit in any store the
 query reads: its target was never compiled — a plain `swift build` compiles no test target — so the store
 records no reference from it, and an answer about tests read from the store alone would report none of
-them under `fresh`. It outranks `fresh, N declarations not found` and yields to `stale`. `affected` and
+them under `fresh`. **`partial (target Extra not built — 2 lines there name Gizmo, not counted)`** when nothing is
+stale but a non-test target holds indexed files that write the asked name and no store the query reads holds a
+unit for any of them: a
+module a build file declares (`Package.swift`, an XcodeGen spec, an `.xcodeproj`, as `ModuleResolver` reads them),
+none of whose files imports XCTest or Testing, inside the store's project as build membership below decides it
+(a module of another project or one the root manifest does not declare is outside any built target, not this). A
+`swift build --target Kit` leaves every other target out, and the store then records nothing from them, so an answer
+read from it alone under `fresh` would claim callers and uses it never saw. A target is named only where one of
+its files writes the asked name in code, by the scan the answer's by-name listings use (`ScannedNames`, a
+declaration's own name aside), and the clause counts those lines: a target that never writes the name hides
+nothing from this answer, and a clause on every answer that tells the reader nothing teaches them to check every
+answer by hand. A subscript, an operator function, `callAsFunction` and a `subscript(dynamicMember:)` are used
+without their name spelled (`a[0]`, `a + a`, `a()`), so no scan finds their uses: asked about one, every such target
+is named with no relevance scan, and the clause reads `partial (target Extra not built — its uses of A.subscript
+cannot be found by name, not counted)`. The scan for this check also counts a member reached through any receiver,
+`a.f`, `a().f`, `a?.f`, called or not, which the other by-name listings leave to `self`, a type or a leading dot. A
+`.plugin` or `.macro` target is never named: SwiftPM compiles it for the host without an index
+store, so no build would clear it. Several read `targets Extra, Other not built — 5 lines there name Gizmo, not
+counted`, at most three names and then `+<k> more`; a target some of whose files have a unit is staleness, judged
+per file below, not this. Where test files are missing as well, one parenthesis carries both clauses, the
+target's first, joined by `; `. The targets are found once per answer, one unit probe per module that has one and
+one per file of a module that has none, and only the files of a module that has none are read for the name; an
+empty verdict or a `used by` tally names them as it names unbuilt test files: `; not counting target Extra,
+which is not built` after `recorded in the store`, and `N production, a lower bound (target Extra not built)`.
+`affected` names no target: it asks about no single name, and its limits lines say what it cannot see. Both
+kinds of `partial`
+outrank `fresh, N declarations not found` and yield to `stale`. `affected` and
 `diff`'s reaching tests then also walk the declarations the store did answer for by written name, keeping
 only tests in those files, marked `name match`, under one line naming the files' count and, for SwiftPM's
 store, the build that adds them (`sift run -- swift build --build-tests`). Every SwiftPM build command
@@ -554,8 +582,22 @@ full ingestion. So `status` runs the two comparisons a resolved query runs per c
 at once: a stored file's own change moment against the store's build anchor, its newest unit (a query judges a
 file against its own newest unit, and uses the store's only for a file no store holds a unit for), and a file gone from the tree. The second needs a record of its own, because every route to a
 deletion drops the file's rows before any report reads them: the index keeps the path and moment of each
-file it drops in a bounded ledger in its own `meta` table, and `status` counts those dropped after the
-anchor that are still missing. It reads `fresh` when both counts are zero, `stale since last build` with the
+file it drops in a bounded ledger in its own `meta` table, and `status` counts those still missing that
+the store may still cite: dropped after the anchor, or named by a unit still on disk. The second half is
+there because a build keeps a deleted file's unit until a clean build, so a query goes on citing the file
+whichever came first, the deletion, the build, or this index noticing either (a `git mv` and a build in
+one command is noticed after the build; one noticed in between is not). It reads only the deleted paths
+the ledger names against one listing of the units directory, filed by stem once, opening only the units
+whose name begins with the file's stem, and a candidate counts when a path it records is the file's own
+absolute path: each unit's paths block is read as the bitstream it is, every path joined from its prefix
+kind (the unit's working directory, its SDK root, or none, as Xcode writes a directory outside its working
+directory), directory and file name, and compared with the file under every spelling a build may have
+recorded the root by. A live file whose path merely ends the same way (`Sources/MyLib/Caller.swift`,
+`Sources/Other/Lib/Caller.swift` beside a deleted `Sources/Lib/Caller.swift`) never matches; a unit that
+does not read as that shape records nothing. A bounded read that still never opens the store. When a unit
+names a counted file, a second line under the store line says the record stays until a clean build, which a
+build without cleaning does not give; a file counted on the ledger's date alone gets no such line, since no
+record was found holding it. It reads `fresh` when both counts are zero, `stale since last build` with the
 changed and deleted counts (`(2 files changed)`, `(3 files: 2 changed, 1 deleted)`) when either is not, and
 the no-store state when discovery finds nothing. Its deleted count is the weaker one: only a query reads the
 occurrence that shows the store still holds something in the file. It errs
@@ -575,15 +617,15 @@ history is not searched. Each seed is kept only while the file is still missing 
 it. A sparse checkout over-warns: every tracked file outside its cone is seeded as deleted, until the next
 build dates the store past the seed.
 
-Five cases stay uncounted, and the note under `status`'s header names each in plain words, since a
-query still shows every one: a file a partial build skipped, which `status` reads against the store's one
+Four cases stay uncounted, and `sift help answers` names each in plain words, since a query still shows
+every one; `status` prints one line after its store line that names that topic, since a list printed on
+every run buries the store line it follows: a file a partial build skipped, which `status` reads against the store's one
 newest unit, so an edit made before a later build of another target reads `fresh` where a query refuses it;
 a never-tracked file's deletion after a ledger wipe; a deletion dated before
 the build that the tree reached afterwards without a commit of its own (fast-forward, checkout, hard
-reset, rebase onto older work); SwiftPM keeping a deleted file's unit until a clean build, so `status`
-reads `fresh` where a query reads the file as deleted; and an older binary's drop after this store's
+reset, rebase onto older work); and an older binary's drop after this store's
 ledger already exists, since the seed runs once. `unresolved` is a per-declaration fact, and `partial`,
-`warming` and `openFailed` are facts only a real open establishes; the note names each as showing only on
+`warming` and `openFailed` are facts only a real open establishes; the topic names each as showing only on
 a query.
 
 That second axis covers the files an answer *cites*, not only the file it is about — the files the store
@@ -706,9 +748,9 @@ word; which build is meant, where it is not the newest, is said by the refusal a
 
 | counted | header |
 |---|---|
-| one file | `stale since last build (1 file changed: Sources/App/RecordListView.swift)`, `(1 file deleted: Sources/A.swift)`, `(1 new file: Sources/A.swift)` |
-| one kind, several files | `stale since last build (3 files changed)`, `(2 files deleted)`, `(2 new files)` |
-| several kinds | `stale since last build (4 files: 1 changed, 1 deleted, 2 new)`, the total first so the parts are its arithmetic |
+| one file | `stale since last build (1 cited file changed: Sources/App/RecordListView.swift)`, `(1 cited file deleted: Sources/A.swift)`, `(1 new cited file: Sources/A.swift)` |
+| one kind, several files | `stale since last build (3 cited files changed)`, `(2 cited files deleted)`, `(2 new cited files)` |
+| several kinds | `stale since last build (4 cited files: 1 changed, 1 deleted, 2 new)`, the total first so the parts are its arithmetic |
 
 The fold is at one because every counted file is already named in the body (by its mark, its refusal, or
 the not-in-the-store line), so a path in the header repeats one, and the header is the line re-read on
@@ -716,7 +758,7 @@ every later turn; a single path is kept because it is the case where the reader 
 answer for the one marked file. A section heading that counts its own marked rows uses the same order
 (changed before deleted, today's is the reverse). The ranking is unchanged (`stale`, then `partial`, then
 `fresh, N declarations not found`); a declaration in a new file counts as `new` rather than `changed`.
-`status` renders its counts in the same form.
+`status` renders its counts in the same order and fold but without the word `cited` (`(1 file changed: <path>)`, `(4 files: 1 changed, 1 deleted, 2 new)`). A query answer says `cited` because a reader took `(1 file changed: …)` for the whole tree's count (#788); `status` keeps the uncited form because it counts every file.
 
 **A refusal names the build that skipped the file.** A changed file whose change predates the newest unit
 of the store holding its unit was left out by a later build, so rebuilding what was just built would refuse again, and a
@@ -795,6 +837,8 @@ current, as today. A dirty file reverted to its built contents reads as changed,
 moved: the judge reads change moments, not contents, and errs toward refusing. A file added to a module
 that a later partial build skipped reads not built (above).
 
+**The callers header names its resolution.** A store-backed `callers of X` heading whose base name other types also declare adds `resolved to this declaration — name is declared N times on other types, not counted here; where name lists them` to its parenthesis (joined to a witness hedge by `; `, and without `; where name lists them` when the query was the bare name), so a reader need not grep the bare name to rule those out; the no-store answer, whose sites are name matches, never says it, and nor does an initializer's.
+
 **Examples.** `where RecordStore.refresh` after a full build:
 
 ```
@@ -812,7 +856,7 @@ The same after editing `Sources/App/RecordListView.swift` (two lines added above
 building `Core` alone. This used to read `fresh` and cite `:41` with the text now on that line; it now reads:
 
 ```
-tree: Orchard  head: a1b2c3d  dirty: 1  parse_errors: 0  semantic: stale since last build (1 file changed: Sources/App/RecordListView.swift)
+tree: Orchard  head: a1b2c3d  dirty: 1  parse_errors: 0  semantic: stale since last build (1 cited file changed: Sources/App/RecordListView.swift)
 not compiled by the last build: App — build it for current rows
 declarations (1):
   Core.RecordStore.refresh() — func — func refresh() — Sources/Core/RecordStore.swift:600-658
@@ -830,7 +874,7 @@ calling it too. The header used to read `semantic: stale (3 files changed since 
 deleted since last build)`; it now reads:
 
 ```
-tree: Orchard  head: a1b2c3d  dirty: 4  parse_errors: 0  semantic: stale since last build (4 files: 1 changed, 1 deleted, 2 new)
+tree: Orchard  head: a1b2c3d  dirty: 4  parse_errors: 0  semantic: stale since last build (4 cited files: 1 changed, 1 deleted, 2 new)
 declarations (1):
   Lib.DepotStore.restock() — func — public func restock() -> Int — Sources/Lib/DepotStore.swift:3-5
 callers of Lib.DepotStore.restock() (2, 1 file changed since last build, 1 file deleted since last build):
@@ -852,7 +896,7 @@ existing one). The five suites, and what each pins:
 | `NewFileRefusalTests` | the declaring file: a declaration in a partial build's skipped, edited file is refused naming its module, with the SwiftPM command for SwiftPM's store and the `the last build did not compile <Module>` clause for an Xcode store; a declaration in a new file is refused and the judge puts its file in the new set, not the changed one; one in a unit-less file a build since its change left out reads `fresh, 1 declaration not found in the store`; a unit-less edited file in a nested project no store builds is not refused; a definition recorded only in a deleted file never resolves a declaration the tree holds |
 | `StaleKindsHeaderTests` | the header and the rows: the three example headers above, byte for byte, from the fixtures they describe; every singular, plural and mixed form of the header table, in the order changed, deleted, new; the fold names one path and never two; marked rows sort after current ones, in a section heading counting them in the same order; a file cited by two stores is counted once, under the worse kind; a declaration in a new file is counted `new`, not `changed`; the `not compiled by the last build` note appears after a partial build and not after a full one; a new file writing the name only in a string is neither listed nor counted |
 | `PartialBuildScanTests` | the scan: a file edited before a partial build that skipped it is scanned; the by-name lines' file is in the judge's set for its kind (its count is pinned in step 4); the not-in-the-store line is headed `new since last build` |
-| `PartialBuildAffectedStatusTests` | the other readers: an `affected` refusal after a partial build; `afterEditSeeds` after a partial build seeds a skipped file's refusal; `diff`'s stale files and `WrapperAttributeSites` judged by the judge after the same build; `status` after it reads `fresh` and names the case in its note |
+| `PartialBuildAffectedStatusTests` | the other readers: an `affected` refusal after a partial build; `afterEditSeeds` after a partial build seeds a skipped file's refusal; `diff`'s stale files and `WrapperAttributeSites` judged by the judge after the same build; `status` after it reads `fresh` and its note names the help topic that lists the case (`sift help answers`) |
 
 The suites' names go in the brief given to whoever builds the change, so the example-name list gains each with the code that declares
 it. Gate, beyond the suites and the full run: `where` wall time on this repository, from the CLI on a warm
@@ -880,12 +924,12 @@ for a ruling rather than shipping.
    forms and the fold; `staleByFileState` shares it. Pins: `StaleKindsHeaderTests`.
 5. **`affected`, `diff` and `status`.** `AffectedRenderer`'s semantic walk, `WrapperAttributeSites` and
    `DiffRenderer`'s stale files go through the judge, as do `SameNamedTypes.swift:338` and `AffectedRenderer.afterEditSeeds`; the instance
-   `buildAnchor` was deleted here (it is gone); the `status` note names the partial-build case. Pins:
+   `buildAnchor` was deleted here (it is gone); the `status` note names the help topic that lists the partial-build case (`sift help answers`). Pins:
    `PartialBuildAffectedStatusTests`.
 6. **The texts.** Every place the old wording is said: `HelpTopics` (`sift help answers`), this section's
    status line, *The freshness contract* above, and the amendment marked in force. Done.
 
-### Proposed: one header line, standing caveats said once per session
+### Proposed: one header line, standing caveats said where they apply
 
 **Status: approved; built.** Built in 0.1.4: the partition opener (*The partition reader*), the
 header line (*The one header line*: `digest` without `semantic:`, `source: live`, the `noStore` payload) and
@@ -893,8 +937,7 @@ the dropped echoes and gloss (the `where` and `strings` echo, `search`'s where t
 `source literals` gloss), with the hook's multi-name label, and `where`'s degraded notes (*The degraded
 note*: the `mode:` line, the `NOT ANSWERED` notice and the `references:` lines are replaced by one note, and
 `stores:` is written only when there is something to say), and the standing caveats (the boundary lines and
-glosses dropped from `where`, `search` and `strings`, said once in the primer bullet, the `where` and `search`
-tool descriptions and `help answers`, one text in all four, `StandingCaveats`), and the callers/references
+glosses dropped from `where`, `search` and `strings`, one text, `StandingCaveats`, in `help answers` and in the answers it applies to: every empty `where` verdict and every `calls:`/`uses:` `search`; see *Superseded* below for why neither the primer nor the tool descriptions carry it), and the callers/references
 fold (*The callers/references fold*). The matching contract change is the *Amendment* at the end of [AnswerContract.md](AnswerContract.md).
 
 **The problem.** The four lookups open with lines that say the same thing on every call: the query echoed
@@ -906,9 +949,8 @@ a private app repository, a `where` with three callers and `--refs` was 26 lines
 same on a benchmark: `where` callers 5.5k characters against 3.3k). An answer's bytes stay in the context
 for every later turn, so a fixed line is paid once per call per turn.
 
-**The ruling.** Each answer opens with one header line. What holds of every answer is said once per
-session, in the session-start primer, which already reaches every main session and subagent before its
-first turn. An answer repeats a caveat only when it is true of *this* answer and not of answers in
+**The ruling.** Each answer opens with one header line. What holds of every answer was first ruled to live in the `where` and `search` tool descriptions (and in full in `sift help answers`), not in the
+session-start primer. (Superseded below: it is said in the answer it applies to, and in neither the primer nor the descriptions.) An answer repeats a caveat only when it is true of *this* answer and not of answers in
 general: it was matched by written name because no store answered, it is stale, it was truncated, a file
 it counts failed to parse.
 
@@ -939,7 +981,7 @@ it counts failed to parse.
 | `mode: syntactic (sift help answers); <why>` (`where` degraded, `affected`) | the engine's degraded-mode opening and its one-line no-store note for `where`, placed by the renderer at its header | (b) merged into the degraded note |
 | `callers/overrides:`/`used by: NOT ANSWERED from the index store …; see the mode line above.` | the renderer's absence notice, placed under the mode line | (b) merged into the degraded note: it restates the mode line |
 | `references: UNAVAILABLE — …` (four variants, `--refs` degraded) | the store-lines helper that wrote the `--refs` line | (b) merged into the degraded note |
-| `references: all sites by written name, paged by file — may add same-named symbols'; may miss protocol, closure, unfolded-typealias uses; …` | the store-lines helper that wrote the sweep line | (b) the condition ("by written name") stays in the degraded note; the limits are the same on every such answer (a) → primer |
+| `references: all sites by written name, paged by file — may add same-named symbols; may miss protocol, closure, unfolded-typealias uses; …` | the store-lines helper that wrote the sweep line | (b) the condition ("by written name") stays in the degraded note; the limits are the same on every such answer (a) → primer |
 | `references: code occurrences of this repo's own build only (…) — check those before deleting; …not code…` (every store-answered type and every `--refs`) | `WhereRenderer`'s boundary line and the `not code` section's variant of it (removed in 0.1.4) | (a) → primer |
 | `syntactic call sites`/`syntactic uses — by written name over the working tree, never stale — see sift help answers (call sites)` and the blank line above it | `NameMatchedSites` (NameMatchedSites.swift:13, :18), `SyntacticTypeUsage` (:48), `UndeclaredInitializer` (:96) | (a) drop the line; the section's count line says `by written name` (`"save" (19 call sites by written name in 13 files):`) and becomes the block's opener for `NameMatchedSites.partition` (*The partition reader*, below) |
 | `; labels narrowed` on the call-site heading (store answers) | `SyntacticCallerFallback` (SyntacticCallerFallback.swift:170-172) | (b) kept: true of this answer only; it moves onto the count line (`… in 13 files; labels narrowed):`) |
@@ -950,7 +992,7 @@ it counts failed to parse.
 | `reads and writes: written code only — …` (every stored property) | `WhereRenderer`'s property boundary (removed in 0.1.4) | (a) → primer |
 | `uses: written code only — …` (every enum case) | `WhereRenderer`'s case boundary (removed in 0.1.4), placed in the answer and `WhereRenderer.severalOwnersLines` | (a) → primer |
 | `observers: a macro that moves a property into generated storage …` | `WhereRenderer.movedObserverBoundary` (:1019) | (b) only where such a row is listed: kept, as a trailing note |
-| `not code, by written name over the working tree, never stale[; may include same-named symbols'] — …` | `WhereNonCodeSection` | (a) `over the working tree, never stale` → primer; (b) `may include same-named symbols'` kept |
+| `not code, by written name over the working tree, never stale[; may include same-named symbols] — …` | `WhereNonCodeSection` | (a) `over the working tree, never stale` → primer; (b) `may include same-named symbols` kept |
 | `syntactic shape match over the working tree — never stale, never refuses[; calls:/uses: match written names …]` (every `search`) | `SearchRenderer.caveat` (SearchRenderer.swift:131) | (a) → primer, both halves |
 | `source literals (Swift string literals holding the wording, not catalog entries):` | `StringsRenderer.render` (StringsRenderer.swift:26) | (a) the gloss → dropped: `source literals:` |
 | `no string catalogs (.xcstrings / .strings) in this repo` | `StringsRenderer` | (b) keep: the catalog section's verdict |
@@ -1086,7 +1128,7 @@ AnswerContract §3 ("Nor is anything said twice") and is a separate change.
 - `sift run -- swift test` (or a build) from Bash: the failures, the log in `.sift/runs/`
 ```
 
-It gains one bullet, after the `search` line (about 466 B before the missing-site caveats and more with them, a hand count to be re-measured from the built text; said once per context):
+It gains one bullet, after the `search` line (about 466 B before the missing-site caveats and more with them, a hand count to be re-measured from the built text; superseded below, the primer carries no such bullet):
 
 ```
 - One header line opens each answer; said here once: `where`'s callers and references are code this build compiled (not a sibling repo, an uncompiled target or a synthesized conformance, so a short list is not "unused"; `--refs` adds comments, strings and Markdown under `not code`); written-name matches (`search` `calls:`/`uses:`, a no-store `where`) may include same-named symbols and may miss protocol, closure and unfolded-typealias uses and unapplied instance-method references, so an empty list is not proof a symbol is unused; property and case uses "by name at runtime" (key paths, `Mirror`, `rawValue` lookups) are not seen; working-tree reads are never stale; tests are split by the XCTest/Testing import
@@ -1101,11 +1143,25 @@ none pays 466 B it did not need. `sift help answers` keeps the
 long form of each (it already carries the `mode:` and `clean` paragraphs, `AnswerHeaderNotes`), and gains
 the moved glosses and the missing-site caveats in full: written-name matches "may miss protocol, closure, unfolded-typealias uses and unapplied instance-method references", "an empty list is not proof it is unused", property and case uses "by name at runtime" are not seen. The `where` and `search` tool descriptions (and `help answers`) carry the same sentences word for word, so a client without the hook is told the same.
 
+**Superseded: the caveat is said where it applies, in no primer and no tool description.** The caveat bullet above is
+gone from the primer for every audience, and the `where` and `search` tool descriptions no longer append it. A
+paired benchmark (10 runs a task) showed why: with the text in the descriptions, the callers task went from `where`
+alone to `where` then a confirming `Grep` in 10/10 runs, and the conformers task likewise; without it, `where` alone
+in 9/10 and 10/10. A standing "a short list is not proof it is unused" read before every call makes the agent verify
+every answer. So the text (`StandingCaveats`) is said in the answer, only where it matters: a `where` answer whose
+callers, uses or `--refs` code-site list is empty ends with `StandingCaveats.sentences` (a short list carries
+nothing). So does every other empty verdict: a type used only by itself or named only by its aliases, a
+function, property or case whose only link is a requirement it implements, a several-owners table with a row
+counting none, and a no-store answer that found nothing (where the degraded note's own "not unused" clause is
+dropped, so one caveat is said). A `search` whose query has a `calls:` or `uses:` term carries
+`StandingCaveats.searchClause`, empty or not, because those terms match written names; any other search carries
+nothing. `sift help answers` keeps the full text.
+
 **Where the primer does not reach.** The primer is delivered by the `SessionStart`/`SubagentStart` hook
 on Claude Code and by the `session-start` hook the Codex and Cursor installers write. An MCP client with no
-hook, and a person at the CLI, get neither. For the MCP face the same bullet goes into the `where` and
-`search` tool descriptions, which every client loads once per session; the CLI's `--help` for each verb
-points at `sift help answers`.
+hook, and a person at the CLI, get neither, and need none of it: the caveat travels in the answer it applies
+to, not in a tool description, so every client is told the same where it matters; the CLI's `--help` for each
+verb points at `sift help answers`, which keeps the full text.
 
 **Consumers that read the header.** In this repository: `WorkingTree.named` (WorkingTree.swift:42,
 read by `TranscriptScan` to file an answer under its tree) and `ResolvedRoot` read the `tree:` field and the
@@ -1339,9 +1395,12 @@ resolve down the file's declarations: one they cover whole is served as a single
 part is served whole if a leaf within the 60-line source floor and looked inside if a container, a longer
 leaf holding every line asked for serves only those lines under one header naming the leaf, its whole range
 and the call that serves it all. **A single line inside a leaf longer than 25 lines is windowed whatever the
-leaf's length**: under the same header, the leaf's declaration (its stored signature, left out where the
-window already shows the declaration's first line), the line with 3 either side clamped to the leaf, and a
-last line `lines a-b; read it by range` naming the leaf's whole extent. One line is the stack-trace and log
+leaf's length**: under the same header, which names the leaf, its whole range and the call that serves it all,
+only the line with 3 either side clamped to the leaf, each carrying its line number as Claude Code's Read lays
+it out (the number right-aligned to 6 columns, a tab, the source line) and the cited line marked by `>` in
+place of the number's first padding space. There is no declaration line, no `(…N lines skipped)` marker and no
+footer: the header already names the leaf and its extent, and the numbers tell the asker which line was
+cited, so a following ranged Read of the same lines is not needed. One line is the stack-trace and log
 question — which function is this in — and serving a 43-line function whole answered it with ~3,800
 characters where the name and a few lines were wanted (#485). A range of two or more lines keeps the rule
 before this one, since the asker named the extent, and so does `Type.member`. A doc-comment line
@@ -1399,7 +1458,7 @@ the type it extends. The hook's in-place answer to a search keeps every owner's 
 stands in for the lines that search prints.
 
 `--refs` is the rename and delete sweep view, for every kind: every reference site, one line per file,
-paged on a cursor, counting **distinct lines** so header and listing reconcile. Three things it must never
+paged on a cursor, counting **distinct lines** so header and listing reconcile. A protocol's conformance lines are the one exception: the conformers block lists each with its file and span, so the sweep counts them in its heading (`, N of them the conformances listed below`) and does not list them again; every line a rename changes is still named once — by a row, or by the conformers block where the clause is on the declaration's first line (a clause on a later line keeps its row) — and `--files` still lists their files. Where the block is listed row by row (and under `used by`), each row names the declaration the store records the reference inside, as the callers rows do, a name past 30 characters with an argument-label list shortened to its base name and `(…)` — `    :<line>  <enclosing>[  | <text>]` — and keeps the bare `    :<line>` where the store records none. Three things it must never
 do: read as complete when it is not, count what it does not list, or return silently with no store, which
 says UNAVAILABLE instead. **Where there is no store at all** (a worktree before its first build, a checkout
 never built) and the name has a name-matched stand-in, the mode line names the missing store (the one-line
@@ -1479,7 +1538,7 @@ lists one file each, under a different cursor from the same answer, and followin
 other's files. The line names, compressed, what a written-name match misses (a use
 reached through a protocol or a closure, and through a typealias except where a type's block says it folded
 those in; comments and string literals) and that a same-named symbol's sites may be among them:
-`references: all sites by written name, paged by file — may add same-named symbols'; may miss protocol,
+`references: all sites by written name, paged by file — may add same-named symbols; may miss protocol,
 closure, unfolded-typealias uses; skips comments, strings`. **A no-store answer opens with at most three
 lines, none over 160 characters**: the mode line, the `callers/overrides: NOT ANSWERED` line (`used by: NOT
 ANSWERED` for a type), and under `--refs` the `references:` line: 386 characters in all, from about 1,450
@@ -1509,6 +1568,8 @@ where the demangler reads an expansion in it, and on a runtime whose demangler p
 declaration the store leaves unnamed is named by what it is and whose, `modify accessor of total`. A
 protocol requirement's hits are headed "implementations", since the relation covers witnesses as well as
 class overrides; emptiness is one summary line.
+
+`--files` is the files-only form of that sweep (`where X --files`, `files: true` on the MCP tool; it implies `--refs`), for the question "which files contain X", where the per-site rows are most of the answer's size and none of what is asked. **The invariant:** no file the full `--refs` answer names, on any of its pages, is missing from its files: declaration and extension files, every reference row's file, every name-matched row's file (a type's uses by written name, a member's or caller's name-matched sites and the ones written with no call, a property wrapper's `@T` attribute sites, an undeclared initializer's sites), every `not code` row's file, the `file names:` entries, and the files a `not in the build` or `new since last build, not in the store, mention the name:` line names. One render of the sweep's first page carries a `WhereFilesCollector`, and each section records its whole list into it before any cap or page cuts the list; no answer text is read back. Where `--refs` truncates a list without paging it (a type's uses by written name past 40 files, `truncated: N more files — grep for the name to list them`, or past 30 lines in a file, `+N more`; a name-matched block past its call-site cap), `--files` lists more files than `--refs` shows, so `--refs`'s files are a subset of `--files`'s, and the extra ones reconcile against the section totals `--refs` prints. One row per file, sorted by path: `  <path> (<code lines>, declares, not code <N>)`, where the code count is the distinct lines the `--refs` block counts, `declares` marks a file holding a declaration or extension of the symbol, a file listed only under `file names:` reads `(file name)`, and a file changed since the last build keeps its `(file changed since last build)` mark. The heading `files naming <qualified> (<N> files: <a> with code sites, <b> with not-code mentions[, …]):` keeps what the `--refs` heading says of drift and incompleteness (changed since last build, macro-generated lines not listed, `$flag` siblings, `by written name` where a name-matched section listed a file, and `N more files holding the name not scanned` where a mentions scan counted files it did not read), so the view never reads as complete where the sweep would not. Dropped: the declarations section (only where the query resolves to one owner; several owners keep it, it is their narrowing), the `used by` line, the per-site rows and the `not code` rows. Kept: the tree header and every line that says the answer is degraded or incomplete (`UNAVAILABLE`, the mode line, `references:`, the `new since last build` line). Paging: one row per file, `WhereFilesCollector.filesListCap` (100) per page, with the sweep's `truncated: N more files — pass offset K to continue` marker and the same offset. Where the `--refs` answer names no file or is no sweep (a bare name answered with its owners' declarations, `--syntactic`, `--at`, no store and no stand-in, UNAVAILABLE), `--files` returns exactly what `--refs` returns. The hook's in-place answers (`standsInForSearch`) are untouched. (#791)
 
 **`--refs` lists, after the code sites, the places a rename must change that are not code** (#719). The same
 trial renamed `Gizmo`: `--refs` gave 90 code lines in 29 files and said it skipped comments and
@@ -1693,7 +1754,14 @@ import, never the path`:
   row per line with the line's source text, `    :18  | <text>` under a `  path (n):` heading per file; above
   40, one line per file, `path (count): line, line, …`, capped, with `--refs` named as the paged full view. For
   a protocol, the verdict says how many of its lines are the conformances its conformers block lists (`, 3 of
-  them the conformances listed below`), and the rows leave those lines out (below).
+  them the conformances listed below`), and the rows leave those lines out (below); under `--refs` the verdict carries the same clause and the sweep's heading does too.
+  **When the uses not already listed below (the conformances) number 8 or fewer** (`WhereRenderer.listedInPlaceCap`), the
+  rows come back in that layout and the verdict drops its `— where --refs <Type> lists them` pointer, since a handful
+  of lines sent to a flag cost agents a grep each; above 8 the verdict keeps the pointer and no rows. The no-store
+  stand-in applies the same cap to its uses by written name, the lines its conformers block lists left out of the
+  count and the rows as the store's verdict leaves them (`, 3 of them the conformances listed below`). It says of the
+  lines the store resolved to another declaration that they are `listed above under it` or `counted above under it`
+  by what the store's own block did with them, and both, with how many each, where it did each.
 - **A reference inside the type's own declaration or one of its extensions is not usage**: an
   `extension SimilarTarget` header is itself recorded as a reference, and counting those would make every
   type with an extension look used. How many lines were dropped is said in the verdict, never in silence.
@@ -1925,6 +1993,54 @@ block is captioned `from the store` and no more, and a class's `direct subclasse
 records a conformance or subclass only where a clause writes it, so `includes indirect` was never true of either,
 and a class's walked subclasses are in the block by written name after it (#602).
 Why, with the source text on store rows (below): see that paragraph's figures.
+
+**The store's conformers block ends by accounting for every Swift file a text search for the name finds.** A
+question asking for every conformer "in any module" was answered right, then checked: in the paired benchmark at
+high effort the agent ran a grep for the protocol's name after `where` in 5 and in 10 of 12 runs, only to reconcile
+the grep's files with the answer, about 3.3k tokens a run (#473). Hedges in the heading changed nothing; handing it
+the reconciliation did: the grep ran in 0 and 2 of 12, and the tools arm went from +10.1% and +15.0% dearer to +1.1%
+in both checkouts. So the block's last line, after the rows and any `truncated:` line, is
+`every Swift file that writes <Name> is accounted for (<T>, a text search of the Swift files git shows[, manifests
+included])[: <c> declare a conformer (above)][, <d> declare or extend it][, <a> alias it][, <u> use it (used by,
+above)][, <h> changed since the build: <paths>][, <k> write it only in comments or strings: <paths>][, <k> write it
+only inside a longer name: <paths>][, <k> write it in code not counted above: <paths>][; <k> could not be read:
+<paths>]`, each verb agreeing with its count and each class with no file left out, `<c>` too.
+
+- **`<T>`** counts the Swift files git shows (tracked, and untracked but not ignored by any of git's ignore rules),
+  symbolic links not followed, whose bytes hold the name anywhere, case-sensitively, as grep matches it. That is
+  the file set a grep honouring `.gitignore` reads in the usual tree, and on both measured trees it was the agent's
+  set exactly; it is not an emulation of any one grep, and the line says whose set it is. Known differences from
+  Claude Code's `ugrep --ignore-files --hidden -I`: it reads a directory ignored only by `.git/info/exclude` or a
+  global excludes file, descends into a nested repository or in-tree worktree, and skips a file with a NUL byte; it
+  does not read a tracked file under an ignored directory. `manifests included` is said only where one of the `<T>`
+  files is a build manifest the index does not store.
+- **Classes.** Each file is counted once, in the first class that holds it, and only files in `<T>` are counted,
+  so a conformer through a typealias or an inherited one, whose file does not write the name, is in no class:
+  `<c>` can be smaller than the block's own file count. A file changed or untracked since the build is classed
+  `changed since the build` before the classes the build's records decide, since those may no longer describe it.
+  Then, for the files unchanged since the build: it declares a conformer the block counts, listed or past the
+  cap; it declares the asked declaration (its USR) or an extension of it; it declares a typealias the answer
+  follows for it; it is a file of the `used by` verdict, or under `--refs` of the `references to` section. The
+  rest are read by the lexer the `not code` scan uses: every place the file writes the name as a word is a comment,
+  a doc comment or a string literal; or it writes the name only inside a longer one (`GizmoTests` for `Gizmo`);
+  or it writes it in code none of the classes above counts (a file the index does not read, another declaration of
+  the name and the conformers the block leaves out for it, a use the store resolves elsewhere). The classes sum to
+  `<T>`. `<u>` counts only the `used by` files that write the name, so it can be smaller than that heading's file
+  count, which also holds uses through a typealias and files deleted since the build.
+- **Paths.** The residue classes name their files, at most five each and then `+<k> more`. Under `--refs` the
+  `not code` section lists the comments-or-strings files the index reads, so that class counts those as `(<k> under
+  not code, below)` and names only the rest, a manifest or a file in a directory the index leaves out (`3 write it
+  only in comments or strings (2 under not code, below): DepotKit/Package.swift`), and gives its count alone,
+  `(not code, below)`, where the section lists them all. An answer the hook serves in place of a search keeps the
+  line, since it stands in for exactly the grep the line accounts for, and has no `not code` section, so there the
+  class names its files. A file the scan could not read is named after the classes, outside `<T>`, never dropped.
+  On a page past the first (`offset`), the line gives the counts and no paths, as the `not code` section's header
+  covers the whole tree on every page.
+- **When it is left out:** at a revision (`--at`), in the `--files` view, where git cannot list the tree, and
+  where the scan passes its bounds, about 20,000 Swift files or 64 MB, or a deadline of about 300 ms on an injected
+  clock: then the whole line is left out, never a partial `<T>`. The scan reads every Swift file once per answer that prints the block, the same read
+  the `not code` scan of `--refs` makes, shared where both run. With no store, the block by written name is
+  unchanged: it was not what was measured.
 
 **Conformers are listed to any depth, in both modes.** The store records an inheritance only as a clause writes
 it (`Zed: PS`, `Sub2: Sub`), and so does the scan, so a list built from either stopped one level down: `where P`
@@ -2215,18 +2331,27 @@ callee is spelled with compound labels equal to one of theirs. Overloads keep wh
   outside the tree (SwiftUI's `Binding`, Foundation's `AttributedString`) is not seen, so a site written on a
   type the tree does not declare is kept too (#514), unless the type is on a closed list of standard library,
   Foundation and Dispatch types known to have no such subscript (`PlainFrameworkTypes`); the name's line
-  counts the sites kept that way, `N on types outside the tree`, so the list never reads as proven uses.
+  counts the sites kept that way, `N on types the tree does not declare`, so the list never reads as proven
+  uses. Each reason a site is kept only because its receiver could not be shown to be another type gets its
+  own clause on that line, naming the three receivers written most (`12 on tree types out of the site's sight
+  (ReplayComparison ×7, SemanticRefusal ×5), 1 on tree types a supertype outside the tree may hand it on
+  (LineCount ×1)`), since one clause for every reason called tree types outside the tree; each rule below
+  names its clause.
   A written type name is another type's only where a tree declaration proves it (#537): a type in sight of the
   site (top level, under no `#if`, in the site's module, and in its file where private) whose every supertype
   the tree declares, since a dependency's supertype may carry `@dynamicMemberLookup`. A name the site's file
   binds as a value (a parameter, local, closure parameter or local function) or the tree declares as a case,
   function or property is untyped and kept; a name behind a qualifier (`SwiftUI.Binding`, `App.Orchard`) is
-  kept and counted outside the tree, since the scan does not resolve the qualifier. A nested or out-of-sight
+  kept and counted `on types behind a qualifier the scan does not resolve`, since the scan does not resolve
+  the qualifier. A tree type of the name none of whose declarations is in sight keeps the site, counted `on
+  tree types out of the site's sight`, and one with a supertype outside the tree, in sight or not, keeps it
+  counted `on tree types a supertype outside the tree may hand it on`. A nested or out-of-sight
   tree type proves nothing, so a name on the closed list is still read as the framework's plain type unless
   some tree type of the name, nested or under `#if`, has a supertype outside the tree, which may be what the
   site writes and so keeps it. Swift looks a bare name up in the members of the types around it before the
   module's top level, so a name a supertype outside the tree of any type around the site may supply is kept
-  and counted outside the tree: a superclass or a dependency's protocol may supply any name (`Current` a
+  and counted `on names a supertype outside the tree of a type around them may supply`: a superclass or a
+  dependency's protocol may supply any name (`Current` a
   Kit superclass's property, `Item` its typealias), and a framework protocol only the names a closed table
   holds for it, its associated types (`Element` and `Iterator` for `Sequence`, `ID` for `Identifiable`); a
   protocol on neither that table nor the inert list (`Equatable`, `Hashable`, `Comparable`, `Codable` and its
@@ -2245,7 +2370,10 @@ callee is spelled with compound labels equal to one of theirs. Overloads keep wh
   (`extension DepotBox` for `Box<Depot>`) holds the generic parameters of the types it stands for, followed
   through typealiases, and one written with sugar (`[Depot]`, `Depot?`) counts as outside the tree itself.
   A type around the site declared inside a function shows no supertype to the scan, whatever a top-level
-  type of its name declares, so a site inside it is kept and counted outside the tree.
+  type of its name declares, so a site inside it is kept and counted `on names a type declared in a function
+  may supply`. A site kept because a type around it is one the tree does not declare, as above, or an extension
+  of a type outside the tree, as below, is counted `on names an extension of a type outside the tree may
+  supply`.
   An extension written with the bare name of a type the tree declares only inside another type (`extension
   Label` beside `enum Theme { struct Label }`) extends a type outside the tree, read by the same table; a
   site inside the nested type itself, or in `extension Theme.Label`, is read by its declaration. Any extension
@@ -2254,8 +2382,8 @@ callee is spelled with compound labels equal to one of theirs. Overloads keep wh
   another module, private to another file, or under an `#if` the extension does not share).
   An attribute on a type around the site, an extension of it or a supertype the tree declares, or on
   the receiver's type, that the language does not define and that names no tree type (a global actor) may be
-  an attached macro adding a typealias or a dynamic member, so the site is kept and counted outside the
-  tree. A supertype written behind a qualifier that is no module or type of the tree (`Dep.Shelf`) is
+  an attached macro adding a typealias or a dynamic member, so the site is kept and counted `on names an
+  attached macro may supply or reshape`. A supertype written behind a qualifier that is no module or type of the tree (`Dep.Shelf`) is
   outside the tree whatever the tree declares under that simple name. A public type another tree module
   declares is **not** used to drop a site, even where the site's file imports that module: the scan cannot
   see dependencies, so the name may resolve elsewhere, and only an index store can prove it. The ways it
@@ -2557,8 +2685,11 @@ and any character the written segment lacks, longest first. When no run is found
 shown from its start, truncated at the display cap. **When the section would list nothing
 it has no heading** (an empty heading is not an answer): the count alone is one line saying the matches
 were around interpolations, `36 lines match it around interpolations on only one word of literal text,
-…`, so an answer the plain section already gets right gains one line, not two; and `no Swift string
-literal contains it either` still precedes it whenever no catalog entry, plain literal or listed match
+…`. An answer the plain section already gets right gains no line at all: a plain literal spells the query
+whole, so the one-word matches are counted only when no plain literal answered (a plain section listing only test
+sites counts as an answer: rare words are still listed there, and only the count of common ones goes) (#800, where five calls'
+literal rows answered and the count, on words like "from" 76, never was). `no Swift string literal
+contains it either` still precedes the count whenever no catalog entry, plain literal or listed match
 answered. The plain section is unchanged by any of this.
 
 ### `run -- <command>`
@@ -3320,6 +3451,14 @@ file whatever the project's size: on a 736-file package the whole `--report --js
 an earlier bundle, or none, is `coverage: refused —`. `test-without-building`, `-xctestrun` and
 `-enableCodeCoverage NO` are refused beside `--coverage`, as `--skip-build` is.
 
+**An `xcodebuild test` runs with `-collect-test-diagnostics never` unless argv chooses.** After a failing
+test `xcodebuild` runs `simctl diagnose` and waits on it before exiting, up to its own 600 s timeout, so a
+caller that already has the verdict waits ten minutes more: measured 14 Oct 2026, a one-test filtered run
+that failed 4 s in returned after 611 s, and after 8 s with collection off, with the same exit code. The
+option is added to `test` and `test-without-building` wherever argv names no `-collect-test-diagnostics` of
+its own. A failed run closes on one line saying so and naming `-collect-test-diagnostics on-failure`, which
+keeps the diagnostics; a passing run collects nothing either way and says nothing.
+
 **`diff --coverage` shows the last measured numbers only for the tree they measured.** Each measured run
 replaces one record, `.sift/coverage.json`: the tree's content key, the command, and the line counts of the
 changed files only. `diff --coverage` pairs the working tree's change against `HEAD` afresh and renders it
@@ -4045,6 +4184,7 @@ and its location is the declaration's name. Three more facts from the same captu
   each of the three frontend jobs that needed its type (emitting the module, and once per file), and its
   synthesized getter, setter and `_modify` accessor are three body lines at one location. Lines are
   folded by site into one row with a count; for a body, the site is its declaration.
+- **A batch job's output is printed once per file of the batch.** The native build system prints the whole output of a batch frontend job once for each file of that batch, byte-identical: under each file heading, and also back to back with no heading between the copies. So the build passes `-disable-batch-mode`, giving each file a frontend job of its own whose output is printed once (measured on a 265-file package: 211,290 timing lines with batch mode, 50,592 without, and the clean build no slower). The output is still read as blocks of consecutive timing lines and a block identical to one already read is dropped whole; single lines are never deduplicated, since the same site timed in different jobs counts each time.
 - **Closures are not timed on their own**: a closure's time is inside the expression and body holding it.
 
 **The default build system prints none of these lines on a successful build**, and under `-v` prints them
@@ -4168,7 +4308,7 @@ token spelling a name; the answer labels that walk `syntactic, lower bound`, and
 listed itself. Seeding the whole of such a file reached all 283 tests of a 354-test target for a three-call-site
 rename. Where that walk still name-matches at least half the tests of a target past the list cap, the target is
 not listed: two lines say it could not narrow below it, from which touched names over how many, and the command
-that runs it (an answer-shape change on the CLI only; `affected` has no MCP face). **The walk is bounded and says so**, two hops by default, because one under-counts every
+that runs it (an answer-shape change on the CLI only; `affected` has no MCP face). Commands are printed for the repository's runner only, read from the index store's provenance (a SwiftPM `.build` store: `swift test`; DerivedData or `buildServer.json`: `xcodebuild`; any other store, or none: both), and the `affected tests` heading says which and why. A suite list past 2,000 characters (`#769`, `#798`: ~15 KB and ~10k tokens on a wide diff, no reader used either list) is replaced by the target's own filter with its counts; `--suites` restores the list. **The walk is bounded and says so**, two hops by default, because one under-counts every
 codebase with a test-helper layer and three reaches most of a suite. A reference landing in a suite's own
 helper or property names that suite whole and is followed on as well, in both walks, since a test in another
 suite calling the helper reaches the change through it; a test function and the suite's type are where a walk
@@ -4464,8 +4604,12 @@ there the tools are deferred to their names. Deferring them in a Swift session w
 Code 2.1.286, a one-turn `-p` probe): where the session's tool list leaves out `ToolSearch` the unmarked tools
 load in full anyway, and where it carries it the deferred four still cost about 750 tokens against about
 1.4k loaded, a saving smaller than the turn it adds before the first `digest`. **The schema is kept to a
-budget instead** (`ToolDefinitionBudgetTests`): every tool and parameter stays, each description is its
-trigger and nothing the model can infer, and the serialized list must stay under 2,600 bytes. **Descriptions are load-bearing and are phrased as trigger conditions, not as features**:
+budget instead** (`ToolDefinitionBudgetTests`): every tool stays, a parameter stays in the schema while
+callers use it, each description is its trigger and nothing the model can infer, and the serialized list
+must stay under 2,300 bytes. Schema JSON costs about one token per 2.6 characters, not 4, so a short
+description is not free: `root` and `offset` carry none (the name says it, and every `truncated:` marker
+says `pass offset K`), and `at` and `count` left the schema (15 of 4,598 calls in 30 days, 14 Oct 2026),
+still accepted by the server and on the CLI as `--at` and `--count`. **Descriptions are load-bearing and are phrased as trigger conditions, not as features**:
 a tool the model never invokes is worth nothing, and a description saying what a tool *can do* loses to
 the read the caller already knows how to do. A size precondition ("before reading any file over 100
 lines") is unusable too, since it cannot be checked without doing the read it exists to prevent, while an
@@ -5248,7 +5392,7 @@ was offered, `<verdict>\t<call>` where a call was and no rule is known for it, a
   that would not save), `notAnswerable` (a lookup with no answered shape behind it: the hook had nothing
   to hand back, so it said nothing), or one of `InPlaceAnswerer.Withholding`'s raw values (`overTime`,
   `overSize`, `notExact`, `backingOff`, `noRepository`, `outsideRoot`, `unchecked`,
-  `treeNotWritable`, `failed`; `noStore` is no longer reached, and is kept only so an older row reads back)
+  `treeNotWritable`, `failed`, `patternInvalid`; `noStore` is no longer reached, and is kept only so an older row reads back)
   — an answer attempted and withheld, named by *why*, which is the more specific of the two facts that
   can end a lookup in an allow. The last two are the outcome rule, answer in place or allow, and both are
   noted in the suppression log as well, so a gate that never answers shows as a rate.
@@ -5360,8 +5504,13 @@ line counts each time it prints), and a refusal no smaller lets the line run as 
 that each sit just under their own searches, the syntactic `where` with no index store above all, can still
 come to more than the greps once the header and closing line they share are added. A line holding any lookup
 that weighed nothing (a whole read, an outline, a names search answered unweighed) keeps the weighing of its
-parts alone, having no total of what the line prints to weigh against. A `Grep` tool call answered with the names shape is not weighed: it is ripgrep behind a JSON
-payload, whose output this cannot reproduce.
+parts alone, having no total of what the line prints to weigh against. A `Grep` tool call answered with the names shape is
+weighed only where size decides what it asks, a declaration pattern or names each declared once: its search is
+made in process as ripgrep would make it (parent `.gitignore` files, `head_limit`, `offset`, the 500-column
+cap), within 0.2 s, and the `Grep` runs as `notSmaller` where it prints no more than the answer. A name declared
+more than once keeps its answer. Where the 0.2 s runs out, a declaration pattern runs as `unchecked`, since every
+declaration search an answer stood in for in the paired benchmark printed less than it (`enum Ends`, 187 bytes
+against 2,110), and names are answered unweighed.
 
 **A line is answered only where the answer reproduces every statement on it.** A lookup that is one leg of a
 sequence is the commonest lone refusal there is, but an answer to one leg of a line whose other legs print
@@ -5667,6 +5816,30 @@ already lets through are untouched. A let-through on this rule prints no answer,
 answered log and leaves no marker behind, and it is counted as withheld on worth, out of the share, as
 `notSmaller` and `linesNotShown` are.
 
+**A `cat` naming several Swift files is weighed file by file** (#767). Each file is judged as a `cat` of it
+alone is, by the rule above with its own F and D (`Match.weighsEachRead`). Where at least one file's digest is
+worth the turn, the statement is answered in place with one answer laid out as several whole reads are: each
+file in the order named under its own heading, its digest where that pays, otherwise its own source under the
+note a digest served as source carries (`SourcePassthrough.servingSource`), so the scan reads it as served
+source. Where no file's digest pays, the read runs, logged `notWorthTheTurn` as a single read is, decided before
+the answer is built where even D = 0 would not pay for any file. Only a multi-file `cat` that is the line's one
+lookup is weighed so; beside other lookups each file is answered as a `cat` of it would be on that line, and the
+size and time budgets, the ledger, the compound-line rules and a piped `cat` (`filteredOutput`) are unchanged.
+Behind a `||` fallback that could print (`cat A.swift B.swift || echo fail`) the statement is matched as a `cat`
+of one file is there (`SeveralFileCat.fallbackMatch`): weighed file by file as above, and answered only where
+every file it names is there to read, since `cat` fails on a missing one after printing the rest and the
+fallback then runs (`notExact`). An operand that is no Swift file, or a file named twice, leaves the line
+unanswered (#780). A `cat -n` of several files (`Match.numbersEachRead`) numbers each file it serves as source as
+`cat -n` prints it, `%6d` and a tab before each line, counting from 1 in each file as macOS `cat -n` does, since
+a `cat -n` of that file alone runs and prints those numbers; a file the floor serves as source is numbered too,
+since a `cat -n` of that file alone also runs rather than being answered, and a file answered with its digest is
+that digest either way.
+Piped into a line window (`cat A.swift B.swift | head`), the statement is decided as that window on its first
+file alone (`cat A.swift | head`, `SeveralFileCat.firstFileWindow`), so `notSmaller` and `linesNotShown` reach it
+as they reach the single-file window, where every file it names is there to read, the first ends on a newline,
+and each window picks the same lines of the files joined as of the first alone. A window reaching past the first
+file (`tail`, a `head` longer than it) stays `notAnswerable`.
+
 **A narrower window the `Read` tool asks for (an `offset`/`limit`) is answered only where its answer spares
 more than the identical re-run is expected to cost** (#627). A reader naming a range often wants those lines,
 and under the window-saving floor an answer may leave them out. Measured from 6 to 12 October 2026, 11 of 23
@@ -5697,7 +5870,7 @@ is let through as `notWorthTheTurn` without opening an engine, refreshing the st
 (`WorthBeforeAnswer`), which spared the hook most of a small whole read's cost (a median of 153 ms against 20 ms
 for a Read that is no lookup, measured before the change). **Precedence:** everything decided before the
 build still decides first: the shape match, not answerable, outside sources, the repository and the back-off,
-a compound line whose other statements run, a conflicted window, a fallback whose file is not there, Markdown,
+a compound line whose other statements run, a conflicted window, a grep whose groups do not balance in its own dialect (`patternInvalid`: its identical re-run would fail, #786), a fallback whose file is not there, Markdown,
 `cat a b` and every line of several reads, and shell windows (`sed -n`, `head`), which are never weighed before
 their answer. The bound outranks only the reasons decided while the answer is built: `parseError`,
 `notSmaller`, `linesNotShown`, `overSize`, `notExact` for an unindexed file, `treeNotWritable`, `failed` and

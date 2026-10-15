@@ -22,7 +22,7 @@ struct GrepProgramPerHarnessTests {
         let claude = try scene.run(scene.claude("Bash", ["command": command]), agent: nil)
         let cursor = try scene.run(scene.cursor("Shell", ["command": command, "cwd": ""]))
         var codexPayload = scene.claude("Bash", ["command": command])
-        codexPayload["turn_id"] = "01a0f6b0-7e00-7e63-bb48-d2462150b0dd"
+        codexPayload["turn_id"] = "00000000-0000-7000-8000-000000000002"
         codexPayload["session_id"] = "codex-session"
         let codex = try scene.run(codexPayload, agent: nil)
 

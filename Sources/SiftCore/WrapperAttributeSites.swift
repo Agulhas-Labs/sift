@@ -34,14 +34,16 @@ struct WrapperAttributeSites {
 
     /// The blocks `where` lists after the store's answer for `row`, which it names `owner`: its own sites, then its type's unassigned ones where it is the first of that type asked.
     ///
-    /// Every file the listing relied on is put to `occurrences`, so an answer that dropped or kept a site on a store fact from a file written since the build is headed stale rather than fresh, and a site in such a file carries the mark the store's own rows there do.
-    func lines(for row: SymbolRow, owner: String, cap: Int, judgedBy occurrences: OccurrenceFreshness, under root: URL) -> [String] {
+    /// Every file the listing relied on is put to `occurrences`, so an answer that dropped or kept a site on a store fact from a file written since the build is headed stale rather than fresh, and a site in such a file carries the mark the store's own rows there do. `filesCollector`, for a files view (`where X --files`), records every site of both blocks, past `cap`.
+    func lines(for row: SymbolRow, owner: String, cap: Int, judgedBy occurrences: OccurrenceFreshness, under root: URL, recording filesCollector: WhereFilesCollector? = nil) -> [String] {
         guard let path = types[row.id] else { return [] }
         for relied in (reliedOn[path] ?? []).sorted() {
             _ = occurrences.state(of: root.appendingPathComponent(relied).path)
         }
         let type = DeclaredTypeName.last(ofPath: path)
-        let marker = { (site: SyntacticCallSite) in occurrences.state(of: root.appendingPathComponent(site.path).path).marker ?? "" }
+        let state = { (site: SyntacticCallSite) in occurrences.state(of: root.appendingPathComponent(site.path).path) }
+        let marker = { (site: SyntacticCallSite) in state(site).marker ?? "" }
+        filesCollector?.recordSites((assigned[row.id] ?? []) + (unassigned[row.id] ?? []), state: state)
         return Self.lines(assigned[row.id] ?? [], named: type, for: owner, cap: cap, grouped: true, marker: marker)
             + Self.lines(unassigned[row.id] ?? [], named: type, for: Self.unassignedOwner(path), cap: cap, grouped: true, marker: marker)
     }

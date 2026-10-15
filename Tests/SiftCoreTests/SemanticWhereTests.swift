@@ -83,7 +83,7 @@ struct SemanticWhereTests {
             #expect(helper.contains("callers of Lib.helper() (1):"))
             #expect(helper.contains("callGreet"))
             #expect(greet.contains("overrides of Lib.Base.greet()"))
-            #expect(greet.contains("callers of Lib.Base.greet() (1):"))
+            #expect(greet.contains("callers of Lib.Base.greet() (1, resolved to this declaration — greet is declared 1 time on other types, not counted here):"))
             #expect(base.contains("conformers of Base (1, direct subclasses from the store):"))
             #expect(base.contains("Child"))
             // The store answered, so the notice about what an unanswered query cannot see has nothing to say and
@@ -122,7 +122,7 @@ struct SemanticWhereTests {
 
         #expect(greet.contains("REFUSED"))
         #expect(greet.contains("rebuild with `sift run -- swift build`, then retry"))
-        #expect(greet.contains("semantic: stale since last build (1 file changed: Sources/Lib/Base.swift)"))
+        #expect(greet.contains("semantic: stale since last build (1 cited file changed: Sources/Lib/Base.swift)"))
         #expect(helper.contains("semantic: fresh"))
         #expect(helper.contains("callers of Lib.helper() (1):"))
     }
@@ -146,7 +146,7 @@ struct SemanticWhereTests {
         let output = try await engine.lookup(symbol: "helper()", freshness: freshness)
 
         #expect(output.contains("REFUSED"))
-        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Lib/Caller.swift)"))
+        #expect(output.contains("semantic: stale since last build (1 cited file changed: Sources/Lib/Caller.swift)"))
         #expect(output.contains("call sites by written name"))
         #expect(output.contains("in Lib.callGreet()") || output.contains("in callGreet()"))
     }
@@ -247,7 +247,7 @@ struct SemanticWhereTests {
             #expect(!plain.contains("references to"))
             #expect(swept.contains("references to Lib.Base (2 in 2 files):"))
             // Grouped by file with line numbers, so a sweep works file by file instead of running past the list cap.
-            #expect(swept.contains("Sources/Lib/Caller.swift (1):\n    :2  | Base().greet()"))
+            #expect(swept.contains("Sources/Lib/Caller.swift (1):\n    :2  callGreet()  | Base().greet()"))
             #expect(swept.contains("Sources/Lib/Base.swift (1):\n    :6  | public class Child: Base {"))
         }
     }
@@ -432,6 +432,8 @@ struct SemanticWhereTests {
                     public init() {}
                     public func salute() {}
                 }
+
+                public func muster(_ greeter: Greeter) {}
                 """,
                 to: "Sources/Lib/Proto.swift",
                 in: root
@@ -480,7 +482,7 @@ struct SemanticWhereTests {
                 options: WhereOptions(includeReferences: true, offset: 1)
             )
 
-            // Greeter is referenced in both files (Soldier's conformance clause, drill's parameter);
+            // Greeter is referenced in both files (muster's parameter, drill's parameter; Soldier's conformance clause is folded into the conformers block, so it alone would not give Proto.swift a heading);
             // the sorted file list puts Drill.swift first, so offset 1 skips it and serves Proto.swift.
             #expect(firstPage.contains("Sources/Lib/Drill.swift ("))
             #expect(secondPage.contains("(…1 file skipped)"))

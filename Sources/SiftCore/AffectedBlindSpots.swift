@@ -61,8 +61,17 @@ struct AffectedBlindSpots {
     }
 
     /// ``nestedXCTestCaseCaveat`` as the answer's own entry, short: the full text is in `sift help affected-limits`.
-    static var nestedXCTestClause: String {
-        "an XCTest case nested inside another type is selected by no `swift test --filter`, and by xcodebuild only through its runtime class name"
+    ///
+    /// Names only the runners the answer prints, since the other's command is not on the page.
+    static func nestedXCTestClause(runners: AffectedRunners) -> String {
+        let prefix = "an XCTest case nested inside another type is selected by "
+        let swiftTest = "no `swift test --filter`"
+        let xcodebuild = "xcodebuild only through its runtime class name"
+        return switch (runners.swiftPM, runners.xcodebuild) {
+        case (true, false): prefix + swiftTest
+        case (false, true): prefix + xcodebuild
+        default: prefix + swiftTest + ", and by " + xcodebuild
+        }
     }
 
     /// Named only when the answer contains a test in an XCTest case nested inside another type, since the two runners' lines each treat that test their own way.

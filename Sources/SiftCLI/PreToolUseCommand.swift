@@ -79,7 +79,7 @@ struct PreToolUseCommand: ParsableCommand {
             // only reaches a start line too old to name its parent. A miss of any kind is nil, and the call is
             // amended as before.
             let serverDirectory = CallerRoot.serverDirectory(session: session ?? payload["session_id"] as? String)
-            let output = Self.adviceTaken(
+            let output = UnloggedPassRows.takeTheAdvice(
                 session: sessionID, context: context, payload: payload, command: command, cwd: directory, serverDirectory: serverDirectory
             )
             if verdict {
@@ -105,6 +105,7 @@ struct PreToolUseCommand: ParsableCommand {
                 cwd: directory,
                 session: session ?? payload["session_id"] as? String,
                 context: context,
+                answerer: { InPlaceAnswerer.answer($0, serverGone: $1, timeBudget: $2, backoff: .standard()) },
                 ledger: ledger,
                 usage: UsageLog.forHookAnswer(transcriptPath: payload["transcript_path"] as? String),
                 runPermission: runPermission
@@ -137,7 +138,7 @@ struct PreToolUseCommand: ParsableCommand {
         usage: UsageLog? = .standard(),
         suppressions: SuppressionLog = .standard(),
         timeBudget: TimeInterval = InPlaceAnswer.timeBudget,
-        answerer: (InPlaceShape.Match, Bool, TimeInterval) -> InPlaceAnswerer.Outcome = { InPlaceAnswerer.answer($0, serverGone: $1, timeBudget: $2) },
+        answerer: (InPlaceShape.Match, Bool, TimeInterval) -> InPlaceAnswerer.Outcome,
         serverPresence: (_ transcript: String?, _ agent: String?) -> Bool = ServerPresence.isGone(ofSession:agent:)
     ) -> String? {
         outcome(
@@ -168,7 +169,7 @@ struct PreToolUseCommand: ParsableCommand {
         usage: UsageLog? = .standard(),
         suppressions: SuppressionLog = .standard(),
         timeBudget: TimeInterval = InPlaceAnswer.timeBudget,
-        answerer: (InPlaceShape.Match, Bool, TimeInterval) -> InPlaceAnswerer.Outcome = { InPlaceAnswerer.answer($0, serverGone: $1, timeBudget: $2) },
+        answerer: (InPlaceShape.Match, Bool, TimeInterval) -> InPlaceAnswerer.Outcome,
         serverPresence: (_ transcript: String?, _ agent: String?) -> Bool = ServerPresence.isGone(ofSession:agent:),
         runPermission: @escaping (_ directory: String?) -> WrappedRunPermission = WrappedRunPermission.standard(in:),
         couldAnswer: (String, String?) -> Bool = { AdvisableName.couldAnswer($0, from: $1) }
@@ -303,7 +304,7 @@ struct PreToolUseCommand: ParsableCommand {
                 }
                 // An answer leaving an alternation's prose to a search is logged under a rule of its own, so how
                 // often it fires can be counted beside what followed it.
-                if case let .symbols(names, _, uncovered, _, _, _) = inPlace.call, !uncovered.isEmpty {
+                if case let .symbols(names, _, uncovered, _, _, _, _) = inPlace.call, !uncovered.isEmpty {
                     suppressions.note(symbol: names.joined(separator: " "), directory: directory, rule: "partialAlternation", call: payload["tool_use_id"] as? String)
                 }
                 // Recorded like any other call taken, so rule 1 does not go on offering this context the very
@@ -577,7 +578,7 @@ struct PreToolUseCommand: ParsableCommand {
     }
 
     /// The shell command this call carries, from the flag or from the payload — the one place that pair is read.
-    private static func shellText(command: String?, payload: [String: Any]) -> String? {
+    static func shellText(command: String?, payload: [String: Any]) -> String? {
         let input = payload["tool_input"] as? [String: Any] ?? [:]
         guard let shell = command ?? input["command"] as? String, !shell.isEmpty else { return nil }
         return shell
@@ -629,6 +630,7 @@ extension PreToolUseCommand {
         cwd directory: String?,
         session: String?,
         context: AdviceContext,
+        answerer: (InPlaceShape.Match, Bool, TimeInterval) -> InPlaceAnswerer.Outcome,
         ledger: AdviceLedger = .standard(),
         usage: UsageLog? = .standard(),
         suppressions: URL = SuppressionLog.standardFileURL,
@@ -647,6 +649,9 @@ extension PreToolUseCommand {
                 couldAnswer: couldAnswer,
                 allowed: { ledger.rerunsAllowed(session: context.key, among: $0) }
             ) else {
+                if noted.last == nil {
+                    UnloggedPassRows.noteUnlocatedWindow(of: nil, command: command, payload: payload, in: directory, holds: { ledger.holds($0, session: context.key) }, noting: SuppressionLog(fileURL: suppressions))
+                }
                 return (nil, letThrough())
             }
             let decided = outcome(
@@ -659,9 +664,13 @@ extension PreToolUseCommand {
                 ledger: ledger,
                 usage: usage,
                 suppressions: log,
+                answerer: answerer,
                 runPermission: runPermission,
                 couldAnswer: couldAnswer
             )
+            if decided.verdict.rule == "noLookup", decided.json == nil, noted.last == nil {
+                UnloggedPassRows.noteUnlocatedWindow(of: lookup, command: command, payload: payload, in: directory, holds: { ledger.holds($0, session: context.key) }, noting: SuppressionLog(fileURL: suppressions))
+            }
             return decided.verdict.rule == "noLookup" ? (decided.json, letThrough()) : decided
         }()
         if decision.verdict.token == "allowed" {
@@ -817,7 +826,7 @@ extension PreToolUseCommand {
         // Named by the kind of file read: a Markdown document is not Swift, and a line that reads both is only "the read".
         let documents = leg.calls.filter { $0.shape == .outline }.count
         let kind = what == "search" || documents == 0 ? "Swift " : documents == leg.calls.count ? "Markdown " : ""
-        return HookOutput.preToolUseContext("sift: the \(kind)\(what) on this line is answered by \(named) — put that on the line in place of the \(what).")
+        return HookOutput.preToolUseContext("sift: the \(kind)\(what) on this line is answered by \(named) — put that on the line in place of the \(what)\(HeldReadsClause.text(for: leg.heldReads)).")
     }
 
     /// `lookup`, where the index could have served it with a call that can be made, or `nil` where a rule withholds it, logged under that rule and against `call`, the judged call's `tool_use_id`.

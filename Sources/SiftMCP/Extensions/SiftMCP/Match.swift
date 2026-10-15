@@ -29,7 +29,7 @@ public extension InPlaceShape.Match {
         }
         guard !kept.isEmpty else { return nil }
         guard kept.count < calls.count else { return self }
-        return Self(
+        var rest = Self(
             calls: kept.map { calls[$0] },
             directory: directory,
             isWholeCommand: false,
@@ -38,5 +38,8 @@ public extension InPlaceShape.Match {
             fallbackFollows: fallbackFollows,
             statements: statements.isEmpty ? [] : kept.map { statements[$0] }
         ).running(others: true).falling(backTo: ordinary?.droppingReads(where: letThrough))
+        rest.weighsEachRead = weighsEachRead && rest.calls.count > 1
+        rest.heldReads = heldReads + calls.indices.filter { !kept.contains($0) }.compactMap { calls[$0].readPath }
+        return rest
     }
 }

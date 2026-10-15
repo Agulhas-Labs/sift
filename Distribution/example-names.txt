@@ -135,6 +135,7 @@ ClosedRange
 CodeGeneration
 CodingGuidelines
 CodingKey
+CommandPlugin
 CommentedClose
 CompileC
 CompileSwift
@@ -233,6 +234,7 @@ GizmoCore
 GizmoKit
 GizmoTests
 GizmoTools
+GreeterBadge
 GridBodyArrangement
 GridComparisonBand
 GridTests
@@ -281,6 +283,7 @@ LedgerScopedTests
 LegacyApp
 LegacyTests
 LegacyWidgetTests
+LibCaller
 LibCore
 LibTests
 LibTestsExtra
@@ -313,6 +316,7 @@ MultiEdit
 MutableCollection
 MyApp
 MyErgo
+MyLib
 MyType
 MyViewModel
 NOTGate
@@ -349,6 +353,7 @@ PBXNativeTarget
 PBXProject
 PBXSourcesBuildPhase
 PackageDescription
+PackagePlugin
 PalletTests
 ParcelGateway
 ParcelKit
@@ -356,7 +361,9 @@ PartiallyGenerated
 PlaceholderView
 PlainA
 PlainB
+PlainComment
 PlatformShim
+PluginContext
 PointTests
 PostToolUse
 PosterBoard
@@ -445,6 +452,7 @@ StoreExample
 StoredEntry
 StringInterpolation
 StringLiteralType
+SubGizmo
 SubSequence
 SubagentStart
 SubagentStop
@@ -482,6 +490,7 @@ TestPlans
 TestableReference
 TheFourTools
 TheRealName
+TickComment
 TileCard
 TimeInterval
 TimeZone
@@ -550,7 +559,9 @@ XCTestCase
 XCTestOutputBarrier
 XCTestOutputBarrierXCTestOutputBarrier
 XCUITests
+XLib
 XLibTests
+XSources
 XTests
 XYZWidget
 XcodeDefault
@@ -647,6 +658,7 @@ benchWarnUnreachable
 benchWarnUnused
 benchWarnUnusedTwo
 benchWarnVar
+besideIndexCall
 betaOnly
 binaryTarget
 branchOnlyRamp
@@ -717,6 +729,7 @@ defaultLanguage
 defaultPackageRegistryURL
 defaultPlan
 deleteComponent
+dependencyCall
 deploymentTarget
 devicesAndConfigurations
 dialReadsOne
@@ -860,6 +873,7 @@ lastIndexOf
 leakGuard
 leftPart
 lendingMovesABookToLoans
+libCall
 libIndexStore
 linePath
 linuxOnly
@@ -885,8 +899,10 @@ modelCode
 modelUsage
 mtimeMs
 myErgo
+myLibCall
 nBuilding
 namedInPrompt
+nestedCall
 newValue
 noCall
 noLookup
@@ -925,6 +941,7 @@ operatingOpensTheValve
 optionalDependencies
 originHash
 originalFile
+otherCall
 otherTest
 outBytes
 outerTest
@@ -945,6 +962,7 @@ partialAlternation
 partlyDeclared
 passedTests
 pendingMcpServers
+performCommand
 permissionDecision
 permissionDecisionReason
 phoneOnly
@@ -1150,7 +1168,9 @@ underestimatedCount
 unheededRun
 unicodeScalars
 unindexedTree
+unitKeepsADeletedFile
 unknownName
+unlocatedWindow
 unsafeFlags
 untouchedDial
 untouchedLamp

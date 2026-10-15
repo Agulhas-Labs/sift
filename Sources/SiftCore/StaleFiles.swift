@@ -55,13 +55,17 @@ public struct StaleFiles: Sendable, Equatable {
         )
     }
 
-    /// The parenthesised part of the header, in the order changed, deleted, new: `1 file changed: Sources/A.swift`, `3 files changed`, `2 new files`, `4 files: 1 changed, 1 deleted, 2 new`.
-    var rendered: String {
+    /// The parenthesised part of the header, in the order changed, deleted, new.
+    ///
+    /// A query answer counts the files it cites and says so (`cited: true`): `1 cited file changed: Sources/A.swift`, `3 cited files changed`, `2 new cited files`, `4 cited files: 1 changed, 1 deleted, 2 new`. `status` counts every file and keeps the plain form: `1 file changed: Sources/A.swift`, `3 files changed`, `2 new files`, `4 files: 1 changed, 1 deleted, 2 new`.
+    func rendered(cited: Bool) -> String {
         let kinds = [(changed, "changed"), (deleted, "deleted"), (new, "new")].filter { $0.0 > 0 }
+        let noun = cited ? "cited file" : "file"
         guard kinds.count == 1, let (count, kind) = kinds.first else {
-            return "\(total) files: " + kinds.map { "\($0.0) \($0.1)" }.joined(separator: ", ")
+            return "\(total) \(noun)s: " + kinds.map { "\($0.0) \($0.1)" }.joined(separator: ", ")
         }
-        let counted = kind == "new" ? "\(count) new file\(count == 1 ? "" : "s")" : "\(count) file\(count == 1 ? "" : "s") \(kind)"
+        let plural = count == 1 ? "" : "s"
+        let counted = kind == "new" ? "\(count) new \(noun)\(plural)" : "\(count) \(noun)\(plural) \(kind)"
         return path.map { counted + ": " + $0 } ?? counted
     }
 }

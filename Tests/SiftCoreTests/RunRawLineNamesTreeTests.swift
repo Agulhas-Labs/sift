@@ -15,9 +15,9 @@ struct RunRawLineNamesTreeTests {
     func theStampIsTheHeadersOwnWordsForTheTreeAndItsCommit() {
         let tree = WorkingTree(repository: "Widget", worktree: "agent-1")
 
-        #expect(Freshness.stamp(of: tree, headShort: "cc94af6", dirtyCount: 0) == "Widget (worktree agent-1) @ cc94af6 (clean)")
-        #expect(Freshness.stamp(of: tree, headShort: "cc94af6", dirtyCount: 3) == "Widget (worktree agent-1) @ cc94af6 (dirty: 3)")
-        #expect(Freshness.stamp(of: tree, headShort: Freshness.unbornHead, dirtyCount: 0) == "Widget (worktree agent-1) @ unborn (dirty: 0)")
+        #expect(Freshness.stamp(of: tree, headShort: "cc94af6", dirtyCount: 0) == "Widget (worktree agent-1) @ cc94af6 (Swift clean)")
+        #expect(Freshness.stamp(of: tree, headShort: "cc94af6", dirtyCount: 3) == "Widget (worktree agent-1) @ cc94af6 (Swift dirty: 3)")
+        #expect(Freshness.stamp(of: tree, headShort: Freshness.unbornHead, dirtyCount: 0) == "Widget (worktree agent-1) @ unborn (Swift dirty: 0)")
         #expect(Freshness.stamp(of: tree, headShort: nil, dirtyCount: nil) == "Widget (worktree agent-1)")
         #expect(Freshness.stamp(of: tree, headShort: "cc94af6", dirtyCount: nil) == "Widget (worktree agent-1) @ cc94af6")
 
@@ -27,10 +27,10 @@ struct RunRawLineNamesTreeTests {
 
     @Test
     func theRawLineOpensWithTheStampBeforeTheLogPath() {
-        let renderer = RunReportRenderer(kind: .swiftTest, workingDirectory: URL(fileURLWithPath: "/Users/dev/Widget"), treeStamp: "Widget @ abc1234 (clean)")
+        let renderer = RunReportRenderer(kind: .swiftTest, workingDirectory: URL(fileURLWithPath: "/Users/dev/Widget"), treeStamp: "Widget @ abc1234 (Swift clean)")
         let line = Self.rawLine(of: renderer)
 
-        #expect(line == "raw: Widget @ abc1234 (clean) · .sift/runs/run-a.log (1 lines in, 3 out), kept for the next 4 runs")
+        #expect(line == "raw: Widget @ abc1234 (Swift clean) · .sift/runs/run-a.log (1 lines in, 3 out), kept for the next 4 runs")
     }
 
     @Test
@@ -50,12 +50,12 @@ struct RunRawLineNamesTreeTests {
         let stamp = "\(WorkingTree.describing(root).rendered) @ \(head)"
 
         let moved = try #require(outcome.filteredAnswer(workingDirectory: root, stamped: true)?.text)
-        #expect(Self.rawLine(in: moved).hasPrefix("raw: \(stamp) (dirty: 1) · "))
+        #expect(Self.rawLine(in: moved).hasPrefix("raw: \(stamp) (Swift dirty: 1) · "))
 
         try TestSources.commitAll(in: root, message: "settle")
         let settled = try TestSources.runGit(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
         let clean = try #require(outcome.filteredAnswer(workingDirectory: root, stamped: true)?.text)
-        #expect(Self.rawLine(in: clean).hasPrefix("raw: \(WorkingTree.describing(root).rendered) @ \(settled.prefix(7)) (clean) · "))
+        #expect(Self.rawLine(in: clean).hasPrefix("raw: \(WorkingTree.describing(root).rendered) @ \(settled.prefix(7)) (Swift clean) · "))
     }
 
     @Test
@@ -69,7 +69,7 @@ struct RunRawLineNamesTreeTests {
 
         let answer = try #require(outcome.filteredAnswer(workingDirectory: root, stamped: true)?.text)
 
-        #expect(Self.rawLine(in: answer).contains(" (clean) · "))
+        #expect(Self.rawLine(in: answer).contains(" (Swift clean) · "))
     }
 
     @Test
@@ -84,8 +84,8 @@ struct RunRawLineNamesTreeTests {
 
         #expect(line.hasPrefix("raw: \(WorkingTree.describing(root).rendered) @ "))
         #expect(line.contains(" · .sift/runs/"))
-        #expect(!line.contains("(clean)"))
-        #expect(!line.contains("(dirty"))
+        #expect(!line.contains("(Swift clean)"))
+        #expect(!line.contains("(Swift dirty"))
     }
 
     @Test

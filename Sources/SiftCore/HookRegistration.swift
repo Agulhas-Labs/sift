@@ -27,7 +27,7 @@ public struct HookRegistration {
     ///
     /// **A write or an edit is here to be observed too.** Either one puts the file's text in the context that made it, so a later read of that file is a revisit, and without seeing the call the hook would answer the read with a digest of a file the context has just written. The cost is one hook run per write or edit.
     ///
-    /// **`PostToolUse` is the other side of the same edit — a nudge rather than an answer.** Once a `Write`, `Edit` or `MultiEdit` has already landed, there is nothing left to intercept; what a hook can still do is look at what the edit added and say, once, if it resembles something that already exists. **It also reads the answer of a `digest`** (an MCP call or a Bash `sift digest`): the `PreToolUse` note of one is made before any answer exists, and a digest that resolved nothing takes its note back here, so it excuses no later window. Its own timeout is shorter than the others' because it runs after the tool already ran, on the critical path of nothing — a slow or hung nudge is worth abandoning quickly rather than worth waiting on.
+    /// **`PostToolUse` is the other side of the same edit — a nudge rather than an answer.** Once a `Write`, `Edit` or `MultiEdit` has already landed, there is nothing left to intercept; what a hook can still do is look at what the edit added and say, once, if it resembles something that already exists. **It also reads the answer of a `digest`** (an MCP call or a Bash `sift digest`): the `PreToolUse` note of one is made before any answer exists, and a digest that resolved nothing takes its note back here, so it excuses no later window. **It reads a `Grep` or `Bash` call's output too, for diagnostics**: each `path.swift:line:col: error:` printed is answered with the declaration enclosing that line, so the next turn is not spent asking. Its own timeout is shorter than the others' because it runs after the tool already ran, on the critical path of nothing — a slow or hung nudge is worth abandoning quickly rather than worth waiting on.
     ///
     /// **`Stop` and `SubagentStop` are the end of the same work — a gate rather than a nudge.** A context that edited Swift and is about to report done on a tree nothing has built is sent back once to build it; one command serves both, reading which event fired from its payload, and neither takes a matcher.
     public static var events: [Event] {
@@ -43,7 +43,7 @@ public struct HookRegistration {
             Event(
                 name: "PostToolUse",
                 subcommand: "post-tool-use",
-                matchers: ["Write|Edit|MultiEdit|mcp__sift__digest"],
+                matchers: ["Write|Edit|MultiEdit|mcp__sift__digest|Grep|Bash"],
                 timeout: 3
             ),
             Event(name: "Stop", subcommand: "stop", matchers: [], timeout: 5),

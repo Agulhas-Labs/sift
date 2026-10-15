@@ -179,6 +179,11 @@ public struct ExactAnswer {
         return (String(text[..<newline]), String(text[text.index(after: newline)...]))
     }
 
+    /// How many declarations of `symbol` the index holds, an extension of a type counted as none.
+    public static func declarationCount(in engine: SiftEngine, of symbol: String) throws -> Int {
+        try WhereRenderer(store: engine.store).declarations(for: symbol).count { $0.kind != .extensionKind }
+    }
+
     /// Every line a `where` answer locates by its own number: each declaration's first line, and each line a reference is listed on.
     ///
     /// Never a site matched on the name alone — those are leads the answer itself says may be something else, so their block is skipped and every resolved section written after it is still read — and never a row the answer marks as changed or deleted since the build.

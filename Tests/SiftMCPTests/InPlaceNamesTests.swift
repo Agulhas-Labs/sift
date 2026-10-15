@@ -93,7 +93,7 @@ struct InPlaceNamesTests {
     func aBareDotReadsSelfAndMetatypeExpressionsThroughTheirType() {
         let readings = [("Self.pending", "pending"), (#"'Self\.pending'"#, "pending"), ("Depot.Type", "Depot"), ("Depot.self", "Depot"), (#"'Depot\.Type'"#, "Depot")]
         for (pattern, name) in readings {
-            guard case let .symbols(names, paths, _, proof, _, _)? = InPlaceShape.match(forShell: "grep -rn \(pattern) Sources", in: "/repo")?.call else {
+            guard case let .symbols(names, paths, _, proof, _, _, _)? = InPlaceShape.match(forShell: "grep -rn \(pattern) Sources", in: "/repo")?.call else {
                 Issue.record("expected \(pattern) read as a names search")
                 continue
             }
@@ -245,7 +245,9 @@ struct InPlaceNamesTests {
             couldAnswer: { _, _ in true }
         ))
 
-        #expect(lookup.inPlace?.call == .symbols(names: ["Depot"], paths: [root.path], spelled: [root.path]))
+        let input: [String: Any] = ["output_mode": "content", "pattern": "Depot", "path": root.path]
+        let search = SearchToolGrep(input: input, pattern: "Depot", searched: root.path, in: root.path)
+        #expect(lookup.inPlace?.call == .symbols(names: ["Depot"], paths: [root.path], spelled: [root.path], toolSearch: search))
 
         let outcome = await InPlaceAnswerTests.onItsOwnThread {
             PreToolUseCommand.outcome(

@@ -13,8 +13,15 @@ public struct TranscriptScanState: Sendable, Equatable {
     ///
     /// Without this, a failed digest is indistinguishable from a failed `Bash`. Holding what each call *was* rather than only that one is outstanding is what lets a failure be reported as the thing it was — the result line carries the message and nothing else, so the tool and target are knowable only from here.
     var pendingIndexCalls: [String: PendingIndexCall] = [:]
+
     /// The earliest timestamp a window was judged against, so a scan made under one `--since` can tell whether another would have reported every line it did.
     var earliestStamp: Date?
+    /// The instant of the line whose tool call is being classified, which the call's pending entry keeps so a correction of it is dated by that call and by no other occurrence of its id.
+    var callInstant: Date?
+    /// For the events the last line returned, by position, the instant of the call each one corrects — `nil` where the call carried no time.
+    ///
+    /// Read by the caller straight after each line and rebuilt on the next, so a correction is filed under the day of the call it takes back or rescores rather than the day its result happened to land on.
+    var correctionStamps: [Int: Date?] = [:]
     /// The targets each shell `sift digest` named, keyed by the repository each was asked of, by the `tool_use_id` of the Bash call that ran it, credited as digests once that call's result arrives without an error.
     ///
     /// Held apart from ``pendingIndexCalls`` because a Bash call's error is the whole line's, not the index's: filing it as an index failure, or retracting the lookup, would charge the tool for a `sed` or a build that failed beside it.
@@ -26,7 +33,7 @@ public struct TranscriptScanState: Sendable, Equatable {
     /// `tool_use_id`s of Bash calls counted as an indexed lookup — `digest`/`where`/`search`/`strings` on the CLI — whose line's result has not been seen yet, taken back off the tally if it errors.
     ///
     /// Held apart from ``pendingIndexCalls`` for the reason ``pendingShellDigests`` is: the error is the whole Bash line's, which may belong to another command sharing it, so it is never filed as an index failure — only the count is taken back.
-    var pendingShellLookups: Set<String> = []
+    var pendingShellLookups: [String: Date?] = [:]
     /// Swift file stems any index call but a digest has named, keyed by the canonical repository each was answered from — `""` where none could be resolved, matched only against a read whose own repository is equally unresolved.
     var located: [String: Set<String>] = [:]
     /// The digests this context received, keyed the same way as ``located``: matched by the file each resolved to rather than by stem (``LocatedDigest``), and the only calls that promised to save reading a file whole, so the only ones a whole read afterwards is counted against.
@@ -241,5 +248,44 @@ extension TranscriptScanState {
         guard let source = pendingShellAnswers.removeValue(forKey: id), !failed else { return }
         let listed = source.locatedFiles(inOutput: TranscriptScan.answerText(of: block).joined(separator: "\n"))
         located[source.root, default: []].formUnion(listed.map(TranscriptScan.stem(ofPath:)))
+    }
+}
+
+extension TranscriptScanState {
+    /// Records, for each count-moving event a result line returned from `first` on, the instant of the call it corrects.
+    ///
+    /// Failures and the like keep the line's own time; only the events that retract, rescore or answer a lookup already counted are dated by the call, and a call that carried no time files its corrections undated too.
+    mutating func stampCorrections(in events: [TranscriptEvent], from first: Int, calledAt: Date?) {
+        for index in first ..< events.count {
+            switch events[index] {
+            case .lookup, .lookupRetracted, .lookupRefused, .answeredInPlace, .cliLookupRetracted:
+                correctionStamps[index] = .some(calledAt)
+            default:
+                continue
+            }
+        }
+    }
+
+    /// Holds the `tool_use_id` of a Bash call counted as an indexed lookup on the way out, with the instant of its line, so its result can take that count back if it errors.
+    ///
+    /// Called only for a call counted inside the window, so the held lookups are exactly what an error could take back.
+    mutating func holdShellIndexedLookup(_ block: [String: Any]) {
+        if let id = block["id"] as? String {
+            pendingShellLookups[id] = .some(callInstant)
+        }
+    }
+
+    /// The instant of the counted call the result `id` answers, read off the pending entry that call left, or `nil` where it carried no time or left none.
+    func calledAt(answering id: String) -> Date? {
+        if let held = pendingShellLookups[id] {
+            return held
+        }
+        return pendingReads[id]?.calledAt ?? pendingIndexCalls[id]?.calledAt
+    }
+
+    /// The correction stamps the last line left, handed over once so the next line starts clean.
+    mutating func takeCorrectionStamps() -> [Int: Date?] {
+        defer { correctionStamps = [:] }
+        return correctionStamps
     }
 }

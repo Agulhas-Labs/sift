@@ -313,7 +313,7 @@ public extension TextSearch {
         case namedFiles
         /// A lookup the hook refused, whose identical re-run it then allowed — the refusal already named the way through, so taking it is no miss.
         case retryAllowed
-        /// A read the hook let run — a line window or a whole file — because no index answer was smaller than what it prints, read off the hook's own logged verdict for that call.
+        /// A read or a search the hook let run — a line window, a whole file, or a search for a declaration or a name declared once — because no index answer was smaller than what it prints, read off the hook's own logged verdict for that call.
         case notSmaller
         /// A window the hook let run because its answer would not show the lines asked for — a declaration's leading doc comment, or a saving under the floor — read off the hook's own logged verdict for that call.
         case linesNotShown

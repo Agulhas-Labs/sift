@@ -17,29 +17,32 @@ final class EnclosingScopeNames {
 
     /// How a site written on `name` is kept because a scope around it, or the receiver's own type, may supply or reshape the name, or `nil` where none may.
     ///
-    /// A generic parameter of a type around the site, or a name a where clause around the site writes that a type around it the tree does not declare may own, is kept as a generic parameter written in a type's own body is; a name a supertype outside the tree may supply, or one written inside or on a type carrying an attached macro, is kept and counted outside the tree.
+    /// A generic parameter of a type around the site, or a name a where clause around the site writes that a type around it the tree does not declare may own, is kept as a generic parameter written in a type's own body is; a name a supertype outside the tree may supply, or one written inside or on a type carrying an attached macro, is kept and counted by that reason.
     func keeping(_ name: String, at site: SyntacticCallSite) throws -> ReceiverReach? {
         for (depth, type) in site.enclosingTypes.enumerated() {
             // A type declared inside a function has supertypes, generic parameters and members no top-level type of its name shows.
-            guard !site.localEnclosingTypes.contains(type) else { return .outsideTree }
+            guard !site.localEnclosingTypes.contains(type) else { return .unproven(.localScope) }
             let around = try facts(of: type)
             // An extension written as no declaration of the name it can see is (`extension Label` beside only `Theme.Label`, `extension UIKit.UILabel`) extends a type outside the tree; one written `Theme.Label` extends the tree's.
             if depth == 0, around.isDeclared, FrameworkProtocolNames.mayName(name, from: type), try isInExtensionOfAnother(type, site) {
-                return .outsideTree
+                return .unproven(.extendedScope)
             }
             guard !around.generics.contains(name) else { return .untyped }
             // The clauses around the site, an extension's and a function's own, written either way round and behind `Self.` or not; only a name the extended type may own is its parameter, so the concrete type on the other side stays the tree's.
             if !around.isDeclared, site.enclosingConstraints.contains(name), FrameworkProtocolNames.mayName(name, from: type) {
                 return .untyped
             }
-            if around.carriesMacro || around.unseenSelves.contains(where: { FrameworkProtocolNames.mayName(name, from: $0) }) {
-                return .outsideTree
+            if around.carriesMacro {
+                return .unproven(.macro)
+            }
+            if around.unseenSelves.contains(where: { FrameworkProtocolNames.mayName(name, from: $0) }) {
+                return .unproven(.extendedScope)
             }
             if around.unseen.contains(where: { FrameworkProtocolNames.mayName(name, inheriting: $0) }) {
-                return .outsideTree
+                return .unproven(.inheritedScope)
             }
         }
-        return try facts(of: name).carriesMacro ? .outsideTree : nil
+        return try facts(of: name).carriesMacro ? .unproven(.macro) : nil
     }
 
     /// What `type`'s declarations, extensions and supertypes say about the names its scope may supply.

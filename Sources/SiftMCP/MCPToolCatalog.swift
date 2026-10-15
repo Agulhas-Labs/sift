@@ -33,6 +33,11 @@ public struct MCPToolCatalog {
         loadsUpFront(sessionIn: directory, knownRoots: knownRoots) || loadsUpFront(sessionIn: root, knownRoots: knownRoots)
     }
 
+    /// Arguments the server still takes that the schema no longer lists, for their tokens: a caller passing one is still calling this server.
+    static var unlistedArguments: [String: Set<String>] {
+        ["digest": ["at"], "where": ["at"], "search": ["count"]]
+    }
+
     /// The name of every tool the server lists, in the order it lists them.
     public static var toolNames: [String] {
         definitions.compactMap { $0["name"] as? String }
@@ -48,39 +53,37 @@ public struct MCPToolCatalog {
                     "properties": [
                         "target": ["type": "string", "description": "Type, Type.member, file, File.swift:12-40, module (Name/), .md path, or . (repo)."],
                         "targets": ["type": "array", "items": ["type": "string"], "description": "Several at once."],
-                        "root": ["type": "string", "description": "Repository root."],
+                        "root": ["type": "string"],
                         "all": ["type": "boolean", "description": "Include private symbols."],
                         "signaturesOnly": ["type": "boolean", "description": "Drop doc summaries and attributes."],
-                        "offset": ["type": "integer", "description": "From a truncated: marker."],
-                        "at": ["type": "string", "description": "Answer as of a commit."],
+                        "offset": ["type": "integer"],
                     ],
                 ],
             ],
             [
                 "name": "where",
-                "description": "Call this instead of grepping for a Swift symbol's definition, callers, uses, conformers or overrides: resolved file:line ranges. " + StandingCaveats.sentences,
+                "description": "Call this instead of grepping for a Swift symbol's definition, callers, uses, conformers or overrides: resolved file:line ranges.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
                         "symbol": ["type": "string", "description": "Name or Type.member."],
-                        "root": ["type": "string", "description": "Repository root."],
+                        "root": ["type": "string"],
                         "refs": ["type": "boolean", "description": "Every reference site, plus non-code mentions under not code."],
-                        "offset": ["type": "integer", "description": "From a truncated: marker."],
-                        "at": ["type": "string", "description": "Answer as of a commit."],
+                        "files": ["type": "boolean", "description": "With refs: file paths only."],
+                        "offset": ["type": "integer"],
                     ],
                     "required": ["symbol"],
                 ],
             ],
             [
                 "name": "search",
-                "description": "Call this instead of grepping for Swift code by shape, across nesting and line breaks. " + StandingCaveats.searchClause,
+                "description": "Call this instead of grepping for Swift code by shape, across nesting and line breaks.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
                         "query": ["type": "string", "description": "field:value terms, ANDed, ! negates. Fields: kind attr name calls uses inherits modifier effect sig imports path owner has (closure/await/try/forceUnwrap/forceTry/forceCast/optionalChain). owner: enclosing type. Any field takes a|b; name/path/sig take /regex/. E.g. kind:func attr:Test calls:Task !has:await"],
-                        "root": ["type": "string", "description": "Repository root."],
-                        "offset": ["type": "integer", "description": "From a truncated: marker."],
-                        "count": ["type": "boolean", "description": "Totals only."],
+                        "root": ["type": "string"],
+                        "offset": ["type": "integer"],
                     ],
                     "required": ["query"],
                 ],
@@ -92,7 +95,7 @@ public struct MCPToolCatalog {
                     "type": "object",
                     "properties": [
                         "query": ["type": "string", "description": "Text or key."],
-                        "root": ["type": "string", "description": "Repository root."],
+                        "root": ["type": "string"],
                     ],
                     "required": ["query"],
                 ],

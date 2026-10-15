@@ -56,7 +56,7 @@ struct WherePinsTests {
         WhereOptions(includeReferences: false, collapsesSeveralOwners: false, standsInForSearch: false)
     }
 
-    /// Where one row is answered by the store and the other refused into the name-matched stand-in, the plain answer says the store's lines are counted above, not listed, and names the query that lists them.
+    /// Where one row is answered by the store and the other refused into the name-matched stand-in, the plain answer says the store's lines, few enough to list in place, are listed above.
     @Test
     func aPlainStandInSaysTheStoresLinesAreCountedAbove() async throws {
         let root = try Self.makeMixedRepo()
@@ -72,7 +72,7 @@ struct WherePinsTests {
 
         let output = try await engine.lookup(symbol: "Item", freshness: freshness, options: Self.plain)
 
-        #expect(output.contains("2 more lines the index store resolved to another declaration of the name, counted above under it, so not use (for Beta.Item) — where --refs Beta.Item lists them"), "\(output)")
+        #expect(output.contains("2 more lines the index store resolved to another declaration of the name, listed above under it, so not use (for Beta.Item):"), "\(output)")
     }
 
     /// Three same-named types, one nested, with nothing built: the pointer is the first row's shortest name no other declaration ends with.
@@ -94,7 +94,7 @@ struct WherePinsTests {
             to: "Package.swift",
             in: root
         )
-        try TestSources.write("enum A {\n    enum Inner {\n        struct Config {}\n    }\n    struct Config {}\n}\nenum B {\n    struct Config {}\n}\nfunc use(_ first: A.Config, _ second: B.Config, _ third: A.Inner.Config) {}\n", to: "Sources/App/Types.swift", in: root)
+        try TestSources.write("enum A {\n    enum Inner {\n        struct Config {}\n    }\n    struct Config {}\n}\nenum B {\n    struct Config {}\n}\nfunc use(_ first: A.Config, _ second: B.Config, _ third: A.Inner.Config) {}\n" + (1 ... 8).map { "func more\($0)(_ config: B.Config) {}\n" }.joined(), to: "Sources/App/Types.swift", in: root)
         try TestSources.commitAll(in: root, message: "fixture")
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()

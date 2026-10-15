@@ -1,3 +1,7 @@
+//
+// Copyright © Agulhas Labs
+//
+
 @testable import SiftCLI
 import SiftCore
 import Testing

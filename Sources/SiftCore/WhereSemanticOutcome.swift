@@ -17,8 +17,8 @@ extension WhereRenderer {
         var listedSites: [SyntacticCallSite] = []
         /// The repo-relative `path:line:column` of every call the store's answers listed on a line of its own, where the store records a call, never one only counted in a fold or past the cap.
         var recordedCalls: Set<String> = []
-        /// The repo-relative `path:line:column` of every type use a type's or typealias's answer listed on a line of its own, in a file unchanged since the build, at the column its name is written.
-        var listedTypeUses: Set<String> = []
+        /// The repo-relative `path:line:column` of every type use a type's or typealias's answer handed on, in a file unchanged since the build, at the column its name is written: `true` where it listed the use on a line of its own, `false` where it only counted it with a pointer to `--refs`.
+        var typeUses: [String: Bool] = [:]
         /// Each protocol's one conformers block, by name, which replaces the block the scan by written name would print for it.
         var conformerBlocks: [String: ConformersOnce] = [:]
         /// Each type's store check on the rows its block by written name walks to, by name, for a type that block is printed for.
@@ -26,7 +26,12 @@ extension WhereRenderer {
 
         /// Whether a type use of a refused declaration's name is one the store resolved, and listed above, as another declaration's.
         func listsTypeUse(_ site: SyntacticCallSite) -> Bool {
-            site.nameAt.map { listedTypeUses.contains("\(site.path):\($0)") } ?? false
+            site.nameAt.map { typeUses["\(site.path):\($0)"] != nil } ?? false
+        }
+
+        /// Whether it was listed on a line of its own there, rather than only counted.
+        func listsTypeUseInPlace(_ site: SyntacticCallSite) -> Bool {
+            site.nameAt.map { typeUses["\(site.path):\($0)"] == true } ?? false
         }
 
         /// Whether `site` is already listed above the syntactic fallback: as a name-matched site beside a store's answer, or as a call the store recorded at the name it is made through, which for a wrapper's attribute is the type's name.

@@ -113,8 +113,10 @@ extension TranscriptAudit {
 
         /// The same counts split by the local day each lookup landed on, populated only when the caller asked for dating.
         ///
-        /// A retraction lands on a later line than the call it takes back, so one straddling a midnight decrements the day it was read on rather than the day it was counted on. The same inexactness the retracted-search span carries, and for the same reason: threading a call id through the event contract to close it is more machinery than a trend row is worth.
+        /// A retraction or a rescore is filed under the day of the call it corrects, not the day its result landed on, so a call and its correction never split across a midnight.
         var byDay: [String: TranscriptTally] = [:]
+        /// The counts of the lookups no day could be put to, corrected as `byDay` is: a lookup whose call carried no time is taken back or rescored here too.
+        var undated = TranscriptTally()
         /// The earliest timestamp the scan judged a window against, and whether the transcript could be read at all — what the tally cache keys a stored scan's window by, and whether it stores one.
         var earliestStamp: Date?
         var wasRead = false

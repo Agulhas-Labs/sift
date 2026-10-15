@@ -165,7 +165,7 @@ struct WitnessHedgeTestFilesTests {
         try await Self.fixture().withEngine { engine in
             let output = try await engine.lookup(symbol: "Rack.label", freshness: engine.ensureFresh())
 
-            #expect(output.contains("direct callers of GizmoCore.Rack.label() (1, it satisfies Shelf.label(), so a call made through Shelf, including one a library makes, is not recorded against it):"), "\(output)")
+            #expect(output.contains("direct callers of GizmoCore.Rack.label() (1, it satisfies Shelf.label(), so a call made through Shelf, including one a library makes, is not recorded against it; resolved to this declaration — label is declared 1 time on other types, not counted here; where label lists them):"), "\(output)")
             #expect(output.contains("tag(_:)"), "\(output)")
             #expect(!output.contains("callers of GizmoCore.Rack.label() (1):"), "\(output)")
         }

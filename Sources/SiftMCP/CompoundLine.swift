@@ -55,10 +55,13 @@ struct CompoundLine {
                 line.literals[line.calls.count, default: ""] += text
                 line.unattached += neverRun
             } else {
+                // A `cat` of several files is one lookup read as several whole reads, each added as a `cat` of it would be.
                 guard !ridingAlong(statement), !isNegated(statement),
-                      let found = InPlaceShape.call(forStatement: statement),
-                      !needsProof || InPlaceShape.provesItsSuccess(statement, answeredBy: found),
-                      line.add(found, from: InPlaceShape.operandDirectory(directory, reading: statement), answering: [statement] + neverRun)
+                      let found = InPlaceShape.calls(forStatement: statement),
+                      found.allSatisfy({ !needsProof || InPlaceShape.provesItsSuccess(statement, answeredBy: $0) }),
+                      found.enumerated().allSatisfy({ place, call in
+                          line.add(call, from: InPlaceShape.operandDirectory(directory, reading: statement), answering: place == 0 ? [statement] + neverRun : [statement], asks: place == 0)
+                      })
                 else {
                     return nil
                 }

@@ -13,15 +13,15 @@ struct StaleKindsHeaderTests {
     @Test
     func everyFormRendersInOrder() {
         let forms: [(StaleFiles, String)] = [
-            (StaleFiles(changed: 1, path: "Sources/A.swift"), "1 file changed: Sources/A.swift"),
-            (StaleFiles(deleted: 1, path: "Sources/A.swift"), "1 file deleted: Sources/A.swift"),
-            (StaleFiles(new: 1, path: "Sources/A.swift"), "1 new file: Sources/A.swift"),
-            (StaleFiles(changed: 3), "3 files changed"),
-            (StaleFiles(deleted: 2), "2 files deleted"),
-            (StaleFiles(new: 2), "2 new files"),
-            (StaleFiles(changed: 1, deleted: 1, new: 2), "4 files: 1 changed, 1 deleted, 2 new"),
-            (StaleFiles(changed: 2, new: 1), "3 files: 2 changed, 1 new"),
-            (StaleFiles(deleted: 1, new: 1), "2 files: 1 deleted, 1 new"),
+            (StaleFiles(changed: 1, path: "Sources/A.swift"), "1 cited file changed: Sources/A.swift"),
+            (StaleFiles(deleted: 1, path: "Sources/A.swift"), "1 cited file deleted: Sources/A.swift"),
+            (StaleFiles(new: 1, path: "Sources/A.swift"), "1 new cited file: Sources/A.swift"),
+            (StaleFiles(changed: 3), "3 cited files changed"),
+            (StaleFiles(deleted: 2), "2 cited files deleted"),
+            (StaleFiles(new: 2), "2 new cited files"),
+            (StaleFiles(changed: 1, deleted: 1, new: 2), "4 cited files: 1 changed, 1 deleted, 2 new"),
+            (StaleFiles(changed: 2, new: 1), "3 cited files: 2 changed, 1 new"),
+            (StaleFiles(deleted: 1, new: 1), "2 cited files: 1 deleted, 1 new"),
         ]
         for (files, detail) in forms {
             #expect(SemanticAxis.stale(files).rendered == "stale since last build (\(detail))")
@@ -34,10 +34,10 @@ struct StaleKindsHeaderTests {
         let one = StaleFiles(["Sources/A.swift": .new])
         let two = StaleFiles(["Sources/A.swift": .changed, "Sources/B.swift": .deleted])
 
-        #expect(one.rendered == "1 new file: Sources/A.swift")
-        #expect(two.rendered == "2 files: 1 changed, 1 deleted")
+        #expect(one.rendered(cited: true) == "1 new cited file: Sources/A.swift")
+        #expect(two.rendered(cited: true) == "2 cited files: 1 changed, 1 deleted")
         #expect(StaleFiles(changed: 2, path: "Sources/A.swift").path == nil)
-        #expect(StaleFiles(changed: 1, path: "Sources/A.swift").addingChanged(["Sources/B.swift"]).rendered == "2 files changed")
+        #expect(StaleFiles(changed: 1, path: "Sources/A.swift").addingChanged(["Sources/B.swift"]).rendered(cited: true) == "2 cited files changed")
     }
 
     /// A file found under two kinds, as two stores citing it can find it, is counted once, under the worse kind.
@@ -48,7 +48,7 @@ struct StaleKindsHeaderTests {
         let counted = SemanticAxis.countedFiles(refusals: [refusal], occurrences: [], listedByName: ["Sources/A.swift": .changed, "Sources/B.swift": .deleted])
 
         #expect(counted == ["Sources/A.swift": .changed, "Sources/B.swift": .deleted])
-        #expect(SemanticAxis.of(refusals: [refusal], occurrences: [], listedByName: ["Sources/A.swift": .changed]).rendered == "stale since last build (1 file changed: Sources/A.swift)")
+        #expect(SemanticAxis.of(refusals: [refusal], occurrences: [], listedByName: ["Sources/A.swift": .changed]).rendered == "stale since last build (1 cited file changed: Sources/A.swift)")
     }
 
     /// The design's one-changed-file header, from a caller edited since a full build, with its marked row after the current one under a heading counting it, and no note.
@@ -59,7 +59,7 @@ struct StaleKindsHeaderTests {
 
         let output = try await Self.lookup("Model.load", in: root)
 
-        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/App/RecordListView.swift)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 cited file changed: Sources/App/RecordListView.swift)"), "\(output)")
         let heading = try #require(output.split(separator: "\n").firstIndex { $0.hasPrefix("callers of") })
         let rows = output.split(separator: "\n").dropFirst(heading)
         #expect(rows.first?.hasSuffix("(3, 1 file changed since last build):") == true, "\(output)")
@@ -77,7 +77,7 @@ struct StaleKindsHeaderTests {
 
         let output = try await Self.lookup("Model.load", in: root)
 
-        #expect(output.contains("semantic: stale since last build (1 file deleted: Sources/A.swift)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 cited file deleted: Sources/A.swift)"), "\(output)")
     }
 
     /// The design's one-new-file header, from a declaration in a file no build has compiled: it is counted new, not changed.
@@ -88,7 +88,7 @@ struct StaleKindsHeaderTests {
 
         let output = try await Self.lookup("fresh", in: root)
 
-        #expect(output.contains("semantic: stale since last build (1 new file: Sources/A.swift)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 new cited file: Sources/A.swift)"), "\(output)")
     }
 
     /// The design's mixed header: a changed caller, a deleted one and two new files writing the call, the total first.
@@ -102,7 +102,7 @@ struct StaleKindsHeaderTests {
 
         let output = try await Self.lookup("Model.load", in: root)
 
-        #expect(output.contains("semantic: stale since last build (4 files: 1 changed, 1 deleted, 2 new)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (4 cited files: 1 changed, 1 deleted, 2 new)"), "\(output)")
     }
 
     /// A new file writing the name only in a string is neither listed nor counted.
@@ -138,9 +138,9 @@ struct StaleKindsHeaderTests {
         try await TestSources.swiftBuildSuspending(packageAt: root, arguments: ["--target", "Alpha"])
         let afterPartial = try await Self.lookup("Alpha.ping", in: root)
 
-        #expect(afterFull.contains("semantic: stale since last build (1 file changed: Sources/Beta/Beta.swift)"), "\(afterFull)")
+        #expect(afterFull.contains("semantic: stale since last build (1 cited file changed: Sources/Beta/Beta.swift)"), "\(afterFull)")
         #expect(!afterFull.contains("not compiled by the last build"), "\(afterFull)")
-        #expect(afterPartial.contains("semantic: stale since last build (1 file changed: Sources/Beta/Beta.swift)"), "\(afterPartial)")
+        #expect(afterPartial.contains("semantic: stale since last build (1 cited file changed: Sources/Beta/Beta.swift)"), "\(afterPartial)")
         #expect(afterPartial.contains("\nnot compiled by the last build: Beta — build it for current rows"), "\(afterPartial)")
     }
 }

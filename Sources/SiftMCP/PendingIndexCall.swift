@@ -40,7 +40,10 @@ public struct PendingIndexCall: Sendable, Equatable, Codable {
     /// Read off the call's own line rather than its result's, so a call counted just inside a window whose error lands just past its end is still taken back, and one made before the window opened is never taken back from a tally that never held it.
     public let counted: Bool
 
-    public init(tool: String, target: String?, weighsSource: Bool = false, located: Set<String> = [], digestTargets: [String] = [], root: String? = nil, servesWorkingTree: Bool = true, counted: Bool = true) {
+    /// The instant of the line the call was made on, which a correction of it is dated by — `nil` where the line carried no time.
+    public let calledAt: Date?
+
+    public init(tool: String, target: String?, weighsSource: Bool = false, located: Set<String> = [], digestTargets: [String] = [], root: String? = nil, servesWorkingTree: Bool = true, counted: Bool = true, calledAt: Date? = nil) {
         self.tool = tool
         self.target = target
         self.weighsSource = weighsSource
@@ -49,5 +52,6 @@ public struct PendingIndexCall: Sendable, Equatable, Codable {
         self.root = root
         self.servesWorkingTree = servesWorkingTree
         self.counted = counted
+        self.calledAt = calledAt
     }
 }

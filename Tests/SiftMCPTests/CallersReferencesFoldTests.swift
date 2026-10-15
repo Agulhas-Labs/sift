@@ -93,7 +93,7 @@ struct CallersReferencesFoldTests {
         #expect(Set(rest).isDisjoint(with: Self.siteLines(in: first, under: "callers of")))
         #expect(Self.siteLines(in: second, under: "references to") == Array(rest.sorted().dropFirst()))
         #expect(second.contains("(…1 file skipped)"))
-        #expect(second.contains("    :2  | ledger.settle("))
+        #expect(second.contains("    :2  till27(_:)  | ledger.settle("))
     }
 
     /// A package of `files` with a built index store, its tree indexed.

@@ -86,7 +86,11 @@ struct DoctorCommand: ParsableCommand {
             let named = !agents.isEmpty || (agent == .cursor && cursorDirectory != nil) || (agent == .codex && codexDirectory != nil)
             switch agent {
             case .claude:
-                let doctor = DoctorClaude(environment: machine.environment, probe: probe)
+                var doctor = DoctorClaude(environment: machine.environment, probe: probe)
+                if machine.pathLookup("claude") == nil {
+                    let binary = InstallHookCommand.binaryPath(invokedAs: CommandLine.arguments.first ?? SiftPaths.binaryName, environment: machine.environment, executable: Bundle.main.executablePath)
+                    doctor.manualRegistration = ClaudeMcpInstall.manual(binary: binary)
+                }
                 if !named, doctor.hasNothingOfSift {
                     notInstalled.append(agent)
                     continue

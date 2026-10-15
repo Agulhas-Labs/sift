@@ -42,6 +42,8 @@ extension RunLauncher {
     /// Reading the event stream asks a `swift test` that executes tests for its Swift Testing event stream as well, in a file under `.sift/` removed once it is read, and reads the endings and failing tests its console lost from it (see ``RunEventStreamFold``). Only the command started carries the option: its recognition, its filter and the key it is filed under are all read from `arguments` as the caller wrote them.
     ///
     /// `progress`, when given, is begun before the command starts and fed every chunk of its output beside the filter; the caller ends it with sift's own exit code once that is known, and resets it on any path that throws.
+    ///
+    /// Once the command has exited, reading stops when its output goes quiet for `patience`, even where something it left running still holds the output open; the outcome then says what was left running (see ``RunHeldOutput``), which is never ended.
     public func run(
         _ arguments: [String],
         passingThrough sink: ((Data) -> Void)? = nil,
@@ -49,6 +51,7 @@ extension RunLauncher {
         children: SetAsideChildren? = nil,
         readingEventStream: Bool = false,
         progress: RunProgress? = nil,
+        patience: RunOutputPatience = .standard,
         launched: ((Int32) -> Void)? = nil
     ) throws -> RunOutcome {
         guard !arguments.isEmpty else {
@@ -83,7 +86,8 @@ extension RunLauncher {
         let log = RunLog.open(inDirectory: runLogDirectory ?? repositoryRoot ?? workingDirectory)
         progress?.begin(arguments, kind: kind, logPath: log?.partURL.path)
         let pipe = Pipe()
-        let finish: () -> Int32
+        let finish: @Sendable () -> Int32
+        let child: Int32
         if let children {
             let null = open("/dev/null", O_RDONLY | O_CLOEXEC)
             defer { close(null) }
@@ -98,6 +102,7 @@ extension RunLauncher {
             )
             try? pipe.fileHandleForWriting.close()
             launched?(pid)
+            child = pid
             finish = { SetAsideChildren.exitCode(waitingFor: pid) }
         } else {
             let process = Process()
@@ -114,6 +119,7 @@ extension RunLauncher {
                 throw error
             }
             launched?(process.processIdentifier)
+            child = process.processIdentifier
             finish = {
                 process.waitUntilExit()
                 return exitCode(of: process)
@@ -126,11 +132,7 @@ extension RunLauncher {
         // `xcodebuild` was asked for `-quiet`, the one invocation whose clean run prints no verdict at all.
         var filter = RunOutputFilter(invokedAs: arguments, linters: linters)
         let reader = pipe.fileHandleForReading
-        while true {
-            let chunk = reader.availableData
-            if chunk.isEmpty {
-                break
-            }
+        let ending = RunOutputReader(patience: patience).read(reader.fileDescriptor, waitingFor: finish) { chunk in
             log?.append(chunk)
             progress?.consume(chunk)
             if kind.isFiltered {
@@ -140,7 +142,9 @@ extension RunLauncher {
             }
         }
         try? reader.close()
-        let code = finish()
+        let code = ending.exitCode
+        // Looked for once reading has stopped, and only then: what the command left running is named, never ended.
+        let held = ending.heldOpen ? RunHeldOutput.left(by: child) : nil
         log?.close()
         progress?.endOutput()
         if let stream = streams?.read(Self.eventStreamFile) {
@@ -153,7 +157,8 @@ extension RunLauncher {
             exitCode: code,
             report: kind.isFiltered ? filter.finish(exitCode: code) : nil,
             log: log,
-            repositoryRoot: repositoryRoot
+            repositoryRoot: repositoryRoot,
+            heldOutput: held
         )
     }
 

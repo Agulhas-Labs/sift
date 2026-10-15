@@ -2,9 +2,9 @@
 // Copyright © Agulhas Labs
 //
 
-/// What holds of every `where` and `search` answer, said once per session instead of on each answer (Docs/Design.md §2, *One header line, standing caveats said once per session*).
+/// What holds of every `where` and `search` answer, said only where it applies (Docs/Design.md §2, *One header line, standing caveats said where they apply*, and its *Superseded* paragraph).
 ///
-/// One text in every place that says it — the primer's bullet, the `where` and `search` tool descriptions for a client the primer never reaches, and `sift help answers` — so a reader is told the same whichever one reached them, and a rewording cannot leave one of them saying the old thing.
+/// One text in every place that says it — `sift help answers` in full, every empty `where` verdict, and every `search` whose query has a `calls:` or `uses:` term. Neither the session-start primer nor the tool descriptions carry it: read before every call it made agents confirm every answer with a grep. A rewording cannot leave one of them saying the old thing.
 public struct StandingCaveats {
     /// The clause the `search` tool description carries on its own: what its `calls:` and `uses:` match.
     public static var searchClause: String {

@@ -80,7 +80,7 @@ public extension InPlaceAnswerer {
         case unchecked
         /// The answer does not account for every line the command would print, or resolved to something else.
         case notExact
-        /// An answer is no smaller than the source it stands in for — a window's digest or the members it overlaps against the lines the window prints, a whole read's digest against the file — or a read's closing line can state no size that is its own, so running the command costs less.
+        /// An answer is no smaller than the source it stands in for — a window's digest or the members it overlaps against the lines the window prints, a whole read's digest against the file, a search's whole refusal against what the search prints — or a read's closing line can state no size that is its own, so running the command costs less.
         case notSmaller
         /// A window's file holds an unresolved merge conflict marker at a line start, which nothing but the raw text resolves.
         case conflicted
@@ -96,6 +96,8 @@ public extension InPlaceAnswerer {
         case notWorthTheTurn
         /// The repository cannot be written, so its index would be held in memory and built by parsing the whole tree for this one call, which the hook, a process of its own per call, would pay on every call (``SiftEngine/wouldKeepIndexInMemory(root:)``).
         case treeNotWritable
+        /// The grep's pattern would not compile in the dialect the command uses — a `\(` in basic grep opens a group nothing closes — so it errors on its own and no re-run an answer offered would do otherwise (``PatternCompiles``).
+        case patternInvalid
         case failed, overTime, overSize
     }
 

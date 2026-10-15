@@ -73,8 +73,9 @@ struct PreToolUseVerdictTests {
             cwd: "/repo",
             ledger: Stores().ledger,
             usage: UsageLog(fileURL: Stores().usageLog),
-            suppressions: SuppressionLog(fileURL: Stores().suppressionLog)
-        ) { _, _, _ in .answered(Self.answered) }
+            suppressions: SuppressionLog(fileURL: Stores().suppressionLog),
+            answerer: { _, _, _ in .answered(Self.answered) }
+        )
 
         let viaOutcome = try Self.outcome(Self.lookup(), in: Stores()) { _, _ in .answered(Self.answered) }.json
 

@@ -10,7 +10,7 @@ import Testing
 
 /// The worth rule judges a whole read of one Swift file answered with its digest, and no other shape.
 ///
-/// A document's outline, a line of several reads and a `cat` of two files are never let through on worth, however small the answer's source.
+/// A document's outline and a line of several reads are never let through on worth, however small the answer's source. A `cat` of several files is weighed file by file inside the answerer (`HookMultiFileCatTests`), never by this rule.
 @Suite(.temporaryDirectories)
 struct WholeReadWorthExclusionTests {
     private static func payload(_ command: String) -> [String: Any] {
@@ -54,7 +54,6 @@ struct WholeReadWorthExclusionTests {
 
     @Test(arguments: [
         "cat README.md",
-        "cat Sources/App/Depot.swift Sources/App/Other.swift",
         "cat Sources/App/Depot.swift; cat Sources/App/Other.swift",
         "cat Sources/App/Depot.swift && cat README.md",
     ])

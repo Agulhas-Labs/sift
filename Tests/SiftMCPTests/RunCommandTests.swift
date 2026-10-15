@@ -560,12 +560,19 @@ private extension RunCommandTests {
         return root.resolvingSymlinksInPath()
     }
 
+    /// Commits as a fixed identity, so no fixture depends on the user's git config.
     @discardableResult
     static func runGit(_ arguments: [String], in directory: URL) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = arguments
         process.currentDirectoryURL = directory
+        var environment = ProcessInfo.processInfo.environment
+        environment["GIT_AUTHOR_NAME"] = "Tester"
+        environment["GIT_AUTHOR_EMAIL"] = "test@example.com"
+        environment["GIT_COMMITTER_NAME"] = "Tester"
+        environment["GIT_COMMITTER_EMAIL"] = "test@example.com"
+        process.environment = environment
         let sink = Pipe()
         process.standardOutput = sink
         process.standardError = sink

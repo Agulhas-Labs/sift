@@ -153,7 +153,9 @@ struct SemanticEnumCaseUseTests {
         let output = try await engine.lookup(symbol: "Mode.spare", freshness: freshness)
 
         #expect(output.contains("no uses of GizmoCore.Mode.spare recorded in the store"))
-        #expect(!output.contains("callers"))
+        #expect(output.contains(StandingCaveats.sentences))
+        let verdict = output.replacingOccurrences(of: StandingCaveats.sentences, with: "")
+        #expect(!verdict.contains("callers"))
         #expect(!output.contains("reads or writes"))
     }
 

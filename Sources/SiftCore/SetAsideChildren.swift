@@ -117,17 +117,9 @@ public extension SetAsideChildren {
         if session.started != 0, let leader = KernelProcess.startMicroseconds(of: session.pid), leader != session.started {
             return []
         }
-        let needed = Int(proc_listallpids(nil, 0))
-        guard needed > 0 else {
-            return []
-        }
-        var pids = [pid_t](repeating: 0, count: needed + 256)
-        let count = pids.withUnsafeMutableBytes { buffer in
-            proc_listallpids(buffer.baseAddress, Int32(buffer.count))
-        }
         let own = getpid()
-        return pids.prefix(max(0, Int(count))).filter { pid in
-            guard pid > 0, pid != own, getsid(pid) == session.pid else {
+        return KernelProcess.allPids().filter { pid in
+            guard pid != own, getsid(pid) == session.pid else {
                 return false
             }
             guard session.started != 0 else {

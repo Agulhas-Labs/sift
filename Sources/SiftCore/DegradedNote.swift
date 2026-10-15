@@ -74,8 +74,13 @@ extension DegradedNote {
         "index store failed to open (\(store.map { "\($0): " } ?? "")\(why))"
     }
 
+    /// The clause a uses-withholding note carries; an answer that ends in the standing caveats (``StandingCaveats``) drops it, so it says one.
+    static var emptyListClause: String {
+        ", an empty list is not \"unused\""
+    }
+
     var line: String {
-        let sites = "sites by written name" + (withheld == .uses || withheld == .mixed ? ", an empty list is not \"unused\"" : "")
+        let sites = "sites by written name" + (withheld == .uses || withheld == .mixed ? Self.emptyListClause : "")
         let what = switch withheld {
         case .calls, .subscripts: "callers, overrides or references"
         case .uses: "uses"

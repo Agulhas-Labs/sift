@@ -33,7 +33,9 @@ public enum InPlaceCall: Equatable, Sendable {
     /// `unchecked` marks a tree searched with a Swift file named beside it: a line such a search prints may name the name only in a doc comment or a string literal, which a `where` answer says nothing about, and nothing here can check the lines it prints, so the answer is withheld unchecked and the search runs.
     ///
     /// `spelled` is the operands as the call wrote them where `paths` carries them resolved — a `Grep`'s path, resolved so that it roots the answer — and is what the answer names them by; `nil` where `paths` is already as written.
-    case symbols(names: [String], paths: [String], uncovered: [String] = [], proof: ShellGrep? = nil, unchecked: Bool = false, spelled: [String]? = nil)
+    ///
+    /// `toolSearch` is a `Grep`'s own search, read as the grep that prints what it prints (``SearchToolGrep``), and `nil` for a shell grep, which carries its search as `proof`: where size decides what the search asks, the answer is handed over only where its whole refusal is smaller than what that search prints.
+    case symbols(names: [String], paths: [String], uncovered: [String] = [], proof: ShellGrep? = nil, unchecked: Bool = false, spelled: [String]? = nil, toolSearch: SearchToolGrep? = nil)
 }
 
 public extension InPlaceCall {

@@ -341,9 +341,7 @@ public final class SiftEngine: @unchecked Sendable {
             return lines
         }
         renderer.fileSource = { [repoRoot] path in try? String(contentsOf: repoRoot.appendingPathComponent(path), encoding: .utf8) }
-        renderer.nonCodeMentions = { [repoRoot, enumerator] name in
-            NonCodeMentions.scan(name: name, swiftFiles: enumerator.swiftFiles(), markdownFiles: enumerator.markdownFiles(), under: repoRoot)
-        }
+        renderer.readsWorkingTree(under: repoRoot, enumerator: enumerator, bounds: textSearchBounds)
         let input: SemanticInput = options.includeSemantic
             ? whereSemanticInput()
             : .inactive(note: "semantic disabled (--syntactic)")
@@ -456,6 +454,9 @@ public final class SiftEngine: @unchecked Sendable {
     /// This engine's budget: the one above everywhere but a test, which sets zero to hold a real open in its warming state — deterministically, since the open cannot settle while the budget check holds its lock.
     var openBudget = SiftEngine.semanticOpenBudget
 
+    /// How far the conformers block's text search may read before its line is left out: the scan's own bounds everywhere but a test, which narrows them or steps their clock.
+    var textSearchBounds = TextSearchFiles.Bounds()
+
     /// Runs on the opening thread as each open of the store succeeds, before the engine reads what it opened.
     ///
     /// A test's way of replacing the store in the moment a rebuild during a cold import would, which no real build can be timed to hit. Nothing everywhere else.
@@ -549,33 +550,30 @@ public final class SiftEngine: @unchecked Sendable {
 
     /// The semantic axis a query in this tree would see right now, judged from discovery and file state alone — never by opening the index store.
     ///
-    /// A doctor command cannot pay the cost a real open can carry: on a store another process already holds warm, opening it here means ingesting it again from cold, which is exactly the ingestion the freshness contract exists to avoid paying twice (Docs/Design.md §2). So this runs the two comparisons a resolved query runs per cited file, over every file at once, since a report naming no declaration has no smaller set to check: a stored file's own change moment (``FileChangeStat``), refreshed by `ensureFresh` whenever the working tree edits it, against the store's build anchor (`SemanticContext.buildAnchor(newestUnit:)`, which a query measures only a file with no unit of its own against, so a file a partial build skipped shows only on a query); and a file gone from the tree, which here means one the ``DeletionLedger`` dates after that anchor — dropped by this index, or seeded from what git still recorded when the store had no ledger — and that is still missing, since a report that never opens the store can reach no other trace of it. Both are worded as what file state showed (`SemanticAxis.staleByFileState`). `unresolved` is a per-declaration fact a resolved query computes from refusals no report without a declaration can have (`SemanticAxis.of(refusals:occurrences:)`), and whether the store opens at all, or is still reading past a query's budget, only a real open can tell — all three are left unclaimed rather than guessed, and the lines under the header say so (``statusAxisNote``).
-    private func statusAxis(discovered: DiscoveredStore?) throws -> SemanticAxis {
-        guard let discovered else { return .noStoreInStatus }
+    /// A doctor command cannot pay the cost a real open can carry: on a store another process already holds warm, opening it here means ingesting it again from cold, which is exactly the ingestion the freshness contract exists to avoid paying twice (Docs/Design.md §2). So this runs the two comparisons a resolved query runs per cited file, over every file at once, since a report naming no declaration has no smaller set to check: a stored file's own change moment (``FileChangeStat``), refreshed by `ensureFresh` whenever the working tree edits it, against the store's build anchor (`SemanticContext.buildAnchor(newestUnit:)`, which a query measures only a file with no unit of its own against, so a file a partial build skipped shows only on a query); and a file gone from the tree, which here means one the ``DeletionLedger`` names — dropped by this index, or seeded from what git still recorded when the store had no ledger — that is still missing and that the store may still cite: dated after that anchor, or named by a unit still on disk (``StoreUnitMentions``), since a build keeps a deleted file's unit until a clean build and a query goes on citing it whichever came first, the deletion or the build. Both are worded as what file state showed (`SemanticAxis.staleByFileState`). `unresolved` is a per-declaration fact a resolved query computes from refusals no report without a declaration can have (`SemanticAxis.of(refusals:occurrences:)`), and whether the store opens at all, or is still reading past a query's budget, only a real open can tell — all three are left unclaimed rather than guessed, and the note beside the store line names the help topic that says so (``statusAxisNote``).
+    ///
+    /// `unitKeepsADeletedFile` says whether a unit on disk names one of the deleted files counted, the one case the store's record was read for; a file counted on the ledger's date alone was never checked against the record.
+    private func statusAxis(discovered: DiscoveredStore?) throws -> (semantic: SemanticAxis, unitKeepsADeletedFile: Bool) {
+        guard let discovered else { return (.noStoreInStatus, false) }
         let newestUnit = Self.newestUnit(of: discovered) ?? .distantPast
         let buildAnchor = SemanticContext.buildAnchor(newestUnit: newestUnit)
         let newerFiles = try store.fileInventory().values.filter { $0.mtime > buildAnchor }.map(\.path)
-        let deletedFiles = try store.deletionLedger().paths(droppedAfter: buildAnchor).filter { path in
-            !FileManager.default.fileExists(atPath: repoRoot.appendingPathComponent(path).path)
-        }
-        guard !newerFiles.isEmpty || !deletedFiles.isEmpty else { return .fresh }
-        return .staleByFileState(StaleFiles(changed: newerFiles.count, deleted: deletedFiles.count, path: newerFiles.first ?? deletedFiles.first))
+        let deleted = try Self.deletedFilesTheStoreMayCite(ledger: store.deletionLedger(), anchor: buildAnchor, in: discovered, root: repoRoot)
+        guard !newerFiles.isEmpty || !deleted.paths.isEmpty else { return (.fresh, false) }
+        let files = StaleFiles(changed: newerFiles.count, deleted: deleted.paths.count, path: newerFiles.first ?? deleted.paths.first)
+        return (.staleByFileState(files), deleted.namedByAUnit)
     }
 
     /// The status/doctor report: freshness, counts, size, modules, config presence.
     public func statusText(freshness: Freshness) throws -> String {
         var freshness = freshness
         let discovered = probeStore()
-        freshness.semantic = try statusAxis(discovered: discovered)
+        let axis = try statusAxis(discovered: discovered)
+        freshness.semantic = axis.semantic
         let counts = try store.counts()
         let modules = try store.moduleNames()
         let size = store.isInMemory ? "in memory (this tree cannot be written)" : String(format: "%.1f MB", Double(store.databaseSizeBytes) / 1_048_576)
         var lines: [String] = [freshness.headerLine]
-        if discovered != nil {
-            // Under the header, per the Answer Contract: this axis is read without opening the store, so it says
-            // what it counted and names every case it can miss (§6, §8).
-            lines.append(contentsOf: Self.statusAxisNote)
-        }
         lines.append("root: \(repoRoot.path)")
         lines.append("files: \(counts.files)  symbols: \(counts.symbols)  db: \(size)")
         lines.append("modules (\(modules.count)): \(modules.joined(separator: " "))")
@@ -584,6 +582,7 @@ public final class SiftEngine: @unchecked Sendable {
         lines.append("config: \(hasConfig ? ".sift.json" : "none (defaults)")")
         let rejected = storeDiscovery().rejectedSettings()
         lines.append(Self.storeStatusLine(discovered: discovered, rejected: rejected))
+        lines.append(contentsOf: Self.statusAxisLines(discovered: discovered, unitKeepsADeletedFile: axis.unitKeepsADeletedFile))
         try lines.append(contentsOf: ParseErrorNotice.statusLines(files: store.filesWithParseErrors()))
         let guessed = try store.filesWithGuessedModule()
         // What was searched for, beside what it produced: "100% guessed" alone never says whether the build files were
@@ -747,21 +746,43 @@ extension SiftEngine {
         return "index store: \(discovered.label) — \(discovered.path.path)\(passedOver)"
     }
 
-    /// What `status` says under its header whenever it found a store: how its semantic field was judged, what it counted, and every case it can miss.
+    /// The deleted paths the ledger names that are still missing and that the store may still cite: dropped after the build `anchor`, or named by a unit still on disk, since a build keeps a deleted file's unit until a clean build; sorted, as the ledger's own list is.
     ///
-    /// One short sentence a line, in the reader's words rather than the implementation's. Each gap is one a query still shows, since a query reads the store itself; they are the residue Docs/Design.md §2 names for this reading, and the two lists must change together. A gap left out of this note would read as `fresh` with nothing to say otherwise.
-    static let statusAxisNote = [
-        "The semantic field is judged from files against the index store's last build, without opening the store.",
-        "It counts files changed since that build, and files deleted since it: ones this index saw go itself.",
-        "It also counts ones git already showed as deleted when this index first started keeping that count.",
-        "Only a query shows a declaration the store has no record of, unbuilt test files, a file a partial build skipped, a store that fails to open, or still loading.",
-        "Some deletions show only on a query until a clean build: a file deleted, then built over without cleaning.",
-        "So do two more: a file git never tracked, whose only record here was lost to a reset or an older binary.",
-        "And a file deleted by a commit older than the build, reached later without a commit of its own — a "
-            + "fast-forward, checkout, hard reset, or rebase onto older work.",
-        "A later deletion an older sift binary drops, once this index has already started counting them, goes "
-            + "unrecorded — that counting starts only once.",
-    ]
+    /// `namedByAUnit` says whether a unit names any of them, every missing path asked, those dated after the build too.
+    static func deletedFilesTheStoreMayCite(ledger: DeletionLedger, anchor: Double, in discovered: DiscoveredStore, root: URL) -> (paths: [String], namedByAUnit: Bool) {
+        let droppedAfterBuild = Set(ledger.paths(droppedAfter: anchor))
+        let mentions = StoreUnitMentions(store: discovered.path, root: root)
+        var paths: [String] = []
+        var namedByAUnit = false
+        for path in ledger.entries.keys.sorted() where !FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path) {
+            let named = mentions.names(file: path)
+            namedByAUnit = namedByAUnit || named
+            if named || droppedAfterBuild.contains(path) {
+                paths.append(path)
+            }
+        }
+        return (paths, namedByAUnit)
+    }
+
+    /// The lines `status` prints after its store line about its semantic field: beside the store it was judged against rather than under the header, where a list printed on every run buried that line.
+    ///
+    /// The line about a deleted file's record prints only when `unitKeepsADeletedFile`, a unit on disk read and found naming one.
+    static func statusAxisLines(discovered: DiscoveredStore?, unitKeepsADeletedFile: Bool) -> [String] {
+        guard discovered != nil else { return [] }
+        return unitKeepsADeletedFile ? [statusAxisNote, statusDeletedNote] : [statusAxisNote]
+    }
+
+    /// What `status` says beside its store line whenever it found one: how its semantic field was judged, and where the cases it cannot see are listed.
+    ///
+    /// One line, since it prints on every run: the list itself is the help topic's (``HelpTopics``, `answers`), which names each gap Docs/Design.md §2 leaves this reading, and the two must change together.
+    static var statusAxisNote: String {
+        "The semantic field is judged from files, without opening the index store; `sift help answers` lists what only a query shows."
+    }
+
+    /// What `status` adds when it counts a deleted file: a build does not clear one, since the store keeps a deleted file's unit, and a query citing it goes on marking it, until a clean build.
+    static var statusDeletedNote: String {
+        "A deleted file stays in the store's record, and in each query citing it, until a clean build; a build without cleaning keeps it."
+    }
 
     /// The one true way to get an index store, said identically everywhere that offers it (Docs/Design.md §2).
     ///

@@ -28,6 +28,9 @@ struct AffectedCommand: AsyncParsableCommand {
     @Option(name: .customLong("reached"), help: "Also say whether this test or suite was reached, and at how many hops, even where the lists cut it off. Spell it as the list prints it (Target.Suite/function()); a fragment matches every name containing it. Repeat it for several names.")
     var reached: [String] = []
 
+    @Flag(name: .customLong("suites"), help: "List every affected suite's filter even where the list would be long; by default a list past 2,000 characters is replaced by the target's own filter.")
+    var suites = false
+
     @OptionGroup var rootOptions: RootOptions
 
     func validate() throws {
@@ -47,7 +50,7 @@ struct AffectedCommand: AsyncParsableCommand {
     func answer(registry: RootsRegistry = .standard()) async throws -> String {
         let (engine, note) = try rootOptions.makeEngine(registry: registry)
         let freshness = try await engine.ensureFresh()
-        let options = AffectedOptions(range: from.map { AffectedOptions.CommitRange(from: $0, to: to) }, depth: depth, probes: reached)
+        let options = AffectedOptions(range: from.map { AffectedOptions.CommitRange(from: $0, to: to) }, depth: depth, probes: reached, listSuites: suites)
         return try await Freshness.placing([note], under: engine.affected(options: options, freshness: freshness))
     }
 }

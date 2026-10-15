@@ -138,8 +138,8 @@ struct AffectedFilterSpellingTests {
         #expect(filters.count == 10, "one filter per test of the fixture:\n\(output)")
         #expect(filters.contains(#"^LibTests\.shines\(\)"#))
         #expect(filters.contains(#"^LibTests\.Outer/Inner/deep\(\)"#))
-        #expect(output.contains("-only-testing:LibTests/Outer/Inner/deeper()"))
-        #expect(output.contains("-only-testing:LibTests/titled()"))
+        // The store is SwiftPM's `.build`: no `xcodebuild` argument is printed.
+        #expect(!output.contains("-only-testing:"))
         for filter in filters {
             let run = try await Self.swiftTest(filter: filter, in: root)
             #expect(!run.contains("No matching test cases"), "\(filter) ran nothing:\n\(run.suffix(600))")

@@ -1,3 +1,7 @@
+//
+// Copyright © Agulhas Labs
+//
+
 import Foundation
 
 /// The note a `sift run` of `xcodebuild` owes when the generated project it reads predates a Swift file its XcodeGen spec holds.

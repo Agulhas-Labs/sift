@@ -196,7 +196,8 @@ struct AffectedXCTestCaseTests {
 
         #expect(Self.swiftTestLine(output)?.hasPrefix("  swift test — no filter: the 1 test above is in a nested XCTest case") == true)
         #expect(output.contains("so the only `swift test` that runs it is the whole suite"))
-        #expect(!output.contains("leaves out"))
+        #expect(Self.swiftTestLine(output)?.contains("leaves out") == false)
+        #expect(!output.contains(AffectedBlindSpots.leftOutOfTheFilter(1)))
     }
 
     /// The `swift test` leave-out line counts tests, so a whole nested case reached counts every test it runs rather than one.

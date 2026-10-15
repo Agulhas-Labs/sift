@@ -177,7 +177,7 @@ struct WhereEnclosingSupertypeNameTests {
     func aNameASupertypeOutsideTheTreeMaySupplyIsKept() async throws {
         let output = try await Self.answer(Self.supplied)
 
-        #expect(output.contains("on types outside the tree"), "\(output)")
+        #expect(output.contains("on names a supertype outside the tree of a type around them may supply"), "\(output)")
         for member in ["Crate.cur", "Crate.item", "Shelf.built", "Row.forwarded", "Shed.held"] {
             #expect(output.contains("in \(member)"), "\(member)\n\(output)")
         }
@@ -233,7 +233,7 @@ struct WhereEnclosingSupertypeNameTests {
     func aNameAnExtensionOfANestedTypesNameMaySupplyIsKept() async throws {
         let output = try await Self.answer(Self.nestedTwin)
 
-        #expect(output.contains("on types outside the tree"), "\(output)")
+        #expect(output.contains("on names an extension of a type outside the tree may supply"), "\(output)")
         #expect(output.contains("in UIView.viewed"), "\(output)")
         #expect(output.contains("in Label.labelled"), "\(output)")
         #expect(!output.contains("in Theme.Label.themed"), "\(output)")

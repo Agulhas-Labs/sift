@@ -289,10 +289,17 @@ public struct TranscriptTally: Sendable, Equatable, Codable {
     ///
     /// The percentage is floored to `<1%` for a nonzero numerator, as ``shareText`` is.
     public var voluntaryShareText: String? {
+        guard let text = voluntaryPercentText else { return nil }
+        return "\(text) = (\(indexed) indexed − \(answered) answered) / (\(indexed) indexed + \(cold) cold)"
+    }
+
+    /// The voluntary share as a bare percentage, or `nil` when no lookup had a choice.
+    ///
+    /// Floored to `<1%` for a nonzero numerator, as ``shareText`` is; ``voluntaryShareText`` is this with its arithmetic after it.
+    public var voluntaryPercentText: String? {
         guard voluntaryTotal > 0 else { return nil }
         let percent = Int((Double(voluntary) / Double(voluntaryTotal) * 100).rounded())
-        let text = percent == 0 && voluntary > 0 ? "<1%" : "\(percent)%"
-        return "\(text) = (\(indexed) indexed − \(answered) answered) / (\(indexed) indexed + \(cold) cold)"
+        return percent == 0 && voluntary > 0 ? "<1%" : "\(percent)%"
     }
 
     /// That share as it must be printed: a session that used the index never renders as one that did not.

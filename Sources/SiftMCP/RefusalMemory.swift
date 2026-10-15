@@ -1,3 +1,7 @@
+//
+// Copyright © Agulhas Labs
+//
+
 import Foundation
 
 /// What the transcript scan remembers of a refusal it reads back: the keys a lookup's identical re-run is recognised by.

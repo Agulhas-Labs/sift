@@ -140,8 +140,8 @@ struct CrossModuleTypeUsageWhereTests {
         let output = try await engine.lookup(symbol: "Alpha.Widget", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
         #expect(output.contains("used by Alpha.Widget: 4 references in 2 files — 4 production · 0 tests"))
-        #expect(output.contains("Sources/Beta/Widget.swift (2):\n    :8  | func make() -> Alpha.Widget {\n    :9  | Alpha.Widget()"))
-        #expect(output.contains("Sources/Beta/Consumer.swift (2):\n    :3  | public func consume() -> Alpha.Widget {\n    :4  | Alpha.Widget()"))
+        #expect(output.contains("Sources/Beta/Widget.swift (2):\n    :8  | func make() -> Alpha.Widget {\n    :9  make()  | Alpha.Widget()"))
+        #expect(output.contains("Sources/Beta/Consumer.swift (2):\n    :3  | public func consume() -> Alpha.Widget {\n    :4  consume()  | Alpha.Widget()"))
         // The false claim itself, which is what makes this worse than the silence the section replaced.
         #expect(!output.contains("which is the type spelling its own name"))
         #expect(!output.contains("inside its own declaration or its extensions in this module"))
@@ -161,7 +161,7 @@ struct CrossModuleTypeUsageWhereTests {
 
         // `extension Outer.Item` matches `LIKE '%.' || 'Item'`, so its body's uses of the top-level `Item` were dropped.
         #expect(output.contains("used by Alpha.Item: 2 references in 1 file — 2 production · 0 tests"))
-        #expect(output.contains("Sources/Alpha/Nested.swift (2):\n    :8  | func boxed() -> Alpha.Item {\n    :9  | Alpha.Item()"))
+        #expect(output.contains("Sources/Alpha/Nested.swift (2):\n    :8  | func boxed() -> Alpha.Item {\n    :9  boxed()  | Alpha.Item()"))
         #expect(!output.contains("which is the type spelling its own name"))
     }
 
@@ -278,7 +278,7 @@ struct CrossModuleTypeUsageWhereTests {
         // excluded, since only a same-module extension's own span is: an other-module extension's span (and every
         // real reference inside it, self-reference included) stays counted exactly once each, guess or no guess.
         #expect(output.contains("used by App.Thing: 3 references in 1 file — 3 production · 0 tests"), "\(output)")
-        #expect(output.contains("Shared/Extras.swift (3):\n    :3  | public extension Thing {\n    :4  | func describe() -> Thing {\n    :5  | Thing()"), "\(output)")
+        #expect(output.contains("Shared/Extras.swift (3):\n    :3  | public extension Thing {\n    :4  | func describe() -> Thing {\n    :5  describe()  | Thing()"), "\(output)")
         #expect(output.contains(
             "1 extension in another module counted as use — deleting the type breaks that module (module guessed from the path)"
         ), "\(output)")

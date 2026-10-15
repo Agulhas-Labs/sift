@@ -107,7 +107,7 @@ extension WhereRenderer {
         let counted = Set(targets.map(\.id))
         if case let .active(context) = semantic {
             let wrapperSites = try await WrapperAttributeSites.find(for: targets, in: store, callSites: callSites, context: context, projectDirectories: projectDirectories)
-            counter = OwnerUseCounter(primary: context, wrapperSites: wrapperSites, store: store, projectDirectories: projectDirectories)
+            counter = try OwnerUseCounter(primary: context, wrapperSites: wrapperSites, store: store, projectDirectories: projectDirectories, declarations: targets)
         }
         var narrowingOf: [String: String] = [:]
         for row in listed {
@@ -177,11 +177,15 @@ extension WhereRenderer {
         if let line = setAside.line {
             lines += ["", line]
         }
+        if counter.countedNone {
+            lines += ["", StandingCaveats.sentences]
+        }
         let waitsOnInTree = primary.inTreeWarming && counter.uncovered && !counter.refusals.contains(where: \.reason.isStale)
         let axis: SemanticAxis = try waitsOnInTree ? .warming : .of(
             refusals: counter.refusals,
             occurrences: Array(counter.judges.values),
             testFilesWithoutUnit: primary.testFileCoverage(in: store).partialCount,
+            targetsNotBuilt: counter.targetsNotBuilt,
             listedByName: mentions.listedFiles
         )
         let stale = SemanticAxis.countedFiles(refusals: counter.refusals, occurrences: Array(counter.judges.values), listedByName: mentions.listedFiles)
@@ -248,15 +252,20 @@ struct OwnerUseCounter {
     private(set) var refusals: [SemanticRefusal] = []
     private(set) var answeredBy: [String] = []
     private(set) var uncovered = false
+    /// Whether any owner's row counted no call site or use: an empty verdict, which carries the standing caveats.
+    private(set) var countedNone = false
     /// The sites the stores set aside for the declarations counted, which the answer says as a single owner's does.
     private(set) var setAside = SetAsideSites()
     private var sources = SemanticStore.SourceLines()
     /// Each declaring file, and each file the answer lists by name, judged against its own build, across every store the query reads.
     let declaringFiles: OccurrenceFreshness
+    /// The non-test targets no store holds a unit for that write the asked name, found once for the answer, which its header and every count clause name.
+    let targetsNotBuilt: TargetsNotBuilt
     private let projectDirectories: [String]
 
-    init(primary: SemanticContext, wrapperSites: WrapperAttributeSites, store: IndexStore, projectDirectories: [String]) {
+    init(primary: SemanticContext, wrapperSites: WrapperAttributeSites, store: IndexStore, projectDirectories: [String], declarations: [SymbolRow]) throws {
         self.primary = primary
+        targetsNotBuilt = try TargetsNotBuilt(writing: declarations, in: store, context: primary, projectDirectories: projectDirectories)
         self.wrapperSites = wrapperSites
         self.store = store
         declaringFiles = OccurrenceFreshness(store: store, context: primary, projectDirectories: projectDirectories)
@@ -305,7 +314,8 @@ struct OwnerUseCounter {
         let deleted = try Set(store.deletionLedger().entries.keys)
         let split = try renderer.countingUnbuiltTests(in: WhereRenderer.usageSplit(sitesByPath: grouped.paths.map { ($0, grouped.lines(in: $0).count) }, deleted: deleted) {
             try store.fileRow(path: $0)?.imports
-        }, context: context)
+        }, context: context, targetsNotBuilt: targetsNotBuilt.names)
+        countedNone = countedNone || grouped.sites == 0
         var clause = "\(grouped.sites) \(noun)\(grouped.sites == 1 ? "" : "s"): " + split.tally.joined(separator: " · ")
         let drift = WhereRenderer.driftDetails(states: grouped.states)
         if !drift.isEmpty {

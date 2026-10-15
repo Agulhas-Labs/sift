@@ -112,7 +112,8 @@ struct InPlaceNamesPartialTests {
         let tool = InPlaceShape.match(forSearchTool: "Grep", input: ["output_mode": "content", "pattern": "Depot|stale index", "path": "Sources"], in: "/repo")
 
         #expect(shell?.call == .symbols(names: ["Depot"], paths: ["Sources"], uncovered: ["stale index"], proof: ShellGrep(arguments: ["-rn", #"Depot\|stale index"#, "Sources"], rawArguments: ["-rn", #""Depot\|stale index""#, "Sources"])))
-        #expect(tool?.call == .symbols(names: ["Depot"], paths: ["/repo/Sources"], uncovered: ["stale index"], spelled: ["Sources"]))
+        let input: [String: Any] = ["output_mode": "content", "pattern": "Depot|stale index", "path": "Sources"]
+        #expect(tool?.call == .symbols(names: ["Depot"], paths: ["/repo/Sources"], uncovered: ["stale index"], spelled: ["Sources"], toolSearch: SearchToolGrep(input: input, pattern: "Depot|stale index", searched: "/repo/Sources", in: "/repo")))
     }
 
     /// The answer is the name's `where` with one line naming the prose it does not cover; its identical re-run goes through, and the answer is logged under its own rule.

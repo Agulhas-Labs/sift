@@ -343,14 +343,15 @@ struct StructuralSearchTests {
         #expect(rendered.contains("no declarations match — scanned 431 file(s)"))
     }
 
-    /// Neither half of the old caveat is on the answer: the scan's freshness and the written-name matching hold of every `search`, and are said once per session (Docs/Design.md §2, *standing caveats*).
+    /// The scan's freshness is on no `search` answer, and the written-name clause only on one whose query has a `calls:` or `uses:` term (Docs/Design.md §2, *standing caveats*).
     @Test
-    func theStandingCaveatsAreNotOnTheAnswer() throws {
+    func theStandingCaveatsAreOnlyOnACallsOrUsesAnswer() throws {
         let match = StructuralMatch(path: "a.swift", line: 1, endLine: 2, kind: "func", qualifiedName: "S.f()", signature: "func f()")
         let withCalls = try SearchRenderer.render(result: StructuralSearch.Result(matches: [match], filesScanned: 1), query: StructuralQuery("calls:save"))
         let withoutCalls = try SearchRenderer.render(result: StructuralSearch.Result(matches: [match], filesScanned: 1), query: StructuralQuery("kind:func"))
 
-        #expect(!withCalls.contains("match written names"))
+        #expect(withCalls.contains(StandingCaveats.searchClause))
+        #expect(!withoutCalls.contains(StandingCaveats.searchClause))
         #expect(!withoutCalls.contains("never stale"))
         #expect(!withCalls.contains("never stale"))
     }

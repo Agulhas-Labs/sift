@@ -134,11 +134,12 @@ public extension TreeKey {
         }
     }
 
-    /// One `git`, bounded by `bound` (``ChildDeadline/git`` unless the caller says otherwise; the reads that walk the whole tree say ``ChildDeadline/gitBulk``), run in the tree and pointed at the scratch index where there is one.
+    /// One `git`, bounded by `bound` (``ChildDeadline/gitRead(in:)``, which is ``ChildDeadline/git`` outside a test fixture, unless the caller says otherwise; the reads that walk the whole tree say ``ChildDeadline/gitBulk``), run in the tree and pointed at the scratch index where there is one.
     ///
     /// The environment is scrubbed of git's own variables first, for the reason every other git this tool spawns is (``ProcessEnvironment/withoutGit(from:)``): this runs under a `pre-push` hook, which exports `GIT_DIR` and `GIT_INDEX_FILE` into it, and an inherited pair would point these commands at the hook's repository and at the caller's real index. `GIT_INDEX_FILE` then goes back in as the one variable this needs, naming the scratch copy; a command that reads only objects is given none.
     @discardableResult
-    private static func run(_ arguments: [String], in directory: URL, index: URL?, within bound: TimeInterval = ChildDeadline.git) throws -> String {
+    private static func run(_ arguments: [String], in directory: URL, index: URL?, within bound: TimeInterval? = nil) throws -> String {
+        let bound = bound ?? ChildDeadline.gitRead(in: directory)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = ProcessEnvironment.gitHardening + arguments

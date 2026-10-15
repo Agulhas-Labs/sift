@@ -80,3 +80,10 @@ the design depends on, carried over from [../Docs/Design.md](../Docs/Design.md):
   of one name in a module. Move a cohesive group into a new type in a file named after it
   (`WhereStoreLines`, `RefusedCallShapeClassifier`); a private helper can move into the file's trailing
   extension.
+- **A test pins an answer's text with a literal, never by calling the helper that renders it.** A test that
+  builds its expectation from the production helper passes whatever that helper says, so it pins nothing; and
+  where the helper is new in the fix, the set-aside does not even compile.
+- **A user-facing claim about what an install writes is checked against every route that installs it**: the
+  bundle's `install.sh` (the binary alone in `~/.local/bin`), Homebrew (`share/sift/` beside it) and the npm
+  package, and the first install as well as an upgrade. Two doc fixes in one wave missed the Homebrew route
+  the same way.

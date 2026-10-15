@@ -74,7 +74,7 @@ struct WhereExtensionOfAnotherTypeTests {
     func aSiteInAModuleQualifiedExtensionOfAFrameworkTypeIsKept() async throws {
         let output = try await Self.answer(["App/Uses": Self.nestedTwin + "\n" + Self.qualified])
 
-        #expect(output.contains("on types outside the tree"), "\(output)")
+        #expect(output.contains("on names an extension of a type outside the tree may supply"), "\(output)")
         #expect(output.contains("in UIKit.UILabel.qualified"), "\(output)")
         #expect(!output.contains(".moduled"), "\(output)")
         #expect(!output.contains("in Theme.UILabel.themed"), "\(output)")
@@ -86,7 +86,7 @@ struct WhereExtensionOfAnotherTypeTests {
     func aSiteInABareExtensionATwinMayNotBeIsKept(prefix: String, condition: String?) async throws {
         let output = try await Self.answer(["App/Uses": Self.nestedTwin + "\n" + Self.bare, "App/Twin": Self.twin(prefix, under: condition)])
 
-        #expect(output.contains("on types outside the tree"), "\(output)")
+        #expect(output.contains("on names an extension of a type outside the tree may supply"), "\(output)")
         #expect(output.contains("in UILabel.labelled"), "\(output)")
         #expect(!output.contains("in UILabel.plain"), "\(output)")
         #expect(output.contains("2 on other types dropped"), "\(output)")
@@ -107,7 +107,7 @@ struct WhereExtensionOfAnotherTypeTests {
         let twin = "struct UILabel {\n    var plain = 0\n}"
         let output = try await Self.answer(["App/Uses": "import Kit\n" + Self.nestedTwin + "\n" + Self.bare, "Kit/Twin": twin])
 
-        #expect(output.contains("on types outside the tree"), "\(output)")
+        #expect(output.contains("on names an extension of a type outside the tree may supply"), "\(output)")
         #expect(output.contains("in UILabel.labelled"), "\(output)")
         #expect(output.contains("1 on other types dropped"), "\(output)")
     }

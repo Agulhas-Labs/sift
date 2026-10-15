@@ -8,11 +8,13 @@ import SiftCore
 import Testing
 
 /// Covers the MCP `strings` tool over queries that are not plain words, where a trap would end the server for the whole session: each is answered by one server, which still answers the call after them.
+///
+/// An empty or whitespace-only query is refused before any lookup, so it is pinned with the other blank targets rather than here.
 @Suite(.temporaryDirectories)
 struct StringsQueryInputClassMCPTests {
     static let queries: [String] = [
         ".title", "°C", "% complete", "%lld", "%1$@", "%#@count@", "%arg days", "%@ against", "@ against",
-        "", " ", "  Hello  ", "%", "@", "\\", "\"", "'", "%%%", "\0", "\0Alpha", "\nAlpha", "Al\npha",
+        "  Hello  ", "%", "@", "\\", "\"", "'", "%%%", "\0", "\0Alpha", "\nAlpha", "Al\npha",
         "\u{301}Alpha", "👍 Alpha", "İ Alpha", "Sources/App/Alpha.swift", String(repeating: "%a ", count: 400),
     ]
 

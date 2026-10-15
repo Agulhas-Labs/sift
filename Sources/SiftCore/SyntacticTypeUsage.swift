@@ -15,8 +15,12 @@ struct SyntacticTypeUsage {
     var expandsAtFileScope: (() async -> Bool)?
     /// The query a plain answer names for the sites, `— where --refs <pointer> lists them`, in place of listing them; `nil` lists them, for `--refs` and for a caller standing the answer in for a search's lines.
     var pointer: String?
+    /// A repo-relative file's current text, or `nil` where it cannot be read: it places a clause continued onto later lines.
+    var fileSource: ((String) -> String?)?
     /// Whether a guessed file's build file renames its module through a setting this tool cannot read, which a verdict says in place of the module being guessed from the path.
     var isUnreadablyRenamed: (String) -> Bool = { _ in false }
+    /// Where a files view (`where X --files`) records every file the block lists, past its caps.
+    var filesCollector: WhereFilesCollector?
 
     /// Whether the store's usage verdict is what answers for a declaration of this kind, so the name-matched stand-in for it is this one rather than a scan for calls.
     static func standsIn(for kind: SymbolKind) -> Bool {
@@ -25,8 +29,8 @@ struct SyntacticTypeUsage {
 
     /// The block for `rows`, one verdict per name, or nothing where no row is left to stand in for or there is no working tree to scan.
     ///
-    /// `listedAbove` is whether the index store resolved a site to another declaration of the name and the answer already listed it there: such a site is no use of these rows, and listing it again would repeat it.
-    func lines(for rows: [SymbolRow], qualifiedName: (SymbolRow) throws -> String, listedAbove: (SyntacticCallSite) -> Bool = { _ in false }, paging: SyntacticSweepPaging? = nil) async throws -> [String] {
+    /// `listedAbove` is whether the index store resolved a site to another declaration of the name and the answer already handed it on there: such a site is no use of these rows, and listing it again would repeat it. `listedInPlace` is whether that answer listed it on a line of its own, rather than only counting it.
+    func lines(for rows: [SymbolRow], qualifiedName: (SymbolRow) throws -> String, listedAbove: (SyntacticCallSite) -> Bool = { _ in false }, listedInPlace: (SyntacticCallSite) -> Bool = { _ in false }, paging: SyntacticSweepPaging? = nil) async throws -> [String] {
         guard let callSites, !rows.isEmpty else { return [] }
         // An extension written through a dotted path is found by its final component, the one name a type use writes as a token of its own.
         let byName = Dictionary(grouping: rows) { $0.kind == .extensionKind ? DeclaredTypeName.last(ofPath: $0.name) : $0.name }
@@ -66,8 +70,9 @@ struct SyntacticTypeUsage {
             let otherOwners = try OtherOwnerQualifiers(store: store, name: name, asked: named)
             var spelledAsAnother = OtherOwnerQualifiers.Lines()
             var readAsAnother = OtherOwnerQualifiers.Lines()
-            for site in sites {
-                try tally.add(site, named: name, listedAbove: listedAbove(site), meansAnother: scope.meansAnother(site))
+            let foreign = try headersQualifiedAsAnother(named: name, asked: named, sites: sites)
+            for site in sites where foreign[site.path]?[site.line].map({ $0 != site.qualifier }) ?? true {
+                try tally.add(site, named: name, listedAbove: listedAbove(site), listedInPlace: listedInPlace(site), meansAnother: scope.meansAnother(site))
                 spelledAsAnother.add(site, scope: otherOwners)
                 // Kept, never set apart: reading a qualifier from the index alone is not sound.
                 try readAsAnother.add(site, owners: qualified.otherOwners(of: site))
@@ -82,14 +87,14 @@ struct SyntacticTypeUsage {
                     try .folded(named.map { try qualifiedName($0.row) }.sorted().joined(separator: " or "))
                 }
                 for site in sitesByName[aliasName] ?? [] {
-                    tally.add(site, named: aliasName, listedAbove: listedAbove(site), writtenAs: spelling)
+                    tally.add(site, named: aliasName, listedAbove: listedAbove(site), listedInPlace: listedInPlace(site), writtenAs: spelling)
                     spelledAsAnother.add(site, scope: nil)
                     readAsAnother.add(site, owners: [])
                 }
             }
             for local in locals[name] ?? [] {
                 for site in localSites[local.alias.name] ?? sitesByName[local.alias.name] ?? [] where local.isMeant(at: site) {
-                    tally.add(site, named: local.alias.name, listedAbove: listedAbove(site), writtenAs: local.spelling)
+                    tally.add(site, named: local.alias.name, listedAbove: listedAbove(site), listedInPlace: listedInPlace(site), writtenAs: local.spelling)
                     spelledAsAnother.add(site, scope: nil)
                     readAsAnother.add(site, owners: [])
                 }
@@ -159,6 +164,25 @@ struct SyntacticTypeUsage {
         return headers
     }
 
+    /// Per file, the lines of the header of each extension written through a qualifier that ``ExtensionPlacement`` places as another type's than the one `asked` declares.
+    ///
+    /// `extension Shelf.Box` beside the tree's `Alpha.Box`, where `Shelf` is another module's name. Such a header is no use of `asked`, so it is neither counted nor listed; none where `asked` is not one type at one path in one module. Each header line maps to the qualifier it is written through, so only that spelling is left out: an unqualified use on the same line, as in `extension Holder.Item { func convert() -> Item { Item() } }`, still counts.
+    private func headersQualifiedAsAnother(named name: String, asked: [SymbolRow], sites: [SyntacticCallSite]) throws -> [String: [Int: String]] {
+        guard asked.allSatisfy(\.kind.isTypeDeclaration) else { return [:] }
+        let placements = try asked.map { try ExtensionPlacement(of: $0, in: store) }
+        guard let placement = placements.first, placements.allSatisfy({ $0.module == placement.module && $0.path == placement.path }) else { return [:] }
+        var headers: [String: [Int: String]] = [:]
+        for written in try ExtensionPaths.written(endingIn: name, in: store) where written.path.contains(".") {
+            guard try placement.place(written) == .another else { continue }
+            let extended = written.row
+            let span = extended.line ... max(extended.line, extended.endLine)
+            let qualifier = String(written.path.dropLast(name.count + 1))
+            guard let header = sites.filter({ $0.path == extended.path && span.contains($0.line) && $0.qualifier == qualifier }).map(\.line).min() else { continue }
+            headers[extended.path, default: [:]][header] = qualifier
+        }
+        return headers
+    }
+
     /// The verdict's clause for the lines of `used` that are the header of a bare extension placed as another type's, or `nil` where there are none.
     private static func placedClause(named name: String, kind: String, used: [String: Set<Int>], headers: [String: [Int: String]]) -> String? {
         let count = headers.reduce(0) { total, file in total + file.value.keys.count { used[file.key]?.contains($0) == true } }
@@ -199,15 +223,57 @@ struct SyntacticTypeUsage {
         return found
     }
 
+    /// Per file, the lines of `used` that write `name` in the inheritance clause of a conformer the conformers block lists, in a plain answer; none under `--refs` or a caller standing the answer in for a search's lines, which list every line.
+    ///
+    /// A clause continued onto the next lines is read from the file's parse, and a line is a conformance only where every use on it, by `used`'s columns, is a head of those clauses: a line that also uses the type elsewhere stays a use. Where the file cannot be read, a conformer's declaration line stands for it. The block lists the first ``WhereRenderer/listCap`` conformers, so no more are counted.
+    private func conformanceLines(of name: String, among used: [String: [Int: Set<Int>]]) throws -> [String: Set<Int>] {
+        guard pointer != nil else { return [:] }
+        var unread: [String: Set<Int>] = [:]
+        var unreadable: Set<String> = []
+        var heads: [String: [Int: Set<Int>]] = [:]
+        var parsed: [String: [ConformanceHeads.Start: [String: Set<ConformanceHeads.Start>]]] = [:]
+        for row in try store.conformers(of: name).prefix(WhereRenderer.listCap) {
+            guard let lines = used[row.path] else { continue }
+            if parsed[row.path] == nil {
+                let source = fileSource?(row.path)
+                parsed[row.path] = source.map(ConformanceHeads.declarations(in:)) ?? [:]
+                if source == nil {
+                    unreadable.insert(row.path)
+                }
+            }
+            let clause = ConformanceHeads.starts(writing: name, in: row, of: parsed[row.path] ?? [:])
+            if clause.isEmpty, unreadable.contains(row.path), lines[row.line] != nil {
+                unread[row.path, default: []].insert(row.line)
+            }
+            for start in clause {
+                heads[row.path, default: [:]][start.line, default: []].insert(start.column)
+            }
+        }
+        var found = unread
+        for (path, lines) in heads {
+            for (line, columns) in lines where used[path]?[line]?.isSubset(of: columns) == true {
+                found[path, default: []].insert(line)
+            }
+        }
+        return found
+    }
+
     /// The verdict for one name and the files backing it, capped as the store's usage listing is, or with `pointer` the verdict alone, naming the query that lists them.
     private func verdict(for name: String, tally: Tally, ownerships: [Ownership], owners: String, deleted: Set<String>, paging: SyntacticSweepPaging?) throws -> [String] {
         let used = tally.used
+        // A plain answer lists a conformer's header once, in the conformers block, so the rows leave those lines out and the cap does not count them, as the store's verdict does.
+        let conformances = try conformanceLines(of: name, among: tally.usedColumns)
+        let rest = Tally.lines(of: used, less: [conformances])
+        let conformanceCount = Tally.count(conformances, less: [])
+        // Few enough uses are listed in place, as the store's verdict does, rather than handing a handful of lines to `--refs`.
+        let pointer = rest.values.reduce(0) { $0 + $1.count } <= WhereRenderer.listedInPlaceCap ? nil : self.pointer
         let ownLines = Tally.count(tally.own, less: [used])
         let anotherLines = Tally.count(tally.another, less: [used, tally.own])
         let localLines = Tally.count(tally.local, less: [used, tally.own, tally.another])
         let outsideLines = Tally.count(tally.outside, less: [used, tally.own, tally.another, tally.local])
         let aliasLines = Tally.count(tally.aliasDeclarations, less: [used, tally.own, tally.another, tally.local, tally.outside])
         let listedLines = Tally.count(tally.listedAbove, less: [used, tally.own, tally.another, tally.local, tally.outside, tally.aliasDeclarations])
+        let listedInPlaceLines = Tally.count(tally.listedInPlace, less: [used, tally.own, tally.another, tally.local, tally.outside, tally.aliasDeclarations])
         let writtenAsAlias = Tally.count(tally.throughAlias, less: [tally.direct])
         // A no-store sweep is the whole of what a rename has, and nothing else lists a line the type writes its own name on or a typealias declaration names it in, so both are listed with the uses rather than only counted.
         let swept = paging == nil ? [:] : Tally.lines(of: tally.own, less: [used]).merging(Tally.lines(of: tally.aliasDeclarations, less: [used, tally.own, tally.another, tally.local, tally.outside])) { $0.union($1) }
@@ -233,6 +299,7 @@ struct SyntacticTypeUsage {
                 + "kept as \(keptThroughAlias == 1 ? "a use" : "uses") though not proven to name it, as \(reasons)")
         }
         if tally.chain.reachedCap {
+            filesCollector?.recordAliasFoldCapped()
             clauses.append("more typealiases than the \(WhereRenderer.typealiasFoldCap) this follows, so the count is a lower bound")
         }
         if aliasLines > 0 {
@@ -253,7 +320,10 @@ struct SyntacticTypeUsage {
         }
         // Counted rather than listed a second time: the store resolved these sites, and the answer lists them under the declaration it resolved them to.
         if listedLines > 0 {
-            clauses.append("\(listedLines) more line\(listedLines == 1 ? "" : "s") the index store resolved to another declaration of the name, \(pointer == nil ? "listed" : "counted") above under it, so not use")
+            // Said of what the store's answer did with each, since it lists few and counts many.
+            let countedLines = listedLines - listedInPlaceLines
+            let handling = countedLines == 0 ? "listed above under it" : listedInPlaceLines == 0 ? "counted above under it" : "\(listedInPlaceLines) listed above under it, \(countedLines) counted"
+            clauses.append("\(listedLines) more line\(listedLines == 1 ? "" : "s") the index store resolved to another declaration of the name, \(handling), so not use")
         }
         let otherModuleExtensions = ownerships.reduce(0) { $0 + $1.otherModuleExtensions }
         if otherModuleExtensions > 0 {
@@ -263,11 +333,13 @@ struct SyntacticTypeUsage {
                 : "\(otherModuleExtensions) extensions in other modules counted as uses — deleting the type breaks those modules\(guessedNote)")
         }
         let ownClause = clauses.map { "; " + $0 }.joined()
-        let listed = used.merging(swept) { $0.union($1) }
+        let listed = rest.merging(swept) { $0.union($1) }
         let none = "no use spelled \"\(name)\" anywhere — no construction, no member reached through it, and no annotation, generic argument, conformance, cast or attribute naming it; a string literal is not searched\(ownClause) (for \(owners))"
-        guard !listed.isEmpty else {
+        guard !used.isEmpty || !swept.isEmpty else {
             return [none]
         }
+        // Every line the rows list, past both caps below, with the conformances the conformers block lists for them.
+        filesCollector?.recordWrittenLines(used.merging(swept) { $0.union($1) })
         var block: [String]
         if used.isEmpty {
             block = [none + ":"]
@@ -275,8 +347,9 @@ struct SyntacticTypeUsage {
             let paths = used.keys.sorted()
             let count = used.values.reduce(0) { $0 + $1.count }
             let split = try WhereRenderer.usageSplit(sitesByPath: paths.map { ($0, used[$0]?.count ?? 0) }, deleted: deleted) { try store.fileRow(path: $0)?.imports }
-            block = ["\"\(name)\" (\(count) use\(count == 1 ? "" : "s") by written name in \(paths.count) file\(paths.count == 1 ? "" : "s")) — "
-                + split.tally.joined(separator: " · ") + "\(ownClause) (for \(owners))" + (pointer.map { " — where --refs \($0) lists them" } ?? ":")]
+            let conformed = conformanceCount == 0 ? "" : ", \(conformanceCount) of them the conformance\(conformanceCount == 1 ? "" : "s") listed below"
+            block = ["\"\(name)\" (\(count) use\(count == 1 ? "" : "s") by written name in \(paths.count) file\(paths.count == 1 ? "" : "s")\(conformed)) — "
+                + split.tally.joined(separator: " · ") + "\(ownClause) (for \(owners))" + (pointer.map { " — where --refs \($0) lists them" } ?? (listed.isEmpty ? "" : ":"))]
         }
         // A question about where a type is did not ask for its uses: the count stands alone, and --refs lists them.
         guard pointer == nil else { return block }
@@ -469,6 +542,8 @@ private extension SyntacticTypeUsage {
         var aliasDeclarations: [String: Set<Int>] = [:]
         /// Per file, the lines holding a site the store resolved to another declaration of the name and listed above.
         var listedAbove: [String: Set<Int>] = [:]
+        /// Per file, the lines of those that the store's answer listed on a line of its own.
+        var listedInPlace: [String: Set<Int>] = [:]
         /// The qualified names of the typealiases a use was written through.
         var spellings: Set<String> = []
         /// Per file, the lines writing a typealias nothing proves names the type, kept as uses.
@@ -483,6 +558,8 @@ private extension SyntacticTypeUsage {
         var caveat: String?
         /// Per file and line, the header of a bare extension placed as another type's, with what to call that type.
         var extendsAnother: [String: [Int: String]] = [:]
+        /// Per file and line of ``used``, the columns of the names its uses write.
+        var usedColumns: [String: [Int: Set<Int>]] = [:]
         /// The typealias declarations whose right-hand side a site has already been counted as, one site each, since a plain path writes the name once and a second site on the line is something else.
         private var declared: Set<Int64> = []
 
@@ -496,7 +573,7 @@ private extension SyntacticTypeUsage {
         }
 
         /// Counts `site`, written as `name`: `writtenAs` is how the typealiases of that name are spelled, folded in or kept, where `name` is a typealias of the type rather than the type's own name.
-        mutating func add(_ site: SyntacticCallSite, named name: String, listedAbove: Bool = false, meansAnother: Bool = false, writtenAs: AliasChain.Spelling? = nil) {
+        mutating func add(_ site: SyntacticCallSite, named name: String, listedAbove: Bool = false, listedInPlace: Bool = false, meansAnother: Bool = false, writtenAs: AliasChain.Spelling? = nil) {
             // A site the store resolved is settled before any rule by name. Past it, a line is the type declaring itself
             // only inside the own spans of every declaration the name stands for: a line one of them owns can be a use
             // of another, and no use may leave the answer. Counted, never dropped.
@@ -505,6 +582,9 @@ private extension SyntacticTypeUsage {
             }
             if listedAbove {
                 self.listedAbove[site.path, default: []].insert(site.line)
+                if listedInPlace {
+                    self.listedInPlace[site.path, default: []].insert(site.line)
+                }
             } else if !ownerships.isEmpty, ownerships.allSatisfy({ $0.owns(site) }) {
                 own[site.path, default: []].insert(site.line)
             } else if meansAnother {
@@ -520,12 +600,21 @@ private extension SyntacticTypeUsage {
                 keptThroughAlias[site.path, default: []].insert(site.line)
                 keptSpellings.formUnion(kept)
                 keptReasons.insert(unproven)
+                placeUse(site)
             } else if case let .folded(spelling) = writtenAs {
                 throughAlias[site.path, default: []].insert(site.line)
                 spellings.insert(spelling)
+                placeUse(site)
             } else {
                 direct[site.path, default: []].insert(site.line)
+                placeUse(site)
             }
+        }
+
+        /// Records the column of the name a use writes on its line, 0 where the scan gave none.
+        private mutating func placeUse(_ site: SyntacticCallSite) {
+            let column = site.nameAt.flatMap { $0.split(separator: ":").last.flatMap { Int($0) } } ?? 0
+            usedColumns[site.path, default: [:]][site.line, default: []].insert(column)
         }
 
         /// The alias proven to name the type whose right-hand side `site` is, written with the qualifier it names the type with, and not yet counted; an unproven alias's line stays a use, and so does the line of one that builds a type from it.

@@ -362,6 +362,22 @@ struct MCPServerTests {
         await session.close()
     }
 
+    /// `files: true` alone gives the files view of the sweep, as with `refs: true` beside it; `refs: true` alone does not.
+    @Test
+    func filesImpliesRefsAndGivesTheFilesView() async throws {
+        let root = try MCPTestRepo.make()
+
+        let files = try await Self.call("where", ["symbol": "Alpha", "files": true], in: root)
+        let both = try await Self.call("where", ["symbol": "Alpha", "files": true, "refs": true], in: root)
+        let refs = try await Self.call("where", ["symbol": "Alpha", "refs": true], in: root)
+
+        #expect(!files.isError)
+        #expect(files.text.contains("files naming "), "\(files.text)")
+        #expect(files.text.contains("Sources/App/Alpha.swift"), "\(files.text)")
+        #expect(files.text == both.text)
+        #expect(!refs.text.contains("files naming "), "\(refs.text)")
+    }
+
     /// A `root:` term inside a search query is the root argument, misplaced — `search uses:colorScheme root:/path/to/app` would otherwise be refused as "unknown field root".
     @Test
     func anInlineRootTermInASearchQueryIsLiftedToTheRootArgument() async throws {

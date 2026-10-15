@@ -46,8 +46,9 @@ struct GrepLogCallIdTests {
             cwd: "/repo",
             ledger: AdviceLedger(directory: scratch.appendingPathComponent("advice")),
             usage: UsageLog(fileURL: scratch.appendingPathComponent("usage.jsonl")),
-            suppressions: recording.log
-        ) { _, _, _ in .withheld(.notExact) }
+            suppressions: recording.log,
+            answerer: { _, _, _ in .withheld(.notExact) }
+        )
 
         #expect(outcome.verdict.rule == "notAnswerable")
         #expect(recording.rules == ["notAnswerable"])
@@ -155,7 +156,7 @@ struct GrepLogCallIdTests {
         fixture.take(tool: IndexToolName.prefix + "digest", input: ["target": "Sources/App/Shell.swift"])
         let lookup = try fixture.shellRead("cat Sources/App/Shell.swift")
 
-        let verdict = PreToolUseCommand.outcome(
+        let verdict = try PreToolUseCommand.outcome(
             to: lookup,
             session: "s1",
             context: fixture.context("s1"),
@@ -163,7 +164,7 @@ struct GrepLogCallIdTests {
             cwd: fixture.repo.path,
             ledger: fixture.ledger,
             usage: UsageLog(fileURL: fixture.stores.appendingPathComponent("usage.jsonl")),
-            suppressions: recording.log
+            suppressions: recording.log, answerer: InPlaceAnswerTests.scratchAnswerer()
         ).verdict
 
         #expect(verdict.rule == "alreadyDigested")

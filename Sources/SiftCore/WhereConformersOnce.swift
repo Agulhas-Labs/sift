@@ -6,14 +6,30 @@
 ///
 /// Two blocks used to answer this — the store's and the scan by written name — listing the same conformers twice under captions that never said which of them conform directly, so a reader asking exactly that went back to grep.
 struct ConformersOnce {
-    /// The rendered block, a blank line first.
-    let lines: [String]
+    /// The rendered block, a blank line first; the answer adds its file accounting last, once the sections it counts are known.
+    var lines: [String]
     /// The repo-relative paths of the listed conformers' declarations, for the parse-error banner.
     let citedPaths: [String]
     /// The repo-relative `path:line` of each conformance the store recorded for a listed conformer, in a file unchanged since the build, of a protocol whose own declaration is in a file unchanged since the build too.
     ///
     /// A protocol's usage rows leave these lines out, because the block lists them; a file edited since the build keeps its lines there, since its recorded line may no longer be the clause.
     let clauseLines: Set<String>
+    /// The ``clauseLines`` that sit on the first line of the span the block prints for their conformer.
+    ///
+    /// A listed row names only that first line, so under `--refs` these alone are left out of the sweep: a clause on a later line (`@frozen` above the declaration, a clause wrapped onto a continuation line) is named by no row of the block and keeps its row in the sweep.
+    var startLines: Set<String> = []
+    /// The repo-relative `path:line:column` of each conformance behind ``clauseLines``, where the store recorded the protocol's name in the clause.
+    var clauseSites: Set<String> = []
+    /// The repo-relative files of every conformer the block counts, listed or past the cap, for its file accounting.
+    var conformerPaths: Set<String> = []
+
+    /// `lines` less each line on which one of `hits` is not at a conformance's clause site, so a line that also uses the protocol keeps its row and counts as a use.
+    func folded(_ lines: Set<String>, among hits: [SemanticStore.Hit], relativePath: (String) -> String) -> Set<String> {
+        lines.subtracting(hits.compactMap { hit in
+            let line = "\(relativePath(hit.path)):\(hit.line)"
+            return clauseSites.contains("\(line):\(hit.column)") ? nil : line
+        })
+    }
 }
 
 extension ConformersOnce {
@@ -334,8 +350,18 @@ extension WhereRenderer {
             + Self.driftDetails(states: Array(statesByPath.values))
             + (others == 0 ? [] : ["\(others) left out: the index store records \(others == 1 ? "its clause" : "their clauses") as conforming to another \"\(protocolRow.name)\""])
         var lines = ["", "conformers of \(protocolRow.name) (\(details.joined(separator: ", "))):"]
+        // Every conformer, not the listed ones.
+        for entry in sorted {
+            if let row = entry.row {
+                filesCollector?.recordCode(path: row.path, lines: [row.line], state: state(entry))
+            } else if let hit = entry.hits.first {
+                filesCollector?.recordCode(path: context.relativePath(hit.path), lines: [hit.line], state: state(entry))
+            }
+        }
         var cited: [String] = []
         var clauseLines: Set<String> = []
+        var startLines: Set<String> = []
+        var clauseSites: Set<String> = []
         for (entry, classified) in zip(sorted, marks).prefix(Self.listCap) {
             // A row whose clause cannot be read carries no mark of its own: the stale-file label after it says all that is known.
             let mark: String? = switch classified {
@@ -357,13 +383,19 @@ extension WhereRenderer {
             }
             // A conformance written through an alias keeps its line in the usage rows, which is where it was listed before.
             for hit in entry.hits where entry.alias == nil && occurrences.state(of: hit.path).isLive {
-                clauseLines.insert("\(context.relativePath(hit.path)):\(hit.line)")
+                let key = "\(context.relativePath(hit.path)):\(hit.line)"
+                clauseLines.insert(key)
+                clauseSites.insert("\(key):\(hit.column)")
+                if hit.line == (entry.row?.line ?? entry.hits.first?.line) {
+                    startLines.insert(key)
+                }
             }
         }
         if sorted.count > Self.listCap {
             lines.append("  truncated: \(sorted.count - Self.listCap) more conformers")
         }
-        return ConformersOnce(lines: lines, citedPaths: cited, clauseLines: clauseLines)
+        let conformerPaths = Set(sorted.compactMap { entry in entry.row?.path ?? entry.hits.first.map { context.relativePath($0.path) } })
+        return ConformersOnce(lines: lines, citedPaths: cited, clauseLines: clauseLines, startLines: startLines, clauseSites: clauseSites, conformerPaths: conformerPaths)
     }
 
     /// Appends each declared type's extensions and conformers, a protocol's one merged block standing in for the scan's where the store answered it.
@@ -379,6 +411,9 @@ extension WhereRenderer {
         for typeName in typeNames.sorted() {
             let owners = declarations.filter { $0.kind.isTypeDeclaration && $0.name == typeName }
             let extensions = try ExtensionPaths.listed(under: owners, named: typeName, in: store)
+            for (row, _) in extensions {
+                filesCollector?.recordDeclaration(path: row.path, owner: nil, isExtension: true)
+            }
             if !extensions.isEmpty {
                 lines.append("")
                 lines.append("extensions of \(typeName) (\(extensions.count)):")
@@ -427,6 +462,9 @@ extension WhereRenderer {
                 let otherOwners = try OtherOwnerQualifiers(store: store, name: typeName, asked: asked, kinds: [.protocolKind, .classKind])
                 let rows = conformers.map { ($0, nil as String?) } + walk.rows.map { walked in
                     (walked.row, walked.alias.map { "through typealias \($0)" } ?? "inherited through \(walked.through)")
+                }
+                for (row, _) in rows {
+                    filesCollector?.recordCode(path: row.path, lines: [row.line])
                 }
                 for (row, through) in rows.prefix(Self.listCap) {
                     citedPaths.append(row.path)

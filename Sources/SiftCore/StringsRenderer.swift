@@ -29,7 +29,8 @@ struct StringsRenderer {
         if plain.isEmpty, answer.hits.isEmpty, !around.contains(where: \.isListable) {
             lines.append("no Swift string literal contains it either")
         }
-        lines += StringsAroundSection.lines(around, query: query)
+        // A plain literal already spells the query: the matches on one of its words alone are counted only where nothing better answered.
+        lines += StringsAroundSection.lines(plain.isEmpty ? around : around.filter(\.isListable), query: query)
         return lines.joined(separator: "\n")
     }
 
@@ -74,7 +75,7 @@ struct StringsRenderer {
         let names = shortestDistinctSuffixes(shown.map(\.path))
         let named = zip(names, shown).map { "\($0) (\($1.count))" }
         let more = counts.count > testFileCap ? ", …" : ""
-        // The rule that splits them, the XCTest or Testing import and never the path, is said once per session.
+        // The rule that splits them, the XCTest or Testing import and never the path, is said by the standing caveats (``StandingCaveats``) on an empty `where` verdict, not here.
         return "in tests: \(tests.count) site\(tests.count == 1 ? "" : "s") in \(counts.count) file\(counts.count == 1 ? "" : "s") — " + named.joined(separator: ", ") + more
     }
 

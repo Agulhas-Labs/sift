@@ -43,6 +43,6 @@ struct WhereReceiverGroupingTests {
         let line = try #require(output.split(separator: "\n").first { $0.hasPrefix("\"record\" (") })
 
         #expect(!output.contains("Issue.record"), "\(output)")
-        #expect(line.contains("on types outside the tree (Binding ×2)"), "\(line)")
+        #expect(line.contains("on types the tree does not declare (Binding ×2)"), "\(line)")
     }
 }

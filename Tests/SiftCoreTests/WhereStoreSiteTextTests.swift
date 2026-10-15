@@ -206,8 +206,8 @@ struct WhereStoreSiteTextTests {
         let usage = try await engine.lookup(symbol: "Spark", freshness: engine.ensureFresh(), options: WhereOptions(standsInForSearch: true))
         #expect(Self.rowsUnder("used by Lib.Spark:", in: usage) == [
             "Sources/Lib/Use.swift (2):  (file changed since last build)",
-            "  :1",
-            "  :3",
+            "  :1  light()",
+            "  :3  light()",
         ], "\(usage)")
         #expect(!ExactAnswer.locations(inWhereAnswer: usage).contains { $0.path == "Sources/Lib/Use.swift" }, "\(usage)")
     }

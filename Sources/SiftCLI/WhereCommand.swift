@@ -20,6 +20,9 @@ struct WhereCommand: AsyncParsableCommand {
     @Flag(name: .customLong("refs"), help: "List every reference site, for rename/delete sweeps — a type's usage verdict comes without it. After the code sites, the comments, strings, Markdown lines and file names that write the name, under not code.")
     var includeReferences = false
 
+    @Flag(name: .customLong("files"), help: "With --refs (implied): only the files the sweep names, one per line, with counts.")
+    var filesOnly = false
+
     @Option(name: .customLong("offset"), help: "Skip this many files in the references listing (from a truncated: marker).")
     var offset: Int = 0
 
@@ -31,6 +34,12 @@ struct WhereCommand: AsyncParsableCommand {
     /// Name-matched call sites listed per unanswered symbol at the shell: the block's heading carries the total, so a sample says what kind of sites they are without a page of leads.
     static var nameMatchedSiteCap: Int {
         5
+    }
+
+    func validate() throws {
+        if let message = BlankTargetRefusal.message(tool: "where", targets: [symbol]) {
+            throw ValidationError(message)
+        }
     }
 
     func run() async throws {
@@ -47,7 +56,7 @@ struct WhereCommand: AsyncParsableCommand {
     func served(registry: RootsRegistry = .standard()) async throws -> LoggedLookup.Served {
         let (engine, note) = try rootOptions.makeEngine(probing: symbol, registry: registry, storesNothing: syntacticOnly)
         let options = WhereOptions(
-            includeSemantic: !syntacticOnly, includeReferences: includeReferences, offset: offset, nameMatchedSiteCap: Self.nameMatchedSiteCap
+            includeSemantic: !syntacticOnly, includeReferences: includeReferences || filesOnly, offset: offset, nameMatchedSiteCap: Self.nameMatchedSiteCap, filesOnly: filesOnly
         )
         if let revision {
             let text = try await engine.lookup(symbol: symbol, at: revision, options: options)

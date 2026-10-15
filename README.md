@@ -24,20 +24,24 @@ $ sift run -- swift test
     Expectation failed: depot.count == 2 → false depot.count → 1
 totals: ✘ failed · Swift Testing 3 tests in 1 suite, 1 failure, 0 skipped
 inventory: 3 declared, 3 reported
-raw: Depot @ ec26cde (dirty: 1) · .sift/runs/failed-8dd8a8d4-run-20260929-090807Z-1b642cfb.log (25 lines in, 6 out), kept until it passes or 5 newer failures
+raw: Depot @ ec26cde (Swift dirty: 1) · .sift/runs/failed-8dd8a8d4-run-20260929-090807Z-1b642cfb.log (25 lines in, 6 out), kept until it passes or 5 newer failures
 ```
 
-Errors keep their file, line and column; warnings are deduplicated; the full log is kept and named on the last
+Errors keep their file, line and column; sites of one warning message fold into the first with `×N` (the rest are in the raw log); the full log is kept and named on the last
 line. On the 20 build and test outputs we benchmarked, it cut the bytes by a median 94% and no answer there was
-larger than its log ([Benchmarks](Benchmarks/RESULTS-run-compression.md)). A filtered run that ran nothing
+larger than its log ([Benchmarks](Benchmarks/RESULTS-run-compression.md)). End to end, on one private codebase, 0.1.5
+cut the pooled cost of a session by 9.5% over 216 paired runs (four tasks cheaper, two dearer, three no detectable difference)
+([results](Benchmarks/RESULTS-live.md)). A filtered run that ran nothing
 fails instead of passing, and an unfiltered `swift test` is counted against the tests the index declares.
 
 **The hooks** `sift install` adds to Claude Code:
 
 - a whole-file Read of a large Swift file is answered in place by its digest (each member's signature and line
-  range, a fraction of the file), so the next read can be a ranged one. The same Read again always goes through;
-- an edit that leaves a `.swift` file unparseable comes straight back with its errors;
-- a bare `swift build`, `swift test` or `xcodebuild` is pointed at `sift run`, and a session that edited Swift
+  range, a fraction of the file), so the next read can be a ranged one. This is the `Read` tool; a whole-file `cat` or `sed` is
+  answered only when the digest spares more than the turn costs, and small files are let through. The same Read again always
+  goes through ([the rules](Docs/Guide.md#the-shell-and-why-advice-was-not-enough));
+- an edit that leaves a `.swift` file unparseable comes straight back with its errors, once per broken version of the file;
+- a bare `swift build`, `swift test` or `xcodebuild` is pointed at `sift run` (a build whose output is redirected to a log is let through as a gate leg, and a piped one is let through too, as a caller trimming the output), and a session that edited Swift
   is sent back, once, to build before it stops.
 
 ## Semantic lookups, for when grep is too noisy
@@ -64,10 +68,10 @@ fix?), `sift diff`, `sift build --analyse` and `sift test` (a scheme sharded acr
 - [The DocC catalog](Docs/Sift.docc/): getting started, the four tools, builds and tests, the hooks.
 - [Sift.md](Sift.md): the rule an agent reads. [Docs/Design.md](Docs/Design.md): how it works and why.
 - [Docs/AnswerContract.md](Docs/AnswerContract.md): what every answer promises about itself.
-- [Benchmarks/](Benchmarks/): what we measured and how to rerun it. [CHANGELOG.md](CHANGELOG.md).
+- [Benchmarks/](Benchmarks/): what was measured and how it was run; a rerun needs your own corpus and tasks file (`bench.py run --corpus <repo>@<commit> --tasks <file>`; `Benchmarks/tasks.example.json` is the template), since the measured commit is not in this repository's history. [CHANGELOG.md](CHANGELOG.md).
 
 Nothing leaves your machine. The index is a SQLite file at `.sift/index.db`, kept out of `git status`;
-`sift install` copies each agent setting it rewrites to `.bak-sift` first, and `sift uninstall` takes it all
+`sift install` copies each settings or rule file it rewrites to `.bak-sift` first (what `claude mcp add` and `codex mcp add` write is theirs), and `sift uninstall` takes it all
 back out. [What it touches](Docs/Guide.md#10-what-it-touches) lists every file.
 
 ## License

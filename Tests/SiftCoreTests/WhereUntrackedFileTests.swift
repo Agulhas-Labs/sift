@@ -67,11 +67,11 @@ struct WhereUntrackedFileTests {
         let property = try await engine.lookup(symbol: "Gadget.idle", freshness: engine.ensureFresh())
 
         for answer in [callers, sweep] {
-            #expect(answer.contains("semantic: stale since last build (1 new file: Sources/Lib/Depot.swift)"), "\(answer)")
+            #expect(answer.contains("semantic: stale since last build (1 new cited file: Sources/Lib/Depot.swift)"), "\(answer)")
             #expect(answer.contains("callers of Lib.compute() (2):"), "\(answer)")
             #expect(answer.split(separator: "\n").contains("\(Self.heading)Sources/Lib/Depot.swift:3"), "\(answer)")
         }
-        #expect(type.contains("semantic: stale since last build (1 new file: Sources/Lib/Depot.swift)"), "\(type)")
+        #expect(type.contains("semantic: stale since last build (1 new cited file: Sources/Lib/Depot.swift)"), "\(type)")
         #expect(type.contains("no references to Lib.Gadget recorded in the store"), "\(type)")
         #expect(type.split(separator: "\n").contains("\(Self.heading)Sources/Lib/Depot.swift:2"), "\(type)")
         #expect(property.contains("semantic: fresh"), "\(property)")
@@ -92,7 +92,7 @@ struct WhereUntrackedFileTests {
         let callers = try await engine.lookup(symbol: "compute", freshness: engine.ensureFresh())
         let rows = callers.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 
-        #expect(callers.contains("semantic: stale since last build (3 files: 2 changed, 1 new)"), "\(callers)")
+        #expect(callers.contains("semantic: stale since last build (3 cited files: 2 changed, 1 new)"), "\(callers)")
         let mark = try #require(rows.firstIndex(of: "  Sources/Lib/First.swift (1):  (file changed since last build)"), "\(callers)")
         #expect(rows.dropFirst(mark + 1).prefix(2).last == "    written since the build, by name: :6", "\(callers)")
         #expect(rows.contains("\(Self.heading)Sources/Lib/Depot.swift:2"), "\(callers)")
@@ -204,7 +204,7 @@ struct WhereUntrackedFileTests {
         let answer = try await engine.lookup(symbol: "make", freshness: engine.ensureFresh())
 
         #expect(answer.contains("under 2 owners"), "\(answer)")
-        #expect(answer.contains("semantic: stale since last build (1 new file: Sources/Lib/GizmoTools.swift)"), "\(answer)")
+        #expect(answer.contains("semantic: stale since last build (1 new cited file: Sources/Lib/GizmoTools.swift)"), "\(answer)")
         #expect(answer.split(separator: "\n").contains("\(Self.heading)Sources/Lib/GizmoTools.swift:2"), "\(answer)")
     }
 }

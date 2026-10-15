@@ -50,6 +50,9 @@ public struct BuildInputEditsSinceGreenRun {
             if skippingSidechains, object["isSidechain"] as? Bool == true {
                 continue
             }
+            if TranscriptRepeats.isRequestBlob(object) {
+                continue
+            }
             for block in (object["message"] as? [String: Any])?["content"] as? [[String: Any]] ?? [] {
                 switch block["type"] as? String {
                 case "tool_use":

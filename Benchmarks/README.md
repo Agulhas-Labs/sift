@@ -29,11 +29,18 @@ Code's `stream-json` result:
 Reported per task and in total: the paired difference B minus A, median and range over the repeats, and
 success counts per arm.
 
+A session at one run path samples one behaviour mode: which tools a model run calls is a near-deterministic
+function of the prompt bytes, and the corpus run path is one of those bytes (#799). `--paths K` spreads the
+repeats over K run paths (`--repeats` is per path), pairs A with B at the same path, and bootstraps the
+interval over paths rather than runs. For a "does this change help" claim use `--paths 6 --repeats 2`, run
+from the same checkout as the session it is compared with: the path names are the checkout's, so the same
+checkout means the same path set.
+
 ## The corpus
 
-sift's own repository at commit `27d3aca3`, written out with `git archive` into a fresh one-commit
+sift's own repository at commit `27d3aca3` (absent from the public repository, whose history starts at the release cut; a rerun passes its own corpus and tasks file with `bench.py run --corpus <repo>@<commit> --tasks <file>`; `Benchmarks/tasks.example.json` is the template), written out with `git archive` into a fresh one-commit
 repository for every run, so no history hints at an injected bug. It is about 93k lines of Swift in three
-modules, private, so the model cannot answer from memory.
+modules, and was private when measured, so the model could not answer from memory.
 
 A public corpus was the first choice and was dropped: the repository's example-name gate
 (`ExampleNamesTests`) fails on any camel-cased name that this tree does not declare, and its permit list
@@ -157,11 +164,15 @@ package are two schemes): a plain `build` leaves the tests out of every caller l
 ```sh
 sh Benchmarks/run.sh --repeats 3                 # every task in tasks.json, both arms
 sh Benchmarks/run.sh --task <id> --repeats 1     # one task
+sh Benchmarks/run.sh --paths 6 --repeats 2       # 6 run paths x 2 repeats, bootstrapped over paths
 sh Benchmarks/run.sh --tasks <file> --corpus <repository>@<commit> --repeats 10
 sh Benchmarks/analyse.sh [session]               # the paired table, also written as table.md
 python3 Benchmarks/bench.py validate --tasks <file>
+python3 Benchmarks/bench.py calls <session> --task <id> --arm B   # each run's tool calls, one per line
+python3 Benchmarks/bench.py compare <session>... -- <session>... --task <id> --arm B   # one arm across sessions, pooled
 python3 Benchmarks/run-compression.py report --out <out>   # see RESULTS-run-compression.md
-git show ec096ea3:Sift.md > .build/rule-ec096ea3.md
+# ec096ea3 is a commit of the private history, absent from the public repository: save any earlier Sift.md
+cp <earlier Sift.md> .build/rule-ec096ea3.md
 sh Benchmarks/run.sh --rule-a .build/rule-ec096ea3.md --rule-b Sift.md --repeats 3   # rule vs rule
 sh Benchmarks/run.sh --mod-b Distribution/mod --repeats 3   # mod vs no mod
 ```

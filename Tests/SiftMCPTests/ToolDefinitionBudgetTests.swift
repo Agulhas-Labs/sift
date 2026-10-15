@@ -6,10 +6,10 @@ import Foundation
 @testable import SiftMCP
 import Testing
 
-/// The tool list loads in full in every Swift session, so its schema is held to a budget (Docs/Design.md §4) without dropping a tool or a parameter.
+/// The tool list loads in full in every Swift session, so its schema is held to a budget (Docs/Design.md §4): every tool stays, and a parameter stays while callers use it.
 struct ToolDefinitionBudgetTests {
-    /// Measured at about 1.4k tokens before this budget; the slim list serialized to about 2.5 kB here, alwaysLoad marks included, and the standing caveats the `where` description carries, and the `search` clause, for a client the primer never reaches (Docs/Design.md §2) bring it to about 3.3 kB.
-    static let budget = 3400
+    /// About 2.2 kB serialized, alwaysLoad marks included: 1,028 tokens of first-call context before `at`, `count` and the `root` and `offset` descriptions left it, 870 after (a one-turn probe, Claude Code 2.1.299).
+    static let budget = 2300
 
     @Test
     func theServedToolListFitsTheBudget() throws {
@@ -18,13 +18,13 @@ struct ToolDefinitionBudgetTests {
         #expect(data.count <= Self.budget, "\(data.count) bytes")
     }
 
-    /// Slimming is wording only: every parameter a caller could pass before is still in the schema.
+    /// `at` and `count` left the schema for their tokens (15 of 4,598 calls in 30 days, measured 14 Oct 2026); the server still accepts both.
     @Test
-    func everyToolKeepsEveryParameter() {
+    func everyToolListsTheParametersCallersUse() {
         let expected: [String: Set<String>] = [
-            "digest": ["target", "targets", "root", "all", "signaturesOnly", "offset", "at"],
-            "where": ["symbol", "root", "refs", "offset", "at"],
-            "search": ["query", "root", "offset", "count"],
+            "digest": ["target", "targets", "root", "all", "signaturesOnly", "offset"],
+            "where": ["symbol", "root", "refs", "files", "offset"],
+            "search": ["query", "root", "offset"],
             "strings": ["query", "root"],
         ]
         var served: [String: Set<String>] = [:]

@@ -11,6 +11,8 @@ import SwiftSyntax
 /// A property, a case or a type is used by its name alone, so any whole word counts. A function or an initializer is reached by a call or a reference, and its base name is often a common word that a local or a parameter elsewhere also spells, so a bare-name scan for it lists every line writing the word. Its hits count where the name is followed by `(` and the label of an argument a call can open with, `(` straight into an argument where that one is unlabelled, `()` where every parameter can be left out, `{` or `() {` where it takes any parameter a trailing closure might fill, or nothing of those where it is reached as a member, `Type.f` handed on unapplied; whitespace, line breaks and comments inside the parenthesis are skipped, so a call written across lines and a compound reference are both kept. An initializer's type name is scanned in the same shape, `Box(label:)` calling it as `Box.init(label:)` does. An unapplied reference written without its labels or its owner, `f` alone, is the one use this does not see. Where several declarations share a name, a hit counts if any of their shapes takes it, and a bare one takes every hit.
 struct ScannedNames: ExpressibleByArrayLiteral {
     private var shapes: [String: CallShape] = [:]
+    /// Whether a function's hit reached as a member counts through any receiver, `a.f`, `a().f`, `a?.f`, and not only `self`, a type or a leading dot: set by the check for targets not built, where a lowercase receiver's member is as likely the asked one as not, and a miss hides a use.
+    var countsMemberOfAnyReceiver = false
 
     /// Names matched as bare words, as every scan matched them before shapes were told apart.
     init(arrayLiteral names: String...) {
@@ -57,7 +59,7 @@ struct ScannedNames: ExpressibleByArrayLiteral {
     func hits(of name: String, in source: UnsafeRawBufferPointer) -> [SwiftMentionLexer.Hit] {
         let needle = Array(name.utf8)
         let shape = shapes[name] ?? .bare
-        return SwiftMentionLexer.hits(writing: [needle], in: source).filter { shape.accepts(hitAt: $0.offset, length: needle.count, in: source) }
+        return SwiftMentionLexer.hits(writing: [needle], in: source).filter { shape.accepts(hitAt: $0.offset, length: needle.count, in: source, anyReceiver: countsMemberOfAnyReceiver) }
     }
 
     /// Whether a symbol the store records as `symbolName`, `path(invokedAs:)` or `path`, is one `name`'s shape takes, read as its compound name is spelled: the guess for a recorded place whose text has moved since.
@@ -65,7 +67,7 @@ struct ScannedNames: ExpressibleByArrayLiteral {
         guard let shape = shapes[name], !shape.isBare else { return true }
         let bytes = Array(symbolName.utf8)
         let end = bytes.firstIndex(of: UInt8(ascii: "(")) ?? bytes.count
-        return bytes.withUnsafeBytes { shape.accepts(hitAt: 0, length: end, in: $0) }
+        return bytes.withUnsafeBytes { shape.accepts(hitAt: 0, length: end, in: $0, anyReceiver: countsMemberOfAnyReceiver) }
     }
 
     private mutating func add(_ shape: CallShape, as name: String) {
@@ -160,7 +162,7 @@ extension ScannedNames {
         }
 
         /// Whether the hit `length` bytes long at `start` in `source`, with what surrounds it, is a use of this shape.
-        func accepts(hitAt start: Int, length: Int, in source: UnsafeRawBufferPointer) -> Bool {
+        func accepts(hitAt start: Int, length: Int, in source: UnsafeRawBufferPointer, anyReceiver: Bool = false) -> Bool {
             guard !isBare else { return true }
             var index = start + length
             if index < source.count, source[index] == UInt8(ascii: "`") {
@@ -170,11 +172,11 @@ extension ScannedNames {
                 index = Self.skippingGenericArguments(from: index, in: source)
             }
             index = Self.skipping(from: index, in: source, lineBreaks: false)
-            guard index < source.count else { return takesMemberAccess && Self.isMemberAccess(at: start, in: source) }
+            guard index < source.count else { return takesMemberAccess && Self.isMemberAccess(at: start, in: source, anyReceiver: anyReceiver) }
             if source[index] == UInt8(ascii: "{") {
                 return takesParameters && !Self.typeDeclaringKeywords.contains(Self.word(endingBefore: start, in: source))
             }
-            guard source[index] == UInt8(ascii: "(") else { return takesMemberAccess && Self.isMemberAccess(at: start, in: source) }
+            guard source[index] == UInt8(ascii: "(") else { return takesMemberAccess && Self.isMemberAccess(at: start, in: source, anyReceiver: anyReceiver) }
             guard !opensUnlabelled else { return true }
             index = Self.skipping(from: index + 1, in: source, lineBreaks: true)
             guard index < source.count else { return false }
@@ -209,7 +211,9 @@ extension ScannedNames {
         }
 
         /// Whether the hit at `start` follows a single `.`, through a backtick, whitespace and line breaks, whose receiver is a type, `self`, `Self` or nothing (a leading-dot implicit member), and not a range's `...`: a lowercase value's property of the same name is not a reference to the function.
-        private static func isMemberAccess(at start: Int, in source: UnsafeRawBufferPointer) -> Bool {
+        ///
+        /// Where the caller asks for any receiver, a value of any spelling is a receiver too, `a.f`, `a().f`, `a?.f`, `a!.f`, `a[0].f`.
+        private static func isMemberAccess(at start: Int, in source: UnsafeRawBufferPointer, anyReceiver: Bool) -> Bool {
             var index = start - 1
             if index >= 0, source[index] == UInt8(ascii: "`") {
                 index -= 1
@@ -225,6 +229,9 @@ extension ScannedNames {
             guard end > 0 else { return true }
             if source[end - 1] == UInt8(ascii: ">") {
                 end = skippingGenericArgumentsBackward(from: end, in: source)
+            }
+            if anyReceiver, end > 0, isLabelByte(source[end - 1]) || [UInt8(ascii: ")"), UInt8(ascii: "]"), UInt8(ascii: "?"), UInt8(ascii: "!")].contains(source[end - 1]) {
+                return true
             }
             let receiver = word(endingBefore: end, in: source)
             if let first = receiver.unicodeScalars.first {

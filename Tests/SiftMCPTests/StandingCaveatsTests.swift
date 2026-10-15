@@ -7,7 +7,7 @@ import Foundation
 @testable import SiftMCP
 import Testing
 
-/// What holds of every `where` and `search` answer is said once per session — in the primer, in the two tool descriptions for a client the primer never reaches, and in `sift help answers` — and on no answer (Docs/Design.md §2, *One header line, standing caveats said once per session*).
+/// What holds of every `where` and `search` answer is said in full in `sift help answers`, in no primer and no tool description, and on an answer only where it applies (Docs/Design.md §2, *Superseded: the caveat is said where it applies*).
 @Suite(.temporaryDirectories)
 struct StandingCaveatsTests {
     /// Each standing caveat, by a phrase every place that says it carries.
@@ -34,29 +34,42 @@ struct StandingCaveatsTests {
         "may miss protocol",
     ]
 
-    @Test(arguments: [SessionPrimer.Audience.session, .subagent])
-    func thePrimerCarriesEveryCaveat(audience: SessionPrimer.Audience) throws {
-        let primer = try #require(SessionPrimer.render(.insideRoot("/repos/App"), audience: audience))
+    @Test
+    func thePrimerCarriesNoCaveat() throws {
+        let primer = try #require(SessionPrimer.render(.insideRoot("/repos/App"), audience: .session))
 
         for caveat in Self.caveats {
-            #expect(primer.contains(caveat), "\(caveat)")
+            #expect(!primer.contains(caveat), "\(caveat)")
+        }
+    }
+
+    @Test(arguments: [SessionPrimer.Audience.subagent, .session])
+    func noPrimerCarriesAnyCaveat(audience: SessionPrimer.Audience) throws {
+        let primer = try #require(SessionPrimer.render(
+            .insideRoot("/repos/App"),
+            audience: audience,
+            serverAbsent: audience == .session
+        ))
+
+        for caveat in Self.caveats {
+            #expect(!primer.contains(caveat), "\(caveat)")
         }
     }
 
     @Test
-    func theWhereDescriptionCarriesEveryCaveat() throws {
+    func theWhereDescriptionCarriesNoCaveat() throws {
         let description = try Self.description(of: "where")
 
         for caveat in Self.caveats {
-            #expect(description.contains(caveat), "\(caveat)")
+            #expect(!description.contains(caveat), "\(caveat)")
         }
     }
 
     @Test
-    func theSearchDescriptionCarriesOnlyItsOwnClause() throws {
+    func theSearchDescriptionCarriesNoClause() throws {
         let description = try Self.description(of: "search")
 
-        #expect(description.contains(StandingCaveats.searchClause))
+        #expect(!description.contains(StandingCaveats.searchClause))
         #expect(!description.contains("code this build compiled"))
     }
 

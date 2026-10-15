@@ -31,6 +31,12 @@ struct DigestCommand: AsyncParsableCommand {
 
     @OptionGroup var rootOptions: RootOptions
 
+    func validate() throws {
+        if let message = BlankTargetRefusal.message(tool: "digest", targets: targets) {
+            throw ValidationError(message)
+        }
+    }
+
     func run() async throws {
         // An answer as of another revision lists that revision's files, which locates nothing in today's.
         try await LoggedLookup.emit(tool: "digest", target: targets.first, targets: targets, in: rootOptions.directory, locates: revision == nil) {

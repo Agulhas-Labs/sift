@@ -33,13 +33,20 @@ public struct ClaudeRuleInstall {
         }
     }
 
+    /// Why nothing is done where no `Sift.md` ships beside the binary, for a rule at the destination that is already there (`exists`) or not: `install.sh` writes the rule, and `sift install` from Homebrew or npm copies the one they ship, so a rule installed that way is left as it is.
+    public static func noSourceReason(exists: Bool) -> String {
+        let installer = "(install.sh writes it; `sift install` from Homebrew or npm copies the Sift.md they ship)"
+        return exists ? "no Sift.md ships beside this binary to refresh it from \(installer)" : "no Sift.md ships with this binary \(installer)"
+    }
+
     /// Copies `source` to `destination` as ``plan(source:destination:)`` says, keeping a differing rule beside it first.
     public static func install(source: URL?, destination: URL) throws -> CursorInstall.Outcome {
         var outcome = CursorInstall.Outcome(lines: [], notes: [], written: [])
         let path = destination.path
         switch plan(source: source, destination: destination) {
         case .noSource:
-            outcome.notes.append("rule: skipped — no Sift.md ships with this binary (the release bundle and Homebrew carry it)")
+            let exists = PathKind.of(destination) != .absent
+            outcome.notes.append("rule: \(exists ? "left as installed" : "skipped") — \(noSourceReason(exists: exists))")
         case .identical:
             outcome.lines.append("rule: already installed — \(path)")
         case let .symlink(target):

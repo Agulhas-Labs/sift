@@ -45,7 +45,7 @@ public struct ReplaySample: Sendable {
         let stamp = Data(#""timestamp":""#.utf8)
         for slice in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
             let line = Data(slice)
-            guard line.range(of: marker) != nil,
+            guard line.range(of: marker) != nil, !TranscriptRepeats.isRequestBlob(line: line),
                   line.range(of: Data(".swift".utf8)) != nil || line.range(of: Data(IndexToolName.prefix.utf8)) != nil
             else { continue }
             guard since != nil || until != nil else { return true }

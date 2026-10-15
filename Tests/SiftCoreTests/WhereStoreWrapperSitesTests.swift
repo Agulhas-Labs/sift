@@ -401,7 +401,7 @@ struct WhereStoreWrapperSitesTests {
     func diffHeaderIsStaleWhenAReliedOnFileIsNewerThanTheBuild() async throws {
         let output = try await Self.staleDiff(writing: "Sources/Probe/Nested.swift")
 
-        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Probe/Nested.swift)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 cited file changed: Sources/Probe/Nested.swift)"), "\(output)")
     }
 
     /// A file both the callers and the reaching tests rely on is counted once in the header of `diff`.
@@ -409,7 +409,7 @@ struct WhereStoreWrapperSitesTests {
     func diffHeaderCountsAFileOnceWhenCallersAndTestsBothRelyOnIt() async throws {
         let output = try await Self.staleDiff(writing: "Sources/Probe/Use.swift")
 
-        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Probe/Use.swift)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 cited file changed: Sources/Probe/Use.swift)"), "\(output)")
     }
 
     /// The `diff` answer over a changed wrapper initializer whose attributes the store records as calls, after the file at `touched` is written again unchanged since the build.

@@ -52,4 +52,17 @@ public extension KernelProcess {
         }
         return UInt64(started.tv_sec) * 1_000_000 + UInt64(max(0, started.tv_usec))
     }
+
+    /// Every pid the kernel holds a process for right now, zombies included, in no particular order.
+    static func allPids() -> [pid_t] {
+        let needed = Int(proc_listallpids(nil, 0))
+        guard needed > 0 else {
+            return []
+        }
+        var pids = [pid_t](repeating: 0, count: needed + 256)
+        let count = pids.withUnsafeMutableBytes { buffer in
+            proc_listallpids(buffer.baseAddress, Int32(buffer.count))
+        }
+        return pids.prefix(max(0, Int(count))).filter { $0 > 0 }
+    }
 }

@@ -37,7 +37,7 @@ public struct IndexToolName {
         let tool = String(name.dropFirst(cursorPrefix.count))
         guard let schema = MCPToolCatalog.tools(loadUpFront: false).first(where: { $0["name"] as? String == tool })?["inputSchema"] as? [String: Any],
               let properties = schema["properties"] as? [String: Any],
-              Set(input.keys).isSubset(of: properties.keys),
+              Set(input.keys).isSubset(of: Set(properties.keys).union(MCPToolCatalog.unlistedArguments[tool] ?? [])),
               (schema["required"] as? [String] ?? []).allSatisfy({ input[$0] is String })
         else {
             return nil

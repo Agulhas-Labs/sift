@@ -20,6 +20,12 @@ struct InPlaceAnswerTests {
         try InPlaceBackoff(directory: TemporaryDirectory.make("backoff").appendingPathComponent("backoff"))
     }
 
+    /// The hook's answerer over a back-off of its own, for a test that drives the hook without choosing one: the answer is the production one, and no window it arms lands in `~/.sift`.
+    static func scratchAnswerer() throws -> (InPlaceShape.Match, Bool, TimeInterval) -> InPlaceAnswerer.Outcome {
+        let backoff = try Self.backoff()
+        return { InPlaceAnswerer.answer($0, serverGone: $1, timeBudget: $2, backoff: backoff) }
+    }
+
     /// The padding of ``indexedRepository(padding:)`` that adds the floor twice over across the depot's forty members, for a test whose window over most of them is answered with members that do not show its lines.
     static let pastTheFloor = InPlaceAnswer.windowSavingFloor / 20
 

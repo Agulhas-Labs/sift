@@ -92,7 +92,7 @@ struct TypealiasUsageWhereTests {
         // The clause names the fold as well as the alias: two of the three lines spell `Crate`, the third spells
         // `Box`, and "counts its own name" alone would leave a reader who greps `Crate` one line short of the number.
         #expect(output.contains("counts Lib.Crate's own name, and any typealias of it, not the type it names — that type may still be used directly, under its own name, without this alias"))
-        #expect(output.contains("Tests/LibTests/Crates.swift (3): — 1 written as Lib.Box\n    :6  | XCTAssertEqual(Crate.go(), 1)\n    :10  | _ = Crate()\n    :14  | let made: Box = Box()"))
+        #expect(output.contains("Tests/LibTests/Crates.swift (3): — 1 written as Lib.Box\n    :6  testOne()  | XCTAssertEqual(Crate.go(), 1)\n    :10  testTwo()  | _ = Crate()\n    :14  testThree()  | let made: Box = Box()"))
     }
 
     /// A fixture where the underlying type is used under its own name, apart from any of its aliases, and one of its aliases is never spelled anywhere — the shape `where <alias>` must answer honestly: a reader must not mistake `Gizmo`'s own use for `Nickname` being in use.
@@ -335,6 +335,21 @@ struct TypealiasUsageWhereTests {
         try TestSources.commitAll(in: root, message: "capped fold fixture")
         try TestSources.swiftBuild(packageAt: root)
         return root
+    }
+
+    /// The files view drops the verdict that says the fold stopped short, so its heading says the set is a lower bound instead.
+    @Test
+    func aFilesViewOfAFoldThatStoppedAtItsCapSaysItIsALowerBound() async throws {
+        let root = try Self.makeCappedFoldRepo()
+        let engine = try SiftEngine(directory: root)
+        TestSources.raiseOpenBudgetForAColdStore(engine)
+        try await engine.awaitSemanticStore()
+        let freshness = try await engine.ensureFresh()
+
+        let files = try await engine.lookup(symbol: "Gizmo", freshness: freshness, options: WhereOptions(includeReferences: true, filesOnly: true))
+
+        #expect(files.contains("files naming Lib.Gizmo ("), "\(files)")
+        #expect(files.contains("a lower bound: more typealiases than the \(WhereRenderer.typealiasFoldCap) followed"), "\(files)")
     }
 
     /// "Nothing uses those either, so they go with it" is a claim about aliases the fold read, and at its cap there are aliases it did not read — any one of which can be the use that stops the deletion.

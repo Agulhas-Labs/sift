@@ -67,7 +67,7 @@ struct WhereNonCodeSection {
             let lead = leads == 0 ? "" : leads == 1 ? " (1 a lead)" : " (\(leads) leads)"
             counts.append(Self.counted(mentions.fileNames.count, "file name") + lead)
         }
-        let scope = isAmbiguous ? "; may include same-named symbols'" : ""
+        let scope = isAmbiguous ? "; may include same-named symbols" : ""
         let also = mentions.codeLines
         let overlap = also == 0 ? "" : also == 1 ? "; 1 of these lines is also a code line listed above" : "; \(also) of these lines are also code lines listed above"
         return "not code, by written name\(scope) — \(counts.joined(separator: ", "))\(overlap):"

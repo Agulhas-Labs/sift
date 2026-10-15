@@ -31,7 +31,8 @@ struct SyntacticCallerFallback {
         sameNamed: SameNamedTypes? = nil,
         paging: SyntacticSweepPaging? = nil,
         memberwise: MemberwiseLabelSites? = nil,
-        listsLabelCalls: Bool = false
+        listsLabelCalls: Bool = false,
+        filesCollector: WhereFilesCollector? = nil
     ) async throws -> [String] {
         guard let callSites, !rows.isEmpty else { return [] }
         // Each declaration's signature is printed once, in the list above this block, so the block names the ones it
@@ -170,6 +171,7 @@ struct SyntacticCallerFallback {
             let scope = fileScope(of: rowsByBase[base] ?? [])
             let unlisted = (scanned[base] ?? []).filter { !$0.isListed(ownedBy: owners) && scope?.paths.contains($0.path) != false }
             let reaching = LabelNarrowed.reaching(unlisted, by: rowsByBase[base] ?? [])
+            filesCollector?.recordSites(reaching)
             // Indented so the block still runs through it: a line at the margin would end it for a reader.
             return nameOnlyLines(reaching, cap: callSiteCap, initializerOf: scannedAs[base], narrowed: true, grouped: true, paging: paging).map { "  " + $0 }
         }
@@ -247,6 +249,7 @@ struct SyntacticCallerFallback {
             }
             // Indented under the block, as the implicit calls counted beside it are, so the block runs through it.
             let reachingOthers = others.flatMap { group in
+                filesCollector?.recordSites(group.sites)
                 let listed = paging.map { $0.rows(of: group.sites, detail: detail) }
                     ?? NameMatchedSites.rows(group.sites.prefix(callSiteCap), detail: detail)
                     + (group.sites.count > callSiteCap ? ["    truncated: \(group.sites.count - callSiteCap) more \(word.many)"] : [])
@@ -294,6 +297,7 @@ struct SyntacticCallerFallback {
                 let byWrittenName = "\(total) \(total == 1 ? word.one : word.many) by written name"
                 lines.append("\"\(base)\" (\(byWrittenName), \(counts.joined(separator: ", ")), in \(files)\(forOwners)):")
             }
+            filesCollector?.recordSites(listing)
             if let paging {
                 lines += paging.rows(of: listing, detail: detail)
             } else {
@@ -360,6 +364,18 @@ struct SyntacticCallerFallback {
 }
 
 extension SyntacticCallerFallback {
+    /// Whether `line` is a name-matched verdict that found nothing: `no call spelled "x" anywhere in the working tree`, `no use spelled "T" anywhere`, and the narrowed forms of both.
+    static func isEmptyVerdict(_ line: String) -> Bool {
+        line.hasPrefix("no ") && line.contains(" spelled \"")
+    }
+
+    /// `lines` ending in the standing caveats where one of them is a name-matched empty verdict and none says them yet, the degraded note's own "not unused" clause dropped so that exactly one caveat is said.
+    static func endingInTheCaveatsIfEmpty(_ lines: [String], degradedNote: String?) -> [String] {
+        guard !lines.contains(StandingCaveats.sentences), lines.contains(where: isEmptyVerdict) else { return lines }
+        let kept = lines.map { $0 == degradedNote ? $0.replacingOccurrences(of: DegradedNote.emptyListClause, with: "") : $0 }
+        return kept + ["", StandingCaveats.sentences]
+    }
+
     /// The files every site of `rows` must sit in, and the widest of their access levels, where each is `private` or `fileprivate`; `nil` where any is usable beyond its file.
     static func fileScope(of rows: [SymbolRow]) -> (paths: Set<String>, level: AccessLevel)? {
         guard let level = rows.map(\.accessLevel).max(), level <= .fileprivateLevel else { return nil }

@@ -13,14 +13,14 @@ struct GrepPrintedLines {
     ///
     /// A names search runs wherever it carries the command's own search (``InPlaceCall/symbols(names:paths:uncovered:proof:unchecked:spelled:)``). One whose pattern needs a proof (``InPlaceShape/needsProof(_:)``) runs under a ceiling that stops at a line outside Swift source but spends nothing, since the references it is proven against are never served; any other admits every file and stops once what it prints passes the size budget, past which any answer that fits is smaller. Printing nothing leaves it the names search it is.
     ///
-    /// With the lines comes what a sweep's answer is weighed against: the bytes its search prints after its cut, the fewest any order prints where the cut is across files whose order grep leaves unfixed (every line any order prints coming with them, for the answer to locate), `Int.max` where the search stopped past its print limit, and `nil` for every other shape. A search that cannot be worked out at all cannot be weighed either, so it is withheld `unchecked` — except a names search with no proof, which ran no search before it was weighed and is answered unweighed, as it was then.
+    /// With the lines comes what a sweep's answer is weighed against: the bytes its search prints after its cut, the fewest any order prints where the cut is across files whose order grep leaves unfixed (every line any order prints coming with them, for the answer to locate), `Int.max` where the search stopped past its print limit, and `nil` for every other shape. A search that cannot be worked out at all cannot be weighed either, so it is withheld `unchecked` — except a names search with no proof, which ran no search before it was weighed and is answered unweighed, as it was then — a `Grep`'s is weighed once its answer is computed, where size decides what it asks (``SearchToolGrep``).
     static func of(_ call: InPlaceCall, from directory: String?, sizeBudget: Int) -> Result<(lines: [ShellGrep.PrintedLine], bytes: Int?), InPlaceAnswerer.Withholding> {
         let search: ShellGrep
         var proves = true
         switch call {
-        case .fileDigest, .documentOutline, .symbols(_, _, _, nil, _, _), .memberRange:
+        case .fileDigest, .documentOutline, .symbols(_, _, _, nil, _, _, _), .memberRange:
             return .success(([], nil))
-        case let .symbols(_, _, _, grep?, unchecked, _):
+        case let .symbols(_, _, _, grep?, unchecked, _, _):
             // A tree searched beside a Swift file is withheld `unchecked` once its bounds hold, and runs nothing first.
             proves = InPlaceShape.needsProof(grep.pattern)
             guard proves || !unchecked else { return .success(([], nil)) }

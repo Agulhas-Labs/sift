@@ -43,8 +43,9 @@ struct NotAnswerableIsStillCountedTests {
             cwd: "/repo",
             ledger: AdviceLedger(directory: scratch.appendingPathComponent("advice")),
             usage: UsageLog(fileURL: scratch.appendingPathComponent("usage.jsonl")),
-            suppressions: suppressions
-        ) { _, _, _ in .withheld(.notExact) }
+            suppressions: suppressions,
+            answerer: { _, _, _ in .withheld(.notExact) }
+        )
         let tally = TranscriptFixture.tally([
             TranscriptTurns.call("Grep", id: "g1", input: ["output_mode": "content", "pattern": Self.pattern, "path": Self.file], turn: "m1", cwd: "/repo"),
         ])

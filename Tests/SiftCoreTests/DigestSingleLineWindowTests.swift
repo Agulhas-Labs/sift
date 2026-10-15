@@ -5,7 +5,7 @@
 @testable import SiftCore
 import Testing
 
-/// Covers a single line asked for inside a function longer than `RangeInsideMemberAnswer.singleLineMemberCeiling`: the declaration, a window around the line and the range to read, where a range or a member named by type is still served whole.
+/// Covers a single line asked for inside a function longer than `RangeInsideMemberAnswer.singleLineMemberCeiling`: a window of numbered lines around it under a header naming the function and its range, where a range or a member named by type is still served whole.
 @Suite(.temporaryDirectories)
 struct DigestSingleLineWindowTests {
     /// `tall()` is 43 lines (`:2-44`), `edge()` one past the ceiling (`:46-71`, 26 lines), `flat()` on it (`:73-97`, 25 lines) and `wide(first:second:)` declared over four lines (`:99-133`); body line `L` of a member reads `<name>-(L - first body line)`.
@@ -28,32 +28,36 @@ struct DigestSingleLineWindowTests {
         return "    private static func \(name)() {\n\(body)\n    }"
     }
 
-    /// Source lines `lines` of `tall()`'s body, as the file carries them.
-    private static func tallLines(_ lines: ClosedRange<Int>) -> String {
-        lines.map { "        _ = \"tall-\($0 - 3)\"" }.joined(separator: "\n")
+    /// `lines` of the file as a cited line's answer numbers them.
+    ///
+    /// The number is right-aligned to six columns, then a tab, then the line; `>` takes the first padding space of `cited`. `text` is the source line at a number.
+    private static func numbered(_ lines: ClosedRange<Int>, cited: Int, _ text: (Int) -> String) -> String {
+        lines.map { (($0 == cited ? ">" : " ") + String(repeating: " ", count: 5 - String($0).count) + String($0)) + "\t" + text($0) }.joined(separator: "\n")
+    }
+
+    private static func tallText(_ line: Int) -> String {
+        line == 2 ? "    private static func tall() {" : "        _ = \"tall-\(line - 3)\""
     }
 
     @Test
-    func aLineInTheMiddleOfALongFunctionComesBeneathItsDeclarationWithTheRangeToRead() throws {
+    func aLineInTheMiddleOfALongFunctionComesAsNumberedLinesUnderTheHeaderAlone() throws {
         let output = try Self.ledger().render(target: "Sources/Gizmo/Ledger.swift:23", options: DigestOptions())
 
         #expect(output == """
         Sources/Gizmo/Ledger.swift lines 20-26 (line 23 with up to 3 lines either side), in Gizmo.Ledger.tall() — func — :2-44 (43 lines; digest Gizmo.Ledger.tall() for all of it)
 
-            private static func tall()
-        (…17 lines skipped)
-        \(Self.tallLines(20 ... 26))
-        lines 2-44; read it by range
+        \(Self.numbered(20 ... 26, cited: 23, Self.tallText))
         """)
         #expect(output.utf8.count < 500)
     }
 
     @Test
-    func aLineBesideTheDeclarationShowsItOnceInTheWindow() throws {
+    func aLineBesideTheDeclarationNumbersTheDeclarationLineAsOneOfTheWindow() throws {
         let output = try Self.ledger().render(target: "Sources/Gizmo/Ledger.swift:3", options: DigestOptions())
 
-        #expect(output.hasSuffix("\n\n    private static func tall() {\n" + Self.tallLines(3 ... 6) + "\nlines 2-44; read it by range"))
+        #expect(output.hasSuffix("\n\n" + Self.numbered(2 ... 6, cited: 3, Self.tallText)))
         #expect(output.components(separatedBy: "private static func tall()").count == 2)
+        #expect(!output.contains("read it by range"))
     }
 
     @Test
@@ -83,10 +87,12 @@ struct DigestSingleLineWindowTests {
     }
 
     @Test
-    func aDeclarationWrittenOverSeveralLinesIsShownAsItsDigestLineShowsIt() throws {
+    func aLineInTheBodyOfAFunctionWithAMultiLineDeclarationCarriesNoDeclaration() throws {
         let output = try Self.ledger().render(target: "Sources/Gizmo/Ledger.swift:120", options: DigestOptions())
 
-        #expect(output.contains("\n\n    private static func wide(first: Int, second: String)\n(…14 lines skipped)\n        _ = \"wide-14\"\n"))
-        #expect(output.hasSuffix("_ = \"wide-20\"\nlines 99-133; read it by range"))
+        #expect(output.hasSuffix("\n\n" + Self.numbered(117 ... 123, cited: 120) { "        _ = \"wide-\($0 - 103)\"" }))
+        #expect(!output.contains("second: String"))
+        #expect(!output.contains("skipped"))
+        #expect(!output.contains("read it by range"))
     }
 }

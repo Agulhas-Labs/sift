@@ -73,7 +73,9 @@ struct WhereQualifiedConformerStoreTests {
             #expect(output.contains("  GizmoCore.Crate — extension — Sources/GizmoCore/Answer.swift:17 — direct\n"), "\(output)")
             #expect(output.contains("  GizmoCore.Both — struct — Sources/GizmoCore/Answer.swift:19 — direct"), "\(output)")
             #expect(output.contains("4 references in 1 file, 4 of them the conformances listed below"), "\(output)")
-            #expect(!output.contains("Catalogue"), "\(output)")
+            #expect(!output.contains("GizmoCore.Catalogue"), "\(output)")
+            // The file the block leaves out is accounted for as code not counted above, the one place the answer names it.
+            #expect(output.contains("every Swift file that writes Answer is accounted for (2, a text search of the Swift files git shows): 1 declares a conformer (above), 1 writes it in code not counted above: Sources/GizmoCore/Catalogue.swift"), "\(output)")
             #expect(!output.contains("does not have it"), "\(output)")
         }
     }

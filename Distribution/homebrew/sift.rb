@@ -33,9 +33,9 @@ class Sift < Formula
         sift install
 
       It finds each agent, asks once per agent, and says what it wrote. Then, in a Swift repository,
-      `sift status` — the first query indexes it. Start a NEW Claude Code session afterwards (restart
-      Cursor; restart Codex and approve the trust prompt it shows); running ones keep the old server
-      process and the old context.
+      `sift status` — the first query indexes it. On an upgrade a running Claude Code session's server
+      re-execs into the new binary and the hooks apply at once; after a first install, and for the session primer, the
+      tool list and the rule file, start a NEW one (restart Cursor; restart Codex and approve the trust prompt it shows).
     EOS
   end
 

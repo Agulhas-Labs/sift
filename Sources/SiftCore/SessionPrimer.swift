@@ -97,26 +97,31 @@ public struct SessionPrimer {
         serverAbsent: Bool = false,
         lookupsFromBash: Bool = false
     ) -> String? {
-        let primer = primer(context, closing: (moduleHealth?.warning ?? "") + closing(for: audience, lookupsFromBash: lookupsFromBash))
+        let primer = primer(
+            context,
+            closing: (moduleHealth?.warning ?? "") + closing(for: audience, lookupsFromBash: lookupsFromBash)
+        )
         guard serverAbsent else { return primer }
         return primer.map { serverAbsentNotice + "\n\n" + $0 }
     }
 
+    /// The banner never carries the standing caveats: they are said in an answer, where an empty list makes them matter.
     private static func primer(_ context: SessionContext, closing: String) -> String? {
-        switch context {
+        let intro = banner
+        return switch context {
         case .none:
             nil
         case let .insideRoot(root):
-            banner + "\n\nThis repo is indexed (`\(root)`), so queries here need no `root:` argument.\n" + closing
+            intro + "\n\nThis repo is indexed (`\(root)`), so queries here need no `root:` argument.\n" + closing
         case let .aboveRoots(roots):
-            banner
+            intro
                 + "\n\nThis session is rooted **above** the repositories, so pass `root:` with the repo you mean."
                 + " Without it, `digest` and `where` fall back to resolving the name against every indexed root,"
                 + " which works but costs a probe of each and can come back ambiguous. Indexed roots below here:\n\n"
                 + roots.map { "  - \($0)" }.joined(separator: "\n") + "\n"
                 + closing
         case let .unregisteredSwiftRepository(path):
-            banner
+            intro
                 + "\n\nA Swift repository this machine has not indexed yet (`\(path)`): no setup step,"
                 + " the first query indexes it.\n"
                 + closing
@@ -159,7 +164,6 @@ public struct SessionPrimer {
         - `digest <Type>` (or a file, or `.`): member line ranges, then a ranged Read; known `Type.member`s (several per call): their source; a cited line: `digest File.swift:120`
         - `where <Symbol>` instead of grepping: definition, callers, conformers, overrides
         - `search` for code by shape, `strings "<text>"` for UI text
-        - \(StandingCaveats.sentences)
         - `sift run -- swift test` (or a build) from Bash: the failures, the log in `.sift/runs/`
         """
     }

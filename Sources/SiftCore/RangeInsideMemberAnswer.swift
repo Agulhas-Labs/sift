@@ -4,7 +4,7 @@
 
 /// The answer for lines of a file asked for by range that lie inside one long member: those lines alone, under one header naming the member and its whole range.
 ///
-/// Serving a long member whole for a few lines inside it hands back many times what was asked — the ranged read a cited location replaces would have been the smaller answer. The lines are paged like a member body, by the same range and an offset. A single line asked for is the question a stack trace or a log line puts — which function is this in — so it comes beneath the member's declaration with a few lines either side, and a last line naming the range to read for the rest.
+/// Serving a long member whole for a few lines inside it hands back many times what was asked — the ranged read a cited location replaces would have been the smaller answer. The lines are paged like a member body, by the same range and an offset. A single line asked for is the question a stack trace or a log line puts — which function is this in — so it is those lines with 3 either side, numbered as Read numbers them (the number right-aligned to 6 columns, a tab, the source line; the cited line marked with `>` for the first padding space), under the header that names the member and its whole range, with no declaration, skip markers or footer repeating what the header says.
 struct RangeInsideMemberAnswer {
     let renderer: DigestRenderer
 
@@ -30,26 +30,25 @@ struct RangeInsideMemberAnswer {
         else {
             return nil
         }
-        let plain = single
+        let window = single
             ? max(memberStart, range.start - Self.lineWindowContext) ... min(row.endLine, range.end + Self.lineWindowContext)
             : range.start ... range.end
-        let signatureEnd = single && plain.upperBound >= row.line ? SignatureExtent(of: row, in: source)?.lastLine ?? row.line : row.line
-        let window = Self.holdingAllOrNone(of: row.line ... signatureEnd, plain)
         let target = try renderer.qualifiedTarget(of: row)
         let asked = single
-            ? "lines \(window.lowerBound)-\(window.upperBound) (line \(range.start) with \(window == plain ? "" : "the declaration and ")up to \(Self.lineWindowContext) lines either side)"
+            ? "lines \(window.lowerBound)-\(window.upperBound) (line \(range.start) with up to \(Self.lineWindowContext) lines either side)"
             : range.spoken
         let header = "\(row.path) \(asked), in \(target) — \(row.kind.rawValue) — \(row.rangeDescription) (\(memberLines) lines; digest \(target) for all of it)"
         let all = Array(source[(window.lowerBound - 1) ..< window.upperBound])
         let cap = DigestRenderer.bodyLineCap
-        // A single line's window stays framed by the member's declaration, which an empty page still shows.
-        if !single, PastEndLine.applies(offset: options.offset, count: all.count) {
+        if PastEndLine.applies(offset: options.offset, count: all.count) {
             let preamble = try renderer.parseErrorBanner(touching: [row.path]) + renderer.guessedModuleBanner(touching: [row.path])
             return (preamble + [header, "", PastEndLine.text(offset: options.offset, count: all.count, noun: "body lines")]).joined(separator: "\n")
         }
         let offset = min(max(0, options.offset), all.count)
         var body = Array(all.dropFirst(offset).prefix(cap))
-        if offset > 0, !single {
+        if single {
+            body = Self.numbered(body, from: window.lowerBound + offset, cited: range.start)
+        } else if offset > 0 {
             body.insert("(…\(offset) lines skipped)", at: 0)
         }
         let remaining = all.count - offset - min(cap, all.count - offset)
@@ -57,45 +56,28 @@ struct RangeInsideMemberAnswer {
             let resume = options.spelling.digest(range.path + range.suffix, offset: offset + cap)
             body.append("… truncated: \(remaining) more lines — \(resume), or Read \(row.path) from line \(window.lowerBound + offset + cap)")
         }
-        if single {
-            body = Self.framed(body, skipped: offset, of: row, through: signatureEnd, lines: window, source: source)
-        }
         let preamble = try renderer.parseErrorBanner(touching: [row.path]) + renderer.guessedModuleBanner(touching: [row.path])
         return (preamble + [header, ""] + body).joined(separator: "\n")
     }
 }
 
 private extension RangeInsideMemberAnswer {
-    /// A single line's window with the member's declaration and the range that reads the rest: the declaration beneath the window where it ends in the doc comment above the declaration, above it where the page starts below the declaration's first line, and not again where it already shows it.
+    /// The page's lines laid out as Claude Code's Read lays them out, so the cited line is told from its neighbours without a Read of the same lines.
     ///
-    /// The declaration is laid out as the member's digest line lays it out, so a long parameter list wraps at its parameters rather than running off the line. It stands for the member's lines through `signatureEnd`, so a page offset never cuts it short; the page offset and the gap to the declaration are one marker where they meet.
-    static func framed(_ window: [String], skipped offset: Int, of row: SymbolRow, through signatureEnd: Int, lines: ClosedRange<Int>, source: [String]) -> [String] {
-        func marker(_ count: Int) -> [String] {
-            count > 0 ? ["(…\(count) lines skipped)"] : []
+    /// Each line's number is right-aligned to `numberWidth`, then a tab, then the source line. The cited line has `>` in place of its number's leading padding character, or before the number where it has none.
+    static func numbered(_ page: [String], from first: Int, cited: Int) -> [String] {
+        var lineNumber = first - 1
+        return page.map { line in
+            lineNumber += 1
+            let digits = String(lineNumber)
+            let padded = String(repeating: " ", count: max(0, numberWidth - digits.count)) + digits
+            let label = lineNumber == cited ? (padded.hasPrefix(" ") ? ">" + padded.dropFirst() : ">" + padded) : padded
+            return label + "\t" + line
         }
-        let indent = String(source[row.line - 1].prefix { $0 == " " || $0 == "\t" })
-        let declaration = (DigestSignatureLayout(SourceSlicer.tidyingBrackets(in: row.signature))?.lines ?? [SourceSlicer.shown(row.signature)]).map { indent + $0 }
-        var framed: [String]
-        let first = lines.lowerBound + offset
-        if lines.upperBound < row.line {
-            let gap = row.line - lines.upperBound - 1
-            framed = window.isEmpty
-                ? marker(offset + gap) + declaration
-                : marker(offset) + window + marker(gap) + declaration
-        } else if first > row.line {
-            let resumed = max(first, signatureEnd + 1)
-            framed = marker(row.line - lines.lowerBound) + declaration + marker(resumed - signatureEnd - 1) + window.dropFirst(resumed - first)
-        } else {
-            framed = marker(offset) + window
-        }
-        return framed + ["lines \(row.line)-\(row.endLine); read it by range"]
     }
 
-    /// `window` widened to hold all of `head`, the lines of the member's declaration, where it holds part of it; as it is where it holds all or none.
-    static func holdingAllOrNone(of head: ClosedRange<Int>, _ window: ClosedRange<Int>) -> ClosedRange<Int> {
-        guard window.overlaps(head) else {
-            return window
-        }
-        return min(window.lowerBound, head.lowerBound) ... max(window.upperBound, head.upperBound)
+    /// The width a line number is right-aligned to, as Read aligns it.
+    static var numberWidth: Int {
+        6
     }
 }

@@ -94,7 +94,7 @@ struct StatusSemanticTests {
         let greet = try await SemanticStoreWarmUp.settled { try await engine.lookup(symbol: "greet()", freshness: freshness) }
         let status = try engine.statusText(freshness: freshness)
 
-        #expect(greet.contains("semantic: stale since last build (1 file changed: Sources/Lib/Base.swift)"))
+        #expect(greet.contains("semantic: stale since last build (1 cited file changed: Sources/Lib/Base.swift)"))
         #expect(status.contains("semantic: stale since last build (1 file changed: Sources/Lib/Base.swift)"))
     }
 
@@ -123,9 +123,9 @@ struct StatusSemanticTests {
         #expect(!FileManager.default.fileExists(atPath: Self.ingestionCache(in: root).path))
     }
 
-    /// The note under the header is short sentences in the reader's words, and names each case this reading can miss — a query still shows every one, so leaving one out would let `fresh` stand with nothing to say otherwise.
+    /// The note is one line after the store line, never under the header where it buried that line, and the help topic it names lists each case this reading can miss in the reader's words — a query still shows every one, so leaving one out would let `fresh` stand with nothing to say otherwise.
     @Test
-    func theNoteUnderTheHeaderNamesEveryGapInShortPlainSentences() async throws {
+    func theNoteFollowsTheStoreLineAndItsTopicNamesEveryGapInPlainWords() async throws {
         let root = try TestSources.makeTempRepo()
         try TestSources.write("struct Widget {}\n", to: "Sources/App/Widget.swift", in: root)
         try TestSources.commitAll(in: root, message: "fixture")
@@ -137,20 +137,20 @@ struct StatusSemanticTests {
         let freshness = try await engine.ensureFresh()
 
         let lines = try engine.statusText(freshness: freshness).split(separator: "\n").map(String.init)
-        let note = Array(lines.dropFirst().prefix { !$0.hasPrefix("root: ") })
 
-        #expect(note == SiftEngine.statusAxisNote)
-        for line in note {
-            #expect(line.count <= 170, "\(line)")
-            #expect(!["ledger", "anchor", "unit"].contains { line.contains($0) }, "\(line)")
-            #expect(!line.contains("upgraded"), "\(line)")
-        }
-        let text = note.joined(separator: " ")
+        #expect(lines.dropFirst().first?.hasPrefix("root: ") == true)
+        let store = try #require(lines.firstIndex { $0.hasPrefix("index store: ") })
+        #expect(lines.dropFirst(store + 1).first == SiftEngine.statusAxisNote)
+        #expect(lines.count { $0 == SiftEngine.statusAxisNote } == 1)
+        #expect(SiftEngine.statusAxisNote.contains("sift help answers"))
+        let body = try #require(HelpTopics.topic(named: "answers")).body
+        let topic = try #require(body.components(separatedBy: "\n\n").first { $0.contains("What `status`'s `semantic:` counts") })
+        #expect(!["ledger", "anchor", "unit"].contains { topic.contains($0) })
         for gap in [
-            "a declaration the store has no record of", "unbuilt test files", "fails to open", "still loading", "without cleaning",
-            "never tracked", "fast-forward", "starts only once",
+            "a declaration the store has no record of", "unbuilt test files", "a partial build skipped", "fails to open", "still loading",
+            "until a clean build", "never tracked", "fast-forward", "starts only once",
         ] {
-            #expect(text.contains(gap), "the note does not name: \(gap)")
+            #expect(topic.contains(gap), "the answers topic does not name: \(gap)")
         }
     }
 
@@ -168,7 +168,7 @@ struct StatusSemanticTests {
         let greet = try await SemanticStoreWarmUp.settled { try await engine.lookup(symbol: "greet()", freshness: freshness) }
         let status = try engine.statusText(freshness: freshness)
 
-        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(greet.contains("semantic: stale since last build (1 cited file deleted: Sources/Lib/Caller.swift)"))
         #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
@@ -191,7 +191,7 @@ struct StatusSemanticTests {
         let greet = try await SemanticStoreWarmUp.settled { try await fresh.lookup(symbol: "greet()", freshness: freshness) }
         let status = try fresh.statusText(freshness: freshness)
 
-        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(greet.contains("semantic: stale since last build (1 cited file deleted: Sources/Lib/Caller.swift)"))
         #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
@@ -202,7 +202,7 @@ struct StatusSemanticTests {
             try TestSources.runGit(["rm", "-q", "Sources/Lib/Caller.swift"], in: root)
         }
 
-        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(greet.contains("semantic: stale since last build (1 cited file deleted: Sources/Lib/Caller.swift)"))
         #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
@@ -214,7 +214,7 @@ struct StatusSemanticTests {
             try TestSources.commitAll(in: root, message: "delete the caller")
         }
 
-        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(greet.contains("semantic: stale since last build (1 cited file deleted: Sources/Lib/Caller.swift)"))
         #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
@@ -231,7 +231,7 @@ struct StatusSemanticTests {
         let status = try upgraded.statusText(freshness: freshness)
         let greet = try await SemanticStoreWarmUp.settled { try await upgraded.lookup(symbol: "greet()", freshness: freshness) }
 
-        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(greet.contains("semantic: stale since last build (1 cited file deleted: Sources/Lib/Caller.swift)"))
         #expect(status.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
     }
 
@@ -250,7 +250,7 @@ struct StatusSemanticTests {
         let greet = try await SemanticStoreWarmUp.settled { try await reread.lookup(symbol: "greet()", freshness: freshness) }
         let status = try reread.statusText(freshness: freshness)
 
-        #expect(greet.contains("semantic: stale since last build (1 file deleted: Sources/Lib/Caller.swift)"))
+        #expect(greet.contains("semantic: stale since last build (1 cited file deleted: Sources/Lib/Caller.swift)"))
         #expect(status.contains("semantic: fresh"))
     }
 

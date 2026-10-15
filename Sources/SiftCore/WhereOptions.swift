@@ -20,8 +20,13 @@ public struct WhereOptions: Sendable {
     ///
     /// `InPlaceAnswerer` builds `shownPerName` and `UnshownGrepLines` from those rows, and a count line alone would leave the lines a search printed unaccounted for.
     public var standsInForSearch: Bool
+    /// Answers a `--refs` sweep as the files it names, one row each, in place of its sites (``WhereFilesCollector``).
+    ///
+    /// Implies `includeReferences`; `offset` then pages the files.
+    public var filesOnly: Bool
 
-    public init(includeSemantic: Bool = true, includeReferences: Bool = false, offset: Int = 0, collapsesSeveralOwners: Bool = true, nameMatchedSiteCap: Int? = nil, standsInForSearch: Bool = false) {
+    public init(includeSemantic: Bool = true, includeReferences: Bool = false, offset: Int = 0, collapsesSeveralOwners: Bool = true, nameMatchedSiteCap: Int? = nil, standsInForSearch: Bool = false, filesOnly: Bool = false) {
+        self.filesOnly = filesOnly
         self.standsInForSearch = standsInForSearch
         self.includeSemantic = includeSemantic
         self.includeReferences = includeReferences

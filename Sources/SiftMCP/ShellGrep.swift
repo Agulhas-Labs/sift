@@ -27,6 +27,12 @@ public struct ShellGrep: Equatable, Sendable {
     var withoutFileNames = false
     /// Whether `-n` was written, which prints each line's number beside it.
     var numbersLines = false
+    /// The window of the printed lines a tool's own output limit keeps (`head_limit` and `offset`), counted in the order the walk meets them.
+    ///
+    /// Unlike ``cut``, which a pipe applies and which is undecided across files whose order grep leaves unfixed, this bounds the bytes weighed: the first lines the walk finds are those counted, and a search past the window needs read no further.
+    var outputWindow: Cut?
+    /// The most bytes of a line's own text the search prints (ripgrep's `--max-columns`), where it caps them.
+    var columnLimit: Int?
     /// Whether the arguments are one of ``DeclarationVocabularyGrep``'s closed spellings.
     private(set) var spellsDeclarationVocabulary = false
 
@@ -102,6 +108,11 @@ public struct ShellGrep: Equatable, Sendable {
     private static func isQuotedWhole(_ raw: String) -> Bool {
         guard raw.count >= 2, let first = raw.first, let last = raw.last, first == last else { return false }
         return first == "\"" || first == "'"
+    }
+
+    /// How many lines of the walk fill ``outputWindow`` so that no later file can change what it keeps: all of them where there is no window, or a cut across files that the window does not replace.
+    private var windowReach: Int {
+        cut == nil ? outputWindow?.reach ?? .max : .max
     }
 
     /// Whether the search prints context around its matches.
@@ -236,6 +247,15 @@ extension ShellGrep {
             }
         }
 
+        /// How many of the first printed lines decide what it keeps, so that no later line can change it.
+        var reach: Int {
+            switch self {
+            case let .head(count): count
+            case let .tail(count): count
+            case let .window(positions): positions.upperBound
+            }
+        }
+
         /// Whether it keeps every one of `total` printed lines.
         func keepsAll(of total: Int) -> Bool {
             switch self {
@@ -243,6 +263,16 @@ extension ShellGrep {
             case let .window(positions): positions.lowerBound == 1 && total <= positions.upperBound
             }
         }
+    }
+
+    /// Which ignore files bear on a recursive walk's directory.
+    enum IgnoreScope: Equatable, Sendable {
+        /// None: every file is visited.
+        case none
+        /// Those at or below the directory searched, as `ugrep --ignore-files` reads them.
+        case belowOnly
+        /// Those above it as well, up to the repository root, as ripgrep reads them.
+        case withParents
     }
 
     /// The most an answer can account for, checked as each file is searched, so a search whose printed lines no answer could hold stops where that becomes certain rather than reading every file to the end.
@@ -306,7 +336,13 @@ public extension ShellGrep {
     /// Asked to skip the cache, it leaves out every one of sift's binary cache files whatever its bytes. The text files beside them are read as any other.
     ///
     /// Asked to weigh any order, it reads on past a cut across files that would drop a line, where no context prints: the outcome is then every line any order could print, and the bytes the fewest any order prints (``leastPrinted(of:text:names:reads:)``). Such a search reads every file, so it reports a breach of the ceiling's budget only once it has, with those bytes, and asks the print limit nothing, which weighs uncut bytes.
-    internal func measured(in directory: String?, ceiling: Ceiling? = nil, namedFiles: Bool = false, weighsAnyOrder: Bool = false, skipsCache: Bool = false, program: Program = .current) -> (outcome: Outcome, bytes: Int) {
+    ///
+    /// Given an ``outputWindow``, only the lines it keeps are weighed, taken in the walk's order, so the bytes stop growing once the window is full.
+    ///
+    /// Which ignore files the walk honours is `program`'s (``Program/ignoreScope``) unless `ignoreScope` says otherwise, as for ripgrep, which reads those above the directory too.
+    ///
+    /// Past the instant it is given to stop at, it reads no further file, and is undecided.
+    internal func measured(in directory: String?, ceiling: Ceiling? = nil, namedFiles: Bool = false, weighsAnyOrder: Bool = false, skipsCache: Bool = false, stopsAt: DispatchTime = .distantFuture, program: Program = .current, ignoreScope: IgnoreScope? = nil) -> (outcome: Outcome, bytes: Int) {
         guard let pattern = GrepPattern(pattern, options: options) else { return (.undecided("pattern"), 0) }
         var files: [String] = []
         // Each file's name as grep prints it: the operand as written, and a walked file's path below it.
@@ -325,7 +361,7 @@ public extension ShellGrep {
                 files.append(absolute)
                 names[absolute] = path
             case .directory where recursive:
-                switch Self.files(under: absolute, swiftOnly: swiftOnly, skipping: program.skippedDirectories) {
+                switch Self.files(under: absolute, swiftOnly: swiftOnly, skipping: program.skippedDirectories, ignoreScope: ignoreScope ?? program.ignoreScope, stopsAt: stopsAt) {
                 case let .found(walk):
                     // The walk spells a path as the file system does (`/private/var` for `/var`), so what lies below
                     // the operand is cut from whichever spelling of it the path opens on.
@@ -349,6 +385,8 @@ public extension ShellGrep {
                     return (.undecided("tree"), 0)
                 case .pastLimit:
                     return (.pastLimit, 0)
+                case .timedOut:
+                    return (.undecided("time"), 0)
                 }
             default:
                 return (.undecided("path"), 0)
@@ -386,7 +424,10 @@ public extension ShellGrep {
         var bytesRead = 0
         var spent = 0
         var written = 0
-        for file in files {
+        var windowed: [PrintedLine] = []
+        // No file after a full window can change what it keeps, so none is read.
+        for file in files where windowed.count < windowReach {
+            guard DispatchTime.now() < stopsAt else { return (.undecided("time"), written) }
             guard let data = FileManager.default.contents(atPath: file) else { return (.undecided("unreadable"), written) }
             bytesRead += data.count
             guard bytesRead <= Self.byteLimit else { return (.pastLimit, written) }
@@ -409,7 +450,12 @@ public extension ShellGrep {
                 }
                 // A `--` between files where a context option opens one, as the system grep prints it.
                 if readByEveryGrep(file) {
-                    written += (hasContext && !printed.isEmpty ? 3 : 0) + printedBytes(of: fileLines, text: text, names: fileName)
+                    if let outputWindow {
+                        windowed = Array((windowed + fileLines).prefix(outputWindow.reach))
+                        written = printedBytes(of: Array(outputWindow.kept(windowed)), text: text, names: fileName)
+                    } else {
+                        written += (hasContext && !printed.isEmpty ? 3 : 0) + printedBytes(of: fileLines, text: text, names: fileName)
+                    }
                 }
             }
             // A cut across files that would drop a line is undecided once it would, however many files are left.
@@ -435,7 +481,7 @@ public extension ShellGrep {
         case let .printed(lines) where unordered:
             leastPrinted(of: lines, text: text, names: fileName, reads: readByEveryGrep)
         case let .printed(lines):
-            printedBytes(of: lines.filter { readByEveryGrep($0.file) }, text: text, names: fileName)
+            printedBytes(of: outputWindow.map { Array($0.kept(lines.filter { readByEveryGrep($0.file) })) } ?? lines.filter { readByEveryGrep($0.file) }, text: text, names: fileName)
         default:
             written
         }
@@ -473,7 +519,7 @@ public extension ShellGrep {
             }
             let name = names(line.file).map { $0.utf8.count + 1 } ?? 0
             let number = numbersLines ? String(line.line).count + 1 : 0
-            total += name + number + (text[line] ?? 0) + 1
+            total += name + number + min(text[line] ?? 0, columnLimit ?? .max) + 1
             previous = line
         }
         return total
@@ -523,12 +569,13 @@ private extension ShellGrep {
         case file, directory, other
     }
 
-    /// What a walk of a directory found: every regular file under it, a directory it could not list, a tree it refuses, or one past the file limit.
+    /// What a walk of a directory found: every regular file under it, a directory it could not list, a tree it refuses, one past the file limit, or one still being walked when the search's time ran out.
     enum Walk: Equatable {
         case found([String])
         case unlisted
         case refused
         case pastLimit
+        case timedOut
     }
 
     /// The UTF-8 byte-order mark.
@@ -704,18 +751,87 @@ private extension ShellGrep {
         }
     }
 
-    /// Every regular file under `directory`, sorted — refused where the tree holds a symbolic link, a special file, or more than the search reads, and unlisted where a directory in it cannot be listed.
+    /// Every regular file under `directory`, sorted — refused where the tree holds a symbolic link, a special file, or more than the search reads, unlisted where a directory in it cannot be listed, and timed out where the search's time runs out first.
     ///
     /// A directory grep cannot list is an error it reports and exits 2 on, whatever it printed from the rest, so the walk stops there rather than answering from the files it could read.
     ///
     /// A directory named in `skipping` is passed over, nothing in it listed or counted, as the shell's `ugrep` passes over a version-control directory.
     ///
+    /// Where the `ignoreScope` reads ignore files and `directory` lies in a git work tree, only the files git lists there (``GitContext/listedFiles(under:within:)``) are visited, as `ugrep --ignore-files` visits what `.gitignore` leaves in: a directory holding none of them is not entered. A listing git cannot give, or an empty one (the operand is itself an ignored directory, which `ugrep` still searches), leaves the walk as if the flag were off.
+    ///
+    /// For ``IgnoreScope/belowOnly`` the paths that only a `.gitignore` above `directory` ignores are visited too (``GitContext/parentIgnoredPaths(under:within:)``), since `ugrep` reads no ignore file above the directory it searches; one it cannot get leaves the walk as if the flag were off as well.
+    ///
     /// Walked in a release pool of its own, for ``SwiftTree``'s reason: a walk that refuses part-way leaves the enumerator holding a directory handle per level, and nothing else would release it on a thread that never drains a pool.
-    static func files(under directory: String, swiftOnly: Bool, skipping: Set<String>) -> Walk {
-        autoreleasepool { walk(under: directory, swiftOnly: swiftOnly, skipping: skipping) }
+    static func files(under directory: String, swiftOnly: Bool, skipping: Set<String>, ignoreScope: IgnoreScope = .none, stopsAt: DispatchTime = .distantFuture) -> Walk {
+        autoreleasepool {
+            var listed: Listing?
+            if ignoreScope != .none {
+                let seconds = min(Double(stopsAt.uptimeNanoseconds &- DispatchTime.now().uptimeNanoseconds) / 1e9, ChildDeadline.gitBulk)
+                guard stopsAt == .distantFuture || (seconds > 0 && DispatchTime.now() < stopsAt) else { return .timedOut }
+                let url = URL(fileURLWithPath: directory, isDirectory: true)
+                listed = GitContext.listedFiles(under: url, within: seconds).flatMap(Listing.init)
+                if ignoreScope == .belowOnly, listed != nil {
+                    // A path only a `.gitignore` above the directory names is one `ugrep` still searches.
+                    listed = GitContext.parentIgnoredPaths(under: url, within: seconds).flatMap { listed?.opening($0) }
+                }
+            }
+            return walk(under: directory, swiftOnly: swiftOnly, skipping: skipping, listed: listed, stopsAt: stopsAt)
+        }
     }
 
-    private static func walk(under directory: String, swiftOnly: Bool, skipping: Set<String>) -> Walk {
+    /// The files git lists below a directory, and the directories that hold any of them, each relative to it.
+    struct Listing {
+        let files: Set<String>
+        var directories: Set<String>
+        /// Directories visited whole, nothing in them left out.
+        var opened: Set<String> = []
+
+        /// `nil` for an empty listing.
+        init?(_ paths: [String]) {
+            guard !paths.isEmpty else { return nil }
+            files = Set(paths)
+            var directories: Set<String> = []
+            for path in paths {
+                var parent = (path as NSString).deletingLastPathComponent
+                while !parent.isEmpty, directories.insert(parent).inserted {
+                    parent = (parent as NSString).deletingLastPathComponent
+                }
+            }
+            self.directories = directories
+        }
+
+        /// This listing with `paths` visited as well, a trailing slash marking a directory taken whole, and the directories leading to them entered.
+        func opening(_ paths: [String]) -> Listing {
+            var result = self
+            for path in paths {
+                let path = path.hasSuffix("/") ? String(path.dropLast()) : path
+                result.opened.insert(path)
+                var parent = (path as NSString).deletingLastPathComponent
+                while !parent.isEmpty, result.directories.insert(parent).inserted {
+                    parent = (parent as NSString).deletingLastPathComponent
+                }
+            }
+            return result
+        }
+
+        /// Whether the walk visits `relative`: git lists it, or it lies in (or is) an opened path.
+        func admits(_ relative: String, isDirectory: Bool) -> Bool {
+            if isDirectory ? directories.contains(relative) : files.contains(relative) {
+                return true
+            }
+            guard !opened.isEmpty else { return false }
+            var current = relative
+            while !current.isEmpty {
+                if opened.contains(current) {
+                    return true
+                }
+                current = (current as NSString).deletingLastPathComponent
+            }
+            return false
+        }
+    }
+
+    private static func walk(under directory: String, swiftOnly: Bool, skipping: Set<String>, listed: Listing?, stopsAt: DispatchTime) -> Walk {
         let root = URL(fileURLWithPath: directory, isDirectory: true)
         let keys: [URLResourceKey] = [.isSymbolicLinkKey, .isRegularFileKey, .isDirectoryKey]
         var unlisted = false
@@ -727,9 +843,23 @@ private extension ShellGrep {
         guard let walker else { return .refused }
         var found: [String] = []
         var visited = 0
+        // The enumerator spells a path as the file system does (`/private/var` for `/var`).
+        let prefixes = [root.path, Self.resolved(root.path)].map { $0.hasSuffix("/") ? $0 : $0 + "/" }
         for case let url as URL in walker {
             visited += 1
             guard visited <= fileLimit * 4 else { return .pastLimit }
+            guard visited % 256 != 0 || DispatchTime.now() < stopsAt else { return .timedOut }
+            if let listed {
+                // Git lists no directory it ignores, so one holding nothing it lists is not entered, and a file it does not list is not visited.
+                let relative = prefixes.first(where: url.path.hasPrefix).map { String(url.path.dropFirst($0.count)) } ?? url.path
+                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+                if !listed.admits(relative, isDirectory: isDirectory) {
+                    if isDirectory {
+                        walker.skipDescendants()
+                    }
+                    continue
+                }
+            }
             guard let values = try? url.resourceValues(forKeys: Set(keys)),
                   values.isSymbolicLink != true
             else {

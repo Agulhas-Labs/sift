@@ -263,6 +263,9 @@ public struct TranscriptReplay {
         var onlyAccessOwed = false
         for slice in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
             let line = Data(slice)
+            if TranscriptRepeats.isRequestBlob(line: line) {
+                continue
+            }
             if onlyAccessOwed {
                 TranscriptAccess.note(line: line, in: &state)
                 continue

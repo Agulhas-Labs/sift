@@ -68,9 +68,12 @@ public struct InPlaceShape {
         // Each lookup as the match it would be alone, so what it is — its call, its directory, whether it is a
         // window — travels together.
         var found: [Match] = []
+        // The statement each of `found` came from, by its place on the line: a `cat` of several files is one
+        // statement read as several whole reads.
+        var origins: [Int] = []
         // The lookups riding along are lookups of the line still, and a name grep beside one rides along too.
         var ridingLookups = 0
-        for statement in scoped {
+        for (place, statement) in scoped.enumerated() {
             if movesDirectory(statement.statement) {
                 // Only into a directory that is there: a `cd` to a dangling or looping link, or to nothing, fails, and
                 // the reads after it run from where the line started, or not at all behind an `&&`.
@@ -82,30 +85,37 @@ public struct InPlaceShape {
                 directory = resolved
                 continue
             }
-            guard let call = call(forStatement: statement.statement) else { continue }
+            guard let calls = calls(forStatement: statement.statement) ?? SeveralFileCat.firstFileWindow(statement.statement, in: operandDirectory(directory, reading: statement.statement)) else { continue }
             guard !ridingAlong(statement.statement) else {
-                ridingLookups += call.call.shape == .outline ? 0 : 1
+                ridingLookups += calls.count(where: { $0.call.shape != .outline })
                 continue
             }
-            found.append(Match(
-                calls: [call.call],
-                directory: operandDirectory(directory, reading: statement.statement),
-                isWholeCommand: false,
-                windowed: [call.isWindow],
-                lookups: 1,
-                statements: [[statement.statement]]
-            ))
+            for call in calls {
+                found.append(Match(
+                    calls: [call.call],
+                    directory: operandDirectory(directory, reading: statement.statement),
+                    isWholeCommand: false,
+                    windowed: [call.isWindow],
+                    lookups: 1,
+                    statements: [[statement.statement]]
+                ))
+                origins.append(place)
+            }
         }
         // A name search that names a Swift file is a lookup only where it is the command's one lookup: beside
         // another it is dropped from the match, so the lookups left are answered without it and it runs as
         // written. The only such search that gets this far is the tree-plus-file form, whose call is withheld
         // unchecked where it stands alone. That holds whatever the ledger has allowed.
         if found.count(where: { $0.call.shape != .outline }) + ridingLookups > 1 {
-            found.removeAll { isNameSearchOfNamedFiles($0.call) }
+            let kept = found.indices.filter { !isNameSearchOfNamedFiles(found[$0].call) }
+            (found, origins) = (kept.map { found[$0] }, kept.map { origins[$0] })
         }
         let match: Match
         if found.count > 1, found.allSatisfy({ $0.call.readPath != nil }) {
-            guard let read = reads(found, statements: statements.count) else { return nil }
+            guard var read = reads(found, wholeCommand: Set(origins).count == statements.count) else { return nil }
+            // A `cat` of several files standing as the line's one lookup is weighed file by file, as a `cat` of each is.
+            read.weighsEachRead = Set(origins).count == 1 && read.calls.count > 1 && !read.windowed.contains(true)
+            read.numbersEachRead = read.weighsEachRead && SeveralFileCat.numbersLines(scoped[origins[0]].statement)
             match = read
         } else {
             let lookups = found.filter { $0.call.shape != .outline }
@@ -177,11 +187,12 @@ public struct InPlaceShape {
         }
         let lookup = statements[firstOr].statement
         guard lookup.trimmingCharacters(in: .whitespacesAndNewlines).prefix(while: { !$0.isWhitespace }) != "!" else { return nil }
-        guard !ridingAlong(lookup), let found = call(forStatement: lookup), found.call.shape != .outline,
-              provesItsSuccess(lookup, answeredBy: found)
-        else {
-            return nil
+        guard !ridingAlong(lookup) else { return nil }
+        // A `cat` of several Swift files is proven as a `cat` of one is: by every file being there to read.
+        guard let found = call(forStatement: lookup) else {
+            return SeveralFileCat.fallbackMatch(lookup, standingFor: statements[firstOr...].map(\.statement), in: operandDirectory(directory, reading: lookup))
         }
+        guard found.call.shape != .outline, provesItsSuccess(lookup, answeredBy: found) else { return nil }
         // The fallback never runs, so the answer stands for every statement from the lookup on.
         return Match(
             calls: [found.call],
@@ -213,7 +224,7 @@ public struct InPlaceShape {
     /// The match several reads are, one call per file in the order first named, or `nil` where they cannot share one answer: a directory moved between them, a file read whole twice or whole beside a window of it, or no Swift file among them.
     ///
     /// Several windows of one file are one digest: the digest answers every window of the file at once, and a second copy of it would say nothing the first did not.
-    private static func reads(_ found: [Match], statements: Int) -> Match? {
+    private static func reads(_ found: [Match], wholeCommand: Bool) -> Match? {
         let directory = found[0].directory
         guard found.allSatisfy({ $0.directory == directory }), found.contains(where: { $0.call.shape == .read }) else { return nil }
         var files: [String] = []
@@ -239,7 +250,7 @@ public struct InPlaceShape {
         return Match(
             calls: calls,
             directory: directory,
-            isWholeCommand: found.count == statements,
+            isWholeCommand: wholeCommand,
             windowed: windowed,
             lookups: found.count,
             statements: answering
@@ -336,7 +347,7 @@ public struct InPlaceShape {
 
     /// The lookup a `Grep` is, and the call that answers it in place, or `nil` where the tool's arguments carry no answered shape.
     ///
-    /// **One shape reaches this surface: the names sweep**, which is the only one that needs no grep run to prove it. The proven four all rest on reproducing the caller's own search (``ShellGrep``), and a `Grep` is ripgrep behind a JSON payload rather than a command line this can re-run — so a `Grep` of one file is refused here exactly as it always was, and only the shape that hands over the offer's own answer is taken.
+    /// **One shape reaches this surface: the names sweep**, which is the only one that needs no grep run to prove it. The proven four all rest on reproducing the caller's own search (``ShellGrep``), and a `Grep` is ripgrep behind a JSON payload rather than a command line this can re-run — so a `Grep` of one file is refused here exactly as it always was, and only the shape that hands over the offer's own answer is taken. Its content search is still read as a grep (``SearchToolGrep``), to weigh that answer against what the search prints, never to prove it.
     ///
     /// The fields are read as ``SearchToolAdvice`` reads them to build the very offer being handed over, so the two cannot disagree about what a search is: `path` ending in `.swift` is one file and no sweep, a manifest is not indexed, a glob or a type that picks no Swift source is no search of Swift, a count prints numbers rather than the lines a `where` stands in for, and `-A`/`-B`/`-C` ask for the text around a match, which a resolved answer does not carry. `Glob` never matches — it asks which files exist, and carries no pattern for a name to be read out of.
     ///
@@ -367,7 +378,7 @@ public struct InPlaceShape {
               (input["-i"] as? Bool) != true,
               !["-A", "-B", "-C"].contains(where: { input[$0] is NSNumber }),
               let pattern = input["pattern"] as? String,
-              let call = symbolsCall(forPattern: pattern, paths: searched.map { [$0] } ?? [], spelled: path.map { [$0] })
+              let call = symbolsCall(forPattern: pattern, paths: searched.map { [$0] } ?? [], spelled: path.map { [$0] }, toolSearch: SearchToolGrep(input: input, pattern: pattern, searched: searched, in: directory))
         else {
             return nil
         }
@@ -486,7 +497,7 @@ public struct InPlaceShape {
         else {
             return .declined
         }
-        guard case let .symbols(names, paths, uncovered, proof, _, _)? = symbolsCall(forPattern: search.pattern, paths: search.paths, search: search) else { return .declined }
+        guard case let .symbols(names, paths, uncovered, proof, _, _, _)? = symbolsCall(forPattern: search.pattern, paths: search.paths, search: search) else { return .declined }
         return .answered(.symbols(names: names, paths: paths, uncovered: uncovered, proof: proof, unchecked: true))
     }
 
@@ -498,8 +509,8 @@ public struct InPlaceShape {
     ///
     /// Whether the index declares those names is not asked here. The hook asks it a layer along, of the offer's own symbols, and withholds the whole alternation where any of them is undeclared (`PreToolUseCommand.lookup`) — so every name that reaches the answerer is one `where` speaks for.
     ///
-    /// `search` is the command's own, where there is one this can re-run, and the call carries it whatever the pattern (``InPlaceCall/symbols(names:paths:uncovered:proof:unchecked:spelled:)``): the answer is served only where it is smaller than what that search prints. A pattern spelling a metatype, a self-expression or a member through `Self` (`T.Type`, `T.self`, `Self.x`) holds the answer to it as a proof too (``needsProof(_:)``), and without one — a `Grep`, which is ripgrep behind a payload — it is no candidate at all.
-    static func symbolsCall(forPattern pattern: String, paths: [String], search: ShellGrep? = nil, spelled: [String]? = nil) -> InPlaceCall? {
+    /// `search` is the command's own, where there is one this can re-run, and the call carries it whatever the pattern (``InPlaceCall/symbols(names:paths:uncovered:proof:unchecked:spelled:)``): the answer is served only where it is smaller than what that search prints. A pattern spelling a metatype, a self-expression or a member through `Self` (`T.Type`, `T.self`, `Self.x`) holds the answer to it as a proof too (``needsProof(_:)``), and without one — a `Grep`, which is ripgrep behind a payload — it is no candidate at all. `toolSearch` is a `Grep`'s own search, read as a grep (``SearchToolGrep``), which weighs the answer and proves nothing.
+    static func symbolsCall(forPattern pattern: String, paths: [String], search: ShellGrep? = nil, spelled: [String]? = nil, toolSearch: SearchToolGrep? = nil) -> InPlaceCall? {
         // The command's own search rides with every shell grep, since the answer is weighed against what it prints.
         let proof = search
         guard proof != nil || !needsProof(pattern) else { return nil }
@@ -513,7 +524,7 @@ public struct InPlaceShape {
             return nil
         }
         guard !names.isEmpty, names.count <= IndexSuggestion.callCap else { return nil }
-        return .symbols(names: names, paths: paths, uncovered: prose, proof: proof, spelled: spelled)
+        return .symbols(names: names, paths: paths, uncovered: prose, proof: proof, spelled: spelled, toolSearch: toolSearch)
     }
 
     /// The directory the first statement of `command` moves to with a `cd`, or `nil` where that statement is anything else or its word is computed.
@@ -551,7 +562,7 @@ public struct InPlaceShape {
 
     /// Whether `call` is a name search bounded by Swift files named outright or by a glob of them, rather than by a tree.
     private static func isNameSearchOfNamedFiles(_ call: InPlaceCall) -> Bool {
-        guard case let .symbols(_, paths, _, _, _, _) = call else { return false }
+        guard case let .symbols(_, paths, _, _, _, _, _) = call else { return false }
         return paths.contains { $0.hasSuffix(".swift") }
     }
 
@@ -616,6 +627,12 @@ public extension InPlaceShape {
         public private(set) var runsOtherStatements = false
         /// The files a trailing `tee` of the command would have written, as the command spells them: the answer runs nothing, so it says they were not written.
         public private(set) var teedFiles: [String] = []
+        /// Whether each call is a whole read of a file one `cat` of several Swift files names, the line's one lookup, so each file is weighed as a `cat` of it alone is (``WholeReadWorth``): its digest where that is worth the turn, its source where it is not, and the line let through where no file's digest is.
+        public internal(set) var weighsEachRead = false
+        /// Whether the `cat` whose files are weighed one by one is a `cat -n`, so each file served as its source is numbered as `cat -n` prints it, counting from 1 in each file.
+        public internal(set) var numbersEachRead = false
+        /// The files whose reads ``droppingReads(where:)`` dropped because the context already holds them, as the command spells them: the note on the rest keeps those reads on the line.
+        public internal(set) var heldReads: [String] = []
         /// Held as a list of none or one, since a value cannot hold itself: see ``ordinary``.
         private var ordinaryReading: [Self]
 
@@ -962,5 +979,38 @@ extension InPlaceShape {
             guard let shell = ShellOperand(raw: raw) else { return word != raw && SearchOperand(path: word).isGlob ? word : nil }
             return shell.quotesAGlobCharacter && SearchOperand(path: shell.value).isGlob ? shell.value : nil
         })
+    }
+}
+
+/// A `cat` of several Swift files, read as one whole read per file.
+extension InPlaceShape {
+    /// The calls that answer one statement in place, each with whether it reads its file through a line window: the one ``call(forStatement:)`` finds, or one whole read per file of a `cat` naming several Swift files (``multiFileReads(_:)``), or `nil` where the statement is neither.
+    static func calls(forStatement statement: String) -> [(call: InPlaceCall, isWindow: Bool)]? {
+        if let one = call(forStatement: statement) {
+            return [one]
+        }
+        return multiFileReads(statement).map { $0.map { (.fileDigest(path: $0), false) } }
+    }
+
+    /// The Swift files a `cat` (or `cat -n`) of several of them names, in the order named, or `nil` where the statement is no such read.
+    ///
+    /// Held to everything a `cat` of one file is held to — one stage opening on its command word, no output to a file, no redirection but standard error's, no glob and no quoted `~` — and every operand a Swift file named outright, so each prints exactly what a whole read of that file prints. A file named twice is left to ``reads(_:wholeCommand:)``, which answers no file read whole twice.
+    static func multiFileReads(_ statement: String) -> [String]? {
+        let stages = ShellSyntax.segments(of: statement).map(ShellQuery.init)
+        guard stages.count == 1, let query = stages.first, query.opensOnItsCommandWord, !query.writesOutputToAFile,
+              let paired = stageWords(of: query), URL(fileURLWithPath: paired[0].word).lastPathComponent == "cat"
+        else {
+            return nil
+        }
+        var operands = Array(paired.dropFirst())
+        if operands.first?.word == "-n" {
+            operands.removeFirst()
+        }
+        guard operands.count > 1,
+              operands.allSatisfy({ isSwiftFile($0.word) && ShellOperand(raw: $0.raw)?.quotesLeadingTilde != true })
+        else {
+            return nil
+        }
+        return operands.map(\.word)
     }
 }

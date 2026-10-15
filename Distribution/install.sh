@@ -137,7 +137,7 @@ fi
 
 echo
 echo "Next: cd into a Swift repo and run 'sift status'. The first query indexes it."
-echo "Start a NEW Claude Code session to pick up the new server and the session primer; running ones keep"
-echo "the old process and the old context."
+echo "On an upgrade a running Claude Code session's server re-execs into the new binary and the hooks apply at once."
+echo "After a first install, and for the session primer, the tool list and the rule file, start a NEW session."
 echo "Cursor and Codex: run 'sift install' to set sift up in them as well (it finds each and asks once)."
 echo "Read INSTALL.md for configuration and troubleshooting."

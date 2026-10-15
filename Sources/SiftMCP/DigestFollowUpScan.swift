@@ -40,6 +40,9 @@ public struct DigestFollowUpScan {
             return
         }
 
+        if TranscriptRepeats.isRequestBlob(object) {
+            return
+        }
         let stamp = object["timestamp"] as? String
         let instant = stamp.flatMap(TranscriptScan.instant)
         let reported = (since.map { start in instant.map { $0 >= start } ?? true } ?? true)

@@ -128,7 +128,7 @@ struct WhereManyExtensionsRefsTests {
 
             #expect(sweep.contains("Sources/GizmoCore/A1.swift:1"))
             #expect(sweep.contains("references to GizmoCore.Gizmo"))
-            #expect(sweep.contains("Tests/GizmoTests/GizmoTests.swift (1):\n    :5  | _ = Gizmo()"))
+            #expect(sweep.contains("Tests/GizmoTests/GizmoTests.swift (1):\n    :5  makeGizmo()  | _ = Gizmo()"))
             #expect(sweep.contains("used by GizmoCore.Gizmo: 1 reference in 1 file — 0 production · 1 test"))
             #expect(answer.contains("used by GizmoCore.Gizmo: 1 reference in 1 file — 0 production · 1 test"))
             #expect(!sweep.contains("semantic relations resolved for the first"))

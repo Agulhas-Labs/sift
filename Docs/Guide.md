@@ -88,8 +88,8 @@ what would be written and writes nothing and runs neither `claude` nor `codex`. 
 `--yes`, `--all` or `--agent`, it installs nothing and says what to run.
 
 Each agent goes through the installer `install-hook` uses (Claude Code: the hooks, user-scope MCP
-server and agent rule; Cursor: `mcp.json` and `hooks.json`; Codex: `hooks.json` and the MCP server), so the
-guarantees are the same: a `.bak-sift` copy before a rewrite, entries that are not sift's left alone. One agent's
+server and, where a `Sift.md` ships beside the binary (Homebrew and the npm package ship one, so `sift install` from either writes the rule; a bundle install gets it from `install.sh`), the agent rule; Cursor: `mcp.json` and `hooks.json`; Codex: `hooks.json` and the MCP server), so the
+guarantees are the same: a `.bak-sift` copy before sift rewrites a settings or rule file (not what `claude mcp add` or `codex mcp add` writes), entries that are not sift's left alone. One agent's
 refusal is reported and the others still run. It ends with a summary of what was written, the one manual step
 (a new Claude Code session; restart Cursor; restart Codex and approve the trust prompt it shows) and what is
 unsupported. Re-running is idempotent and is the upgrade path. Exit status: 0 on success, when there was nothing to
@@ -637,7 +637,7 @@ edit touched. In a tree with no index store yet, `where` says `none (no index st
 and in a fresh worktree `none (no index store in this worktree)`: it asked and found none. Read the header
 on the answer you are about to act on.
 
-On `semantic: stale since last build (2 files changed)` and a refusal, take it literally: **build the
+On `semantic: stale since last build (2 cited files changed)` and a refusal, take it literally: **build the
 project, then retry.** A file counts as changed when its contents or its file status moved past the build, so a copy that
 preserves modification times still reads as changed. Re-running the query won't help and neither will `sift index`. Symbols in
 untouched files still answer normally, and `parse_errors` in the header means some answer came from a
@@ -859,11 +859,19 @@ Worth knowing before pointing it at a codebase that isn't yours:
   `sift init --write`. It never modifies a committed file on its own. The one command that touches your
   working tree is `sift run --without`, which takes your uncommitted changes under a pathspec out for one
   test run and puts every byte back, checked by content hash, keeping a record and copies under
-  `.sift/set-aside/` until it has (§12). A green `sift run` records the tree it proved in
+  `.sift/set-aside/` until it has (§12). Also under `.sift/`: `green-builds.json` (and its `.lock`), which
+  every green `sift run` build or test writes and the stop gate reads; `coverage.json`; `without-build/`
+  (the build directory of a `--without` run, removed after it); `progress/` (a live run's heartbeat file);
+  `isdb/` (the semantic cache's index store); `shards/<run>/` (a sharded `sift test` run's simulator ledger,
+  shard logs and result bundles); `test-durations.json` (what each test recently cost, for balancing shards);
+  `at/<uuid>/` (the snapshot of a revision that `--at` answers from); `run-events/` and `shard-events/` (a run's
+  `swift test` event streams, removed when it ends); `set-aside.lock` and `set-aside.watch` (the locks a `--without`
+  run and its watcher hold); and `tree-index-*` (a scratch git index used to key the tree, removed at once).
+  `without-build/` is kept past the run under `--keep-without-build`. A green `sift run` of tests records the tree it proved in
   `sift/proved-runs.json` under the repository's shared git directory (`git rev-parse --git-common-dir`),
   one ledger for every worktree, so it survives `sift reset` and dies with the repository; a red run of
   tests is filed beside it in `sift/failed-runs.json` and deletes the green record of the same run, so a later
-  failure on the same content revokes the proof.
+  failure on the same content revokes the proof. A green build-only run writes only `.sift/green-builds.json`.
 - **Outside the repo, under `~/.sift/`** (no source content, and nothing leaves the machine):
 
 | Path | What it holds |
@@ -879,16 +887,38 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `server.jsonl` | one line when an MCP server starts and one when it stops |
 | `redaction-salt` | keeps report pseudonyms stable |
 | `report.html` | written by `sift report`, overwritten each run; self-contained, fetches nothing |
+| `transcript-tallies.json` | a cache of per-transcript tallies, so `audit` and `report` rescan only what changed |
+| `lookups-declined` | a marker that you declined the lookup allow rules, so the next lookups question defaults to no |
+| `advice/backoff/` | per-session records the hook uses to back off answering in place |
+| `*.lock` | lock files beside the ledgers above, so parallel sessions do not interleave writes |
 
-- `~/.claude/settings.json`, only when you run `install-hook`: it registers the SessionStart,
-  SubagentStart, PreToolUse and PostToolUse hooks, copies the file to `settings.json.bak-sift`
+- `~/.claude/settings.json`, only when you run `install-hook` (or `sift install`): it registers the SessionStart,
+  SubagentStart, PreToolUse and PostToolUse hooks and the `Stop` and `SubagentStop` hooks that run
+  `sift stop` (the stop gate, which can block a stop once when Swift was edited without a green build), adds
+  `permissions.allow` entries (`Bash(sift digest:*)` and the other lookups; `Bash(sift run -- swift build:*)`
+  and the other builds) only when you say yes or pass `--allow-run`/`--allow-lookups`, copies the file to `settings.json.bak-sift`
   before every rewrite that changes it, and removes a legacy sift status line.
   `status` **reads** it back, nothing else, to say when a re-run of `install-hook` is owed.
+- `sift install` and `install-hook` also write, with nothing else of yours touched: `~/.claude/rules/sift.md`
+  (only where a `Sift.md` ships beside the binary: Homebrew and the npm package ship one, a bundle install gets it from `install.sh`),
+  `~/.claude.json` (the user-scope MCP server, through `claude mcp add`), `~/.cursor/mcp.json` and
+  `~/.cursor/hooks.json`, and Codex's `hooks.json` and `config.toml` (the latter through `codex mcp add`). The rule,
+  Cursor's two files and Codex's `hooks.json` get a `.bak-sift` copy before a rewrite; `~/.claude.json` and `config.toml`
+  are written by `claude mcp add` and `codex mcp add`, which sift does not back up. `sift install --dry-run` lists the
+  exact files and writes nothing.
+- **Transcript reads by the hooks:** the `PreToolUse` and `Stop` hooks read the session transcript the hook
+  payload names (`transcript_path`, subagent transcripts included), including the text of the latest user prompt,
+  to excuse a Read of a document the prompt names. The `SessionStart` hook reads it too, at a subagent's start,
+  to see whether the session's sift server was written off. The `PostToolUse` hook is handed the path but uses only
+  its file name, to tell a subagent's ledger from its parent's, and opens nothing. Nothing is stored from any of it and
+  nothing leaves the machine.
+- `sift doctor` creates a scratch directory `$TMPDIR/sift-doctor-<UUID>/` for its probes; `sift test` creates
+  and boots simulators and deletes them when it finishes.
 - `sift status` and `sift install-hook` **read agent definitions** — `.claude/agents/**/*.md` in the
   repository and `~/.claude/agents/**/*.md` outside it — taking `name` and `tools` from the frontmatter
   and writing nothing.
 - `sift audit` and `sift report` read every transcript under `~/.claude/projects` (or the window you
-  give), tool names and `.swift` file names only; `report` also reads the index of each registered root,
+  give), tool names, `.swift` file names, and the text of Bash commands and grep patterns (to classify them), none of it kept or sent anywhere; `report` also reads the index of each registered root,
   strictly read-only. Both look outside the repo you are standing in, so on a shared machine know that
   before you run them.
 
@@ -899,9 +929,9 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `sift init [--write] [--force]` | Inspect the repo layout and propose `.sift.json` |
 | `sift index [--full]` | Build or refresh the index |
 | `sift status` | Freshness, counts, module map, index-store discovery; names any agent definition whose `tools:` allowlist shuts these tools out |
-| `sift help [<topic>]` | Reference for rare moments, in seven topics: `run-output` (reading a red `run` block, what `flakes` counts), `answers` (the parse-error banners, semantic staleness, root resolution), `queries` (per-tool depth), `refusals` (the hook's accounting rules), `test-output` (reading `sift test`), `worktree-index` (a store in a linked worktree) and `build-output` (reading `build --analyse`); a name that is a subcommand instead prints that subcommand's usage; omit the topic to list them |
+| `sift help [<topic>]` | Reference for rare moments, in eight topics: `run-output` (reading a red `run` block, what `flakes` counts), `answers` (the parse-error banners, semantic staleness, root resolution), `queries` (per-tool depth), `refusals` (the hook's accounting rules), `test-output` (reading `sift test`), `worktree-index` (a store in a linked worktree), `build-output` (reading `build --analyse`) and `affected-limits` (what `affected` cannot see); a name that is a subcommand instead prints that subcommand's usage; omit the topic to list them |
 | `sift digest <target>… [--all] [--signatures-only, or --signaturesOnly] [--offset N] [--at <rev>]` | Declaration surface of a type, file, or module, one member's source given `Type.member`, or a `File.swift:12-40` line range; several targets each answer in one call. A `.md` path answers with its heading outline and line ranges, read live. `--at` answers as of a commit, branch or tag from a syntactic parse of that revision read through git (never the index or the working tree; a module, `.` or `.md` is refused) |
-| `sift where <symbol> [--syntactic] [--refs] [--offset N] [--at <rev>]` | Resolve a symbol: declarations, extensions, conformers, callers (a property's reads and writes, an enum case's uses), overrides, and a type's uses counted on one line; `--refs` adds every reference site, paged with `--offset`; `--at` answers as of a revision, declarations from that revision's files and call sites by name only. Where the index store does not answer a function's callers, the call sites matched by name come as their count and the first five, where the MCP tool lists up to 40 |
+| `sift where <symbol> [--syntactic] [--refs] [--files] [--offset N] [--at <rev>]` | Resolve a symbol: declarations, extensions, conformers, callers (a property's reads and writes, an enum case's uses), overrides, and a type's uses counted on one line; `--refs` adds every reference site, paged with `--offset`; `--files` (implying `--refs`) lists only the files the sweep names, one row each; `--at` answers as of a revision, declarations from that revision's files and call sites by name only. Where the index store does not answer a function's callers, the call sites matched by name come as their count and the first five, where the MCP tool lists up to 40 |
 | `sift search <query> [--offset N] [--count]` | Find declarations by structural shape — `kind:func attr:Test calls:Task !has:await`; `--count` prints the totals and a per-module breakdown, no listing; past 120 matches the rest come as names by file when they fit about 8 kB, else a `truncated:` cursor |
 | `sift similar <target>` | Rank the declarations whose syntactic shape is closest to one you name — does this helper already exist? |
 | `sift dupes [<paths>…] [--min <overlap>] [--offset <n>] [--tests \| --no-tests]` | Group declarations whose bodies are near-duplicates, across the tree or under a path; copies first, test and preview code last, ten groups a page |
@@ -915,11 +945,11 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `sift run --without <pathspec>… [--since <rev>] [--keep-without-build] -- <tests>` | Run the named tests with your uncommitted changes under the pathspec set aside, then with them back: one line per test on whether it fails without the change and passes with it. The flag repeats, one pathspec per flag, and everything it names is set aside as one unit; `--since` sets aside what the commits since that revision changed under it instead, for a fix already committed. The build made without the change is removed once your changes are back; a run that could not put them back leaves it (and says so), for the next run to clear. `--keep-without-build` keeps it for the next proof to build on |
 | `sift run --without-line <file:line> -- <tests>` | The same proof for a fix that cannot build without its own change: comment out that one line, run, put it back, run again |
 | `sift run --restore` | Put back a set-aside whose run was killed along with its watcher, checked by content hash |
-| `sift affected [--from R [--to R]] [--depth N] [--reached NAME]...` | Which tests reference what a diff changed, with the `-only-testing:` and `--filter` arguments — it reports, it never runs and never decides what to skip |
+| `sift affected [--from R [--to R]] [--depth N] [--reached NAME]... [--suites]` | Which tests reference what a diff changed, with the `-only-testing:` and `--filter` arguments — it reports, it never runs and never decides what to skip |
 | `sift diff [<range>] [--member <Type.member>] [--offset N] [--coverage]` | A structural digest of a change for review, in place of the raw `git diff`: every touched file, declarations added/removed/changed with before → after signatures, what changed outside them, callers of changed signatures, test names, and the tests reaching the changed files. `<range>` is a single commit (its own change), `A..B`, `A...B` (against the merge-base), or omitted for the working tree vs `HEAD`. `--member` prints one declaration's before/after; its header ends in an address `path#Type.member:line` (the file, the declaration's label, and its line after the change; `path#Type.member:before:line` for a declaration the range removed, which has no after side), and that whole address can be passed back to `--member`, as the ambiguity refusal's list does. `--coverage` adds what the last `sift run --coverage` measured, where it measured this very tree, and says so where it is stale or absent |
 | `sift usage [--since W] [--root R] [--unredact] [--all-roots] [--include-scratch] [--file P] [--run-file P]` | Summarise the index usage log — calls by tool, root and day, latency, top targets; `--all-roots` lists every root rather than the top five; `--file`/`--run-file` read other copies of `usage.jsonl` and `run.jsonl` |
 | `sift flakes [--since W] [--root R] [--unredact] [--file P]` | For every test that has both failed and passed across wrapped runs: how many named it, out of how many, and when one last did; `--file` reads another copy of `run.jsonl` |
-| `sift audit [--since W] [--until W] [--all] [--transcript P] [--projects D] [--unredact] [--include-scratch] [--progress] [--replay [--sample N] [--shapes P] [--against <binary>]] [--scan-diff --against <binary> [--all-windows]] [--summary \| --share]` | Audit transcripts for Swift lookups that went around the index, named file by file; `--until` bounds the window above, `--projects` reads another transcript directory. `--replay`, `--against`, `--scan-diff`, `--summary` and `--share` are described under **Auditing the misses** |
+| `sift audit [--since W] [--until W] [--all] [--transcript P] [--projects D] [--unredact] [--include-scratch] [--progress] [--replay [--sample N] [--shapes P] [--against <binary>]] [--scan-diff --against <binary> [--all-windows]] [--summary \| --share \| --by day\|week]` | Audit transcripts for Swift lookups that went around the index, named file by file; `--until` bounds the window above, `--projects` reads another transcript directory. `--replay`, `--against`, `--scan-diff`, `--summary`, `--share` and `--by` are described under **Auditing the misses** |
 | `sift report --deploys` | List each install of the bundle's binary, one line each, newest last: time, commit, version, tree, size; read from `~/.sift/deploys.jsonl`, which `install.sh` appends to |
 | `sift report [--since W] [--root R] [--out P] [--include-scratch] [--no-open] [--progress] [--file P] [--run-file P] [--projects D]` | Write a self-contained HTML page — conditions awaiting you, index share, estimated savings, failures — and open it; `--file`, `--run-file` and `--projects` read other copies of the usage log, the run log and the transcripts |
 | `sift reconcile` | Diff index against working tree and fix divergences |
@@ -1126,6 +1156,16 @@ Five flags turn the audit on the hook itself, for whoever is changing it:
 - **`--summary`** keeps the share, the not-worth rows and the refusal accounting and drops the lists;
   **`--share`** prints only two lines, the headline share and the voluntary share, for a script comparing
   windows.
+- **`--by day`** or **`--by week`** reads a trend in one run: the summary's first line for the whole span, the
+  `live:` note once, then one line per calendar day, or per week starting Monday, oldest first, clipped to
+  `--since` and `--until` and named by its first day. Each line carries that window's `choice` (the lookups
+  that had a choice), the `indexed` and `voluntary` shares worked out as the summary's own rows work them,
+  and the `cold` and `answered` counts, with the columns lined up; a window with no lookups reads
+  `choice 0`. It implies `--summary` and refuses `--transcript`, `--replay`, `--share` and `--unredact`.
+
+  ```
+  2026-10-06  choice 5223  indexed 56%  voluntary 53%  cold 2214  answered 222
+  ```
 
 ### One page, on disk — `sift report`
 
@@ -1192,6 +1232,20 @@ such as `.agents`, `.github` and `.claude` (not `.git`, `.build`, `.swiftpm` or 
 directory is still never indexed. Storyboards, xibs, plists, string catalogs and
 project files are not read, and the answer says so when it finds nothing.
 
+When the question is only which files, `where <symbol> --files` (`files: true` on the MCP tool) lists the
+files the sweep names, one row each, sorted by path: the code lines, `declares` where the symbol is
+declared or extended, and the not-code mentions. The set is exactly the one `--refs` names, in a fraction
+of the length; the heading keeps whatever the sweep says is incomplete.
+
+```
+$ sift where ResultCache --files
+files naming Lib.ResultCache (4 files: 2 with code sites, 2 with not-code mentions):
+  ProductKit/Docs/Caching.md (not code 3)
+  ProductKit/Sources/Lib/ResultCache.swift (12, declares)
+  ProductKit/Sources/Lib/Session/Coordinator.swift (4, not code 4)
+  ProductKit/Tests/LibTests/ResultCacheEraseTests.swift (7)
+```
+
 ## 12. Compressing build output — `sift run`
 
 The index covers one half of what a session spends context on: reading code. The other half is what
@@ -1211,11 +1265,10 @@ A passing run is its verdict, its counts and where the raw log is:
 ```
 ✔ swift test
 totals: ✔ passed · Swift Testing 8 tests in 1 suite, 0 skipped
-raw: Widget @ cc94af6 (clean) · .sift/runs/run-20260929-090738Z-58a3b1c1.log (26 lines in, 3 out), kept for the next 4 runs
+raw: Widget @ cc94af6 (Swift clean) · .sift/runs/run-20260929-090738Z-58a3b1c1.log (26 lines in, 3 out), kept for the next 4 runs
 ```
 
-The `raw:` line opens with the tree and commit the run happened in, in the words of the `tree:` header
-(`Widget @ cc94af6 (clean)`, `(dirty: 3)` for a tree whose `.swift` files have moved, as `dirty:` counts them, no word on it where it cannot be read, a linked worktree named as it is there, the
+The `raw:` line opens with the tree and commit the run happened in (`Widget @ cc94af6 (Swift clean)`, `(Swift dirty: 3)` for a tree whose `.swift` files have moved, counted as the `tree:` header's `dirty:` counts them, the word Swift saying the count covers only those files, no word on it where it cannot be read, a linked worktree named as it is there, the
 tree alone outside a repository), so a suite run in the wrong checkout does not read as the right one.
 
 A skipped test is counted on that line as skipped (`Swift Testing 2 tests in 1 suite, 1 skipped`, and the
@@ -1229,7 +1282,7 @@ printed, since they are then the evidence to check it against.
 
 A failing one keeps what you have to act on — errors with their file, line and column, test failures
 from both frameworks with their messages (an expectation's message and expansion whole up to 1 KiB), warnings
-deduplicated and capped at twenty — and nothing else. A warning or `error:` line a tool
+grouped by message and capped at twenty (the first site shown with `×N`; the other sites are only in the raw log) — and nothing else. A warning or `error:` line a tool
 logs with a timestamp while the build runs (`<date> <time> tool[pid:tid] error: …`) is shown, never judged:
 it is listed as `tool: error: …` under `tool log (N):`, deduplicated and capped at twenty, and no verdict,
 exit code or explanation of a failure reads it. The same shape printed once a test has started is the
@@ -1241,7 +1294,7 @@ nothing is answered by its headline and the `raw:` line alone:
   aFailingTest() — Tests/SiftCoreTests/DepotStoreTests.swift:11 (body :8-12)
     Expectation failed: depot.count == 2 → false depot.count → 1
 totals: ✘ failed · Swift Testing 1 test in 1 suite, 1 failure, 0 skipped
-raw: Widget @ cc94af6 (clean) · .sift/runs/failed-8c1d07e5-run-20260929-090807Z-1b642cfb.log (17 lines in, 5 out), kept until it passes or 5 newer failures
+raw: Widget @ cc94af6 (Swift clean) · .sift/runs/failed-8c1d07e5-run-20260929-090807Z-1b642cfb.log (17 lines in, 5 out), kept until it passes or 5 newer failures
 ```
 
 The heading names the file and line and, where the failure sits inside the test's own body, that body's

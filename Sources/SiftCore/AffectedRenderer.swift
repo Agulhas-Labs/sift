@@ -85,7 +85,7 @@ extension AffectedRenderer {
     }
 }
 
-private extension AffectedRenderer {
+extension AffectedRenderer {
     /// What is known about one reached test: how far away it was, whether the store resolved it or a name merely matched, and where its evidence stands against the build.
     struct Evidence {
         var depth: Int
@@ -188,9 +188,20 @@ extension AffectedRenderer {
         let answeredBy = afterEdit.files.isEmpty
             ? (reached.isEmpty ? "nothing reached" : reached.values.allSatisfy { !$0.resolved } ? "a name match" : "resolved references")
             : "the after-edit walk (syntactic, from the declarations the diff touched)"
+        let provenance: DiscoveredStore.Provenance? = if case let .active(context) = semantic {
+            context.store.provenance
+        } else {
+            nil
+        }
+        let package = if case let .active(context) = semantic {
+            context.store.package
+        } else {
+            ""
+        }
+        let runners = AffectedRunners(provenance: provenance, package: package)
         let (limits, ways) = blindSpots(
-            answeredBy: answeredBy,
-            depthLine: AffectedBlindSpots.depthLine(options.depth, walkedOn: semanticWalk.walkedOn.outcomes.count),
+            runners: runners,
+            headline: (answeredBy: answeredBy, depthLine: AffectedBlindSpots.depthLine(options.depth, walkedOn: semanticWalk.walkedOn.outcomes.count)),
             resolution: resolution,
             excludedByConfig: excludedByConfig,
             reached: reached,
@@ -205,13 +216,8 @@ extension AffectedRenderer {
         lines.append(contentsOf: nameWalk.notes(cap: Self.nameEvidenceFileCap))
         lines.append(contentsOf: callWalk.afterEditNotes(afterEdit, cap: Self.nameEvidenceFileCap))
         lines.append(contentsOf: unbuiltTests.notes(walk: testSideWalk, cap: Self.nameEvidenceFileCap))
-        let package = if case let .active(context) = semantic {
-            context.store.package
-        } else {
-            ""
-        }
         // Counted, not written by hand: the standing list plus this answer's own entries.
-        lines.append(contentsOf: testSections(reached: reached, inventory: inventory, options: options, ways: ways, package: package, afterEdit: afterEdit.files.isEmpty ? nil : (afterEdit, callWalk.scannedNames)))
+        lines.append(contentsOf: AffectedTestSections(reached: reached, inventory: inventory, options: options, ways: ways, package: package, runners: runners, provenance: provenance, afterEdit: afterEdit.files.isEmpty ? nil : (afterEdit, callWalk.scannedNames)).lines())
         let listed = reached.keys.sorted().map { test in
             let evidence = reached[test]
             return ReachedTest(
@@ -290,7 +296,7 @@ extension AffectedRenderer {
     }
 }
 
-private extension AffectedRenderer {
+extension AffectedRenderer {
     /// What the change set resolved to, and what it could not.
     struct Resolution {
         var declarations: [SymbolRow]
@@ -304,7 +310,7 @@ private extension AffectedRenderer {
     /// The alternative, resolving only declarations overlapping a diff hunk, is under-inclusive in three ways that all fail dangerously. A hunk's line numbers refer to the *old* file for deletions and the new one for additions, while the index holds current-tree ranges, so a deletion has no extent to intersect at all — and a deleted method is precisely the change whose references break. A one-line edit to a stored property changes the meaning of every member that reads it. And an added file is entirely new, so every declaration in it is changed by definition. Erring wide costs a longer list; erring narrow costs a test that should have run and did not, and the second is the failure this command exists to prevent.
     ///
     /// Extensions are dropped for the same reason `where` drops them: an extension carries no USR of its own, so it can only ever refuse against something no build will resolve. Its *members* are separate rows and are kept.
-    func resolveChangedDeclarations(_ changes: [GitContext.Change], excludedByConfig: [String]) throws -> Resolution {
+    private func resolveChangedDeclarations(_ changes: [GitContext.Change], excludedByConfig: [String]) throws -> Resolution {
         var declarations: [SymbolRow] = []
         var unreadable: [String] = []
         var fileLines: [String] = []
@@ -355,7 +361,7 @@ private extension AffectedRenderer {
         return Resolution(declarations: Array(declarations.prefix(Self.declarationCap)), unreadable: unreadable, summary: summary, capped: capped)
     }
 
-    static func described(_ kind: GitContext.Change.Kind) -> String {
+    private static func described(_ kind: GitContext.Change.Kind) -> String {
         switch kind {
         case .addedOrModified: "added or modified"
         case .deleted: "deleted"
@@ -839,136 +845,40 @@ private extension AffectedRenderer {
     }
 }
 
-private extension AffectedRenderer {
+extension AffectedRenderer {
     /// The limits block, printed above the list it qualifies: at most two lines, what is specific to this answer.
     ///
     /// The standing list of what the index cannot see is `sift help affected-limits`; `ways` counts it with the answer's own entries, so the empty answer can cite a number a reader can check there.
     func blindSpots(
-        answeredBy: String,
-        depthLine: String,
+        runners: AffectedRunners,
+        headline: (answeredBy: String, depthLine: String),
         resolution: Resolution,
         excludedByConfig: [String],
         reached: [TestSymbol: Evidence],
         capped: Bool
     ) -> (lines: [String], ways: Int) {
-        var entries = [depthLine]
+        var entries = [headline.depthLine]
         if !excludedByConfig.isEmpty {
             entries.append(AffectedBlindSpots.excludedByConfig(excludedByConfig, listing: Self.changedFileListCap))
         }
         if !resolution.unreadable.isEmpty {
             entries.append(AffectedBlindSpots.unreadableFiles(resolution.unreadable))
         }
-        if !reached.isEmpty {
+        if !reached.isEmpty, runners.xcodebuild {
             entries.append(AffectedBlindSpots.moduleNameClause)
         }
         if reached.keys.contains(where: \.swiftTestFilterSelectsNothing) {
-            entries.append(AffectedBlindSpots.nestedXCTestClause)
+            entries.append(AffectedBlindSpots.nestedXCTestClause(runners: runners))
         }
         if capped {
             entries.append("a size cap stopped the walk before it finished, so this answer is short of even what the index could have found — the notes above say which cap")
         }
         return (
             [
-                "\(AffectedBlindSpots.heading) answered by \(answeredBy). \(AffectedBlindSpots.lowerBoundLine) The standing limits: `sift help affected-limits`.",
+                "\(AffectedBlindSpots.heading) answered by \(headline.answeredBy). \(AffectedBlindSpots.lowerBoundLine) The standing limits: `sift help affected-limits`.",
                 Self.limitBullet + entries.joined(separator: "; "),
             ],
             AffectedBlindSpots.permanent.count + entries.count
         )
-    }
-}
-
-private extension AffectedRenderer {
-    /// The tests, then the arguments that select them.
-    ///
-    /// Under an after-edit walk, a target past the list cap whose name-matched tests are at least half of what it declares is not listed: the answer says it could not narrow below that target, and why.
-    func testSections(reached: [TestSymbol: Evidence], inventory: TestInventory?, options: AffectedOptions, ways: Int, package: String, afterEdit: (seeds: AffectedAfterEditSeeds, scanned: Int)? = nil) -> [String] {
-        guard !reached.isEmpty else {
-            return [
-                "",
-                "no test references found within \(options.depth) hop\(options.depth == 1 ? "" : "s").",
-                "that is not evidence that no test is affected: it means the index found no reference, which the limits (the standing list is `sift help affected-limits`) count \(ways) ways of being wrong about. Run the full suite.",
-            ]
-        }
-        let byTarget = Dictionary(grouping: reached.keys, by: \.target)
-        let total = reached.keys.reduce(0) { $0 + AffectedTargetLines.testCount(of: $1, in: inventory) }
-        var lines = ["", "affected tests (\(total) in \(byTarget.count) target\(byTarget.count == 1 ? "" : "s")):"]
-        var arguments: [String] = []
-        var filters: [String] = []
-        var leftOutOfXcodebuild = 0
-        var unfilterable = 0
-        var nameOnly = 0
-        var listedAny = false
-        var namedWhole = false
-
-        for target in byTarget.keys.sorted() {
-            let tests = (byTarget[target] ?? []).sorted()
-            // Counted the way the headline counts: a whole suite is every test the inventory declares in it, not the one row it prints as.
-            let targetTotal = tests.reduce(0) { $0 + AffectedTargetLines.testCount(of: $1, in: inventory) }
-            let declared = inventory?.tests.count { $0.target == target } ?? 0
-            // Past the cap a per-test list would look complete and is not: the target is named by commands printed once, here, and never again in the sections below.
-            let nameMatched = tests.filter { reached[$0]?.resolved == false }.reduce(0) { $0 + AffectedTargetLines.testCount(of: $1, in: inventory) }
-            // Where the after-edit walk alone reached the target, the collapse says which names it walked from, which "all N tests" would not.
-            let names = nameMatched == targetTotal ? afterEdit.map { AffectedTargetLines.walkedFromClause(count: $0.seeds.nameCount, listed: $0.seeds.namesListed, scanned: $0.scanned) } : nil
-            // A target whose every test is affected is named whole at any size; under the cap its rows are kept beside the line, which carries the detail they do.
-            let wholeTarget = names == nil ? AffectedTargetLines.wholeTarget(target, affected: targetTotal, in: inventory, package: package) : nil
-            if tests.count > Self.testListCap, let sample = tests.first {
-                if let wholeTarget {
-                    lines.append("  " + wholeTarget)
-                } else if declared > 0, targetTotal * 2 >= declared {
-                    lines.append(contentsOf: AffectedTargetLines.collapseLines(target: target, reached: targetTotal, declared: declared, nameMatched: nameMatched, walkedFrom: names, sample: sample, package: package))
-                } else {
-                    lines.append("  \(target) — \(targetTotal) tests")
-                    let restOnNames = nameMatched > 0 ? "; \(nameMatched) of them rest on a name match rather than a resolved reference" : ""
-                    lines.append("    \(targetTotal) tests affected — the commands below run exactly the affected suites\(restOnNames)")
-                    lines.append(contentsOf: AffectedTargetLines.suiteCommandLines(for: tests, in: inventory, package: package))
-                }
-                namedWhole = true
-                continue
-            }
-            listedAny = true
-            lines.append("  \(target) — \(targetTotal) test\(targetTotal == 1 ? "" : "s")")
-            wholeTarget.map { lines.append("    " + $0) }
-            for test in tests {
-                let evidence = reached[test]
-                var detail = ["\(evidence?.depth ?? 1) hop\((evidence?.depth ?? 1) == 1 ? "" : "s")"]
-                if evidence?.resolved == false {
-                    detail.append("name match")
-                    nameOnly += 1
-                }
-                lines.append("    \(test.described) — \(detail.joined(separator: ", ")) — \(evidence?.path ?? "?"):\(evidence?.line ?? 0)\(evidence?.state.marker ?? "")")
-                if let argument = test.onlyTestingArgument(runtimeCaseNames: inventory?.runtimeCaseNames ?? [:]) {
-                    arguments.append(argument)
-                } else {
-                    leftOutOfXcodebuild += AffectedTargetLines.testCount(of: test, in: inventory)
-                }
-                if test.swiftTestFilterSelectsNothing {
-                    unfilterable += AffectedTargetLines.testCount(of: test, in: inventory)
-                } else {
-                    filters.append(test.anchoredSwiftTestFilter)
-                }
-            }
-        }
-        // Every target named by commands above has said how to run it; what is left to select is only what was listed.
-        guard listedAny else { return lines }
-        // Beside a target named by its own command, a line that read as the whole selection would leave that target out of the run it is pasted into.
-        let listedOnly = namedWhole ? " (listed targets only; the targets above are named by their own command)" : ""
-
-        lines.append("")
-        lines.append("xcodebuild — one argument per selection\(listedOnly)\(nameOnly > 0 ? "; \(nameOnly) of the tests these select rest on a name match rather than a resolved reference" : ""):")
-        lines.append(contentsOf: arguments.sorted().map { "  \($0)" })
-        if leftOutOfXcodebuild > 0 {
-            lines.append("  " + AffectedBlindSpots.leftOutOfOnlyTesting(leftOutOfXcodebuild, noneLeft: arguments.isEmpty))
-        }
-        lines.append("")
-        lines.append("swift test — SwiftPM matches --filter as a regex against the printed test id\(listedOnly):")
-        if filters.isEmpty {
-            lines.append("  " + DiscoveredStore.swiftPMTestCommand(package: package) + " — " + AffectedBlindSpots.nothingFilterable(unfilterable))
-        } else {
-            lines.append((["  " + DiscoveredStore.swiftPMTestCommand(package: package)] + filters.sorted().map { "--filter '\($0)'" }).joined(separator: " "))
-            if unfilterable > 0 {
-                lines.append("  " + AffectedBlindSpots.leftOutOfTheFilter(unfilterable))
-            }
-        }
-        return lines
     }
 }

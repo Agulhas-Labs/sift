@@ -76,8 +76,8 @@ struct RunFallbackTests {
 
         #expect(recorded.errors == ["sift run: the filter found nothing that explains the failure — raw output follows."])
         #expect(recorded.printed.hasPrefix("Testing started\n"))
-        #expect(recorded.printed.hasSuffix("** TEST FAILED **\n\(note)\n"))
-        #expect(shown == report.totalLines + 1)
+        #expect(recorded.printed.hasSuffix("** TEST FAILED **\n\(XcodebuildTestDiagnostics.note)\n\(note)\n"))
+        #expect(shown == report.totalLines + 2)
     }
 
     /// A stand-in for a real toolchain that prints a fixed transcript and exits with a chosen code, named the way `RunCommandKind` recognises it — by its last path component.

@@ -12,7 +12,7 @@ import Testing
 struct SessionPrimerBudgetTests {
     /// Bytes, not tokens: about four bytes a token in this prose.
     ///
-    /// 900 bytes held the primer near 200 tokens until the standing caveats moved into it from every `where` and `search` answer (Docs/Design.md §2): their bullet adds about 540 bytes, said once per context in place of on each answer; the longest primer, a subagent's pointing at the CLI, is about 1.44 kB.
+    /// 900 bytes held the primer near 200 tokens until the standing caveats moved into it from every `where` and `search` answer (Docs/Design.md §2), and stayed there until they were left to the two tool descriptions and `sift help answers`; the longest primer, a subagent's pointing at the CLI, is about 1.44 kB.
     static let budget = 1550
 
     @Test(arguments: [SessionPrimer.Audience.session, .subagent])

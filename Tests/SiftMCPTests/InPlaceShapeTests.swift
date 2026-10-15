@@ -21,7 +21,7 @@ struct InPlaceShapeTests {
         case let .declarations(file, _)?: "declarations \(file)"
         case let .members(search)?: "members \(search.paths.joined(separator: " "))"
         case let .references(name, _)?: "references \(name)"
-        case let .symbols(names, _, _, _, _, _)?: "symbols \(names.joined(separator: " "))"
+        case let .symbols(names, _, _, _, _, _, _)?: "symbols \(names.joined(separator: " "))"
         case .memberRange?: "member range"
         case nil: nil
         }

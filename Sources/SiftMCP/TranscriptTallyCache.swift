@@ -81,6 +81,7 @@ extension TranscriptTallyCache {
         let earliest: Double?
         var tally: TranscriptTally?
         var byDay: [String: TranscriptTally]?
+        var undated: TranscriptTally?
     }
 
     struct Contents: Codable {
@@ -131,6 +132,7 @@ extension TranscriptTallyCache {
             var scan = blank
             scan.tally = window.tally ?? TranscriptTally()
             scan.byDay = window.byDay ?? [:]
+            scan.undated = window.undated ?? TranscriptTally()
             return scan
         }
 
@@ -143,7 +145,8 @@ extension TranscriptTallyCache {
                 since: TranscriptTallyCache.reach(of: since, earliest: earliest),
                 earliest: earliest,
                 tally: scan.contributed ? scan.tally : nil,
-                byDay: scan.contributed ? scan.byDay : nil
+                byDay: scan.contributed ? scan.byDay : nil,
+                undated: scan.contributed ? scan.undated : nil
             )
             let key = TranscriptTallyCache.key(of: path)
             var entry = Entry(size: size, modified: modified.timeIntervalSince1970, windows: [])

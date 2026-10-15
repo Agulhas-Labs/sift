@@ -1,6 +1,3 @@
-<!-- Bundle-facing install guide. `make-dist.sh` copies this into the tarball, replacing the
-     PROVENANCE placeholder below with the real build facts. Evergreen — what changed in a release
-     goes in CHANGELOG.md, which ships beside this. -->
 # sift — install
 
 Two tools in one binary for AI coding agents working in Swift: build and test output an agent can
@@ -38,7 +35,7 @@ open-source components the binary links, and their licenses, are listed in `THIR
 |---|---|
 | `sift` | the binary — one file, no runtime, no package manager |
 | `install.sh` | copies it to `~/.local/bin`, registers the MCP server at user scope (per-repository `--scope local` is the alternative, see `Docs/Guide.md` §3) and appends a line (time, version, commit, tree state, binary size) to `~/.sift/deploys.jsonl`; `sift report --deploys` lists them |
-| `BUILD_INFO` | the version, commit and tree state this bundle was built from, which `install.sh` records; without it the line carries `null` for them |
+| `BUILD_INFO` | the version, commit and tree state this bundle was built from, which `install.sh` records; without it the line carries `null` for them. `commit` is the commit a release was cut from or, for a local build, the git tree hash of the source (not a commit) |
 | `Sift.md`, `README.md` | the agent guide and the overview |
 | `Docs/Guide.md` | the full reference: config, indexing, freshness, troubleshooting, every command |
 
@@ -51,6 +48,9 @@ open-source components the binary links, and their licenses, are listed in `THIR
 
 ## Install
 
+From this unpacked bundle, the first command is `sh install.sh` (see "From this bundle" below). `sift install` is
+for Homebrew and npm installs, and for re-running later.
+
 ```sh
 sift install
 ```
@@ -62,7 +62,9 @@ With `sift` on your `PATH` (Homebrew and npm put it there; from this bundle, `sh
 yes). It runs the same installers as `install-hook`, so nothing new is written:
 
 - **Claude Code:** the hooks in `~/.claude/settings.json`, the MCP server at user scope
-  (through `claude mcp add`), and the agent rule at `~/.claude/rules/sift.md`. Then start a **new** session.
+  (through `claude mcp add`), and, where a `Sift.md` ships beside the binary (Homebrew and the npm package ship one, so `sift install` from either writes the rule), the agent rule at
+  `~/.claude/rules/sift.md`; a bundle install gets the rule from `install.sh`. Then start a **new** session for the
+  primer, the tool list and the rule.
 - **Cursor:** `~/.cursor/mcp.json` and `~/.cursor/hooks.json`. Then restart Cursor.
 - **Codex:** `hooks.json` in the Codex home and the MCP server (through `codex mcp add`). Then restart Codex; it
   shows a trust prompt for the hooks the first time it opens, and they run once you approve it.
@@ -101,7 +103,7 @@ route. It is not published yet, so `sift install` is the one that works today.
 sh install.sh
 ```
 
-**From Claude Code, run it yourself.** In auto mode, Claude Code's permission classifier refuses an agent
+**From Claude Code, run it yourself.** In auto mode, Claude Code's permission classifier may refuse an agent
 running `install.sh`: it edits the agent's own settings and installs a binary with no Developer ID signature.
 That is the harness working as intended. Type it at the prompt with a leading `!` instead:
 
@@ -112,6 +114,9 @@ That is the harness working as intended. Type it at the prompt with a leading `!
 A `!` command has no terminal either, so nothing is asked: `--allow-run` adds both blocks of allow rules (the
 lookups and the wrapped builds), `--allow-lookups` the lookups alone, and with neither no rule is added and the
 output names the command that adds them. Then start a new Claude Code session.
+
+The MCP server is registered only where `claude` is on the `PATH`; the Claude desktop app's embedded CLI is not.
+Where it is missing, `install.sh` prints the `claude mcp add …` command to run by hand, and running it is the fix.
 
 Re-running it is the upgrade path. On a terminal its `install-hook` step asks the two allow-rule questions above
 (lookups default yes, or no after a remembered no; builds default no). With no terminal, as when an agent runs it,
@@ -131,7 +136,9 @@ through `claude plugin uninstall` and `claude plugin marketplace remove`), then 
 copied to (`~/.local/share/sift/sift-mod`) and the marketplace file beside it that named the band. If `claude` is missing or a `claude plugin` command fails, the installer
 still succeeds and prints the commands to run by hand.
 
-Then start a **new** Claude Code session (a running one keeps its old server). In any Swift repo:
+On an upgrade, a running Claude Code session's server re-executes into the new binary before its next request and
+the hooks apply at once; after a first install, and for the session primer, the tool list and the rule file, start
+a **new** session. In any Swift repo:
 
 ```sh
 sift status     # freshness, counts, module map, index-store discovery — the doctor

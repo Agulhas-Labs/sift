@@ -37,7 +37,7 @@ struct GitChildBoundTests {
         let root = fixture.root
         let started = Date()
 
-        let answered = Self.within { GitContext.spawnedRoot(from: root) }
+        let answered = Self.within { GitContext.spawnedRoot(from: root, within: ChildDeadline.git) }
         fixture.release()
 
         let result = try #require(answered, "git is still blocked on the FIFO after \(Self.hookBudget) seconds: the call has no bound")
@@ -131,6 +131,25 @@ struct GitChildBoundTests {
         }
     }
 
+    /// The bound a defaulted read takes is the one widened for the root its directory lies under, and nowhere else: a read naming no bound, in a directory under a widened root, waits out a child that takes 3 seconds, which the production two seconds would cut off; a directory beside it that nobody widened keeps those two seconds.
+    ///
+    /// The root is widened in the spelling `$TMPDIR` gives it (`/var/…`) and read in the resolved one (`/private/var/…`), as the code under test sees it.
+    @Test
+    func aDefaultedReadTakesTheBoundWidenedForItsRootAndNoOther() throws {
+        let root = try TemporaryDirectory.make("git-child-widened")
+        let beside = try TemporaryDirectory.make("git-child-not-widened")
+        ChildDeadline.widenGitReads(under: root, to: 120)
+        let inside = root.resolvingSymlinksInPath().appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: inside, withIntermediateDirectories: false)
+        let slow = ["-c", "alias.slow=!sleep 3 && echo ok", "slow"]
+
+        let defaulted = try GitContext.run(arguments: slow, in: inside)
+
+        #expect(defaulted.trimmingCharacters(in: .whitespacesAndNewlines) == "ok")
+        #expect(ChildDeadline.gitRead(in: beside) == ChildDeadline.git)
+        #expect(ChildDeadline.git == 2)
+    }
+
     /// The caller, not only the runner: `dirtyFiles` is a bulk read, and a repository whose `git status` takes 3 seconds still answers it.
     ///
     /// The slowness is a clean filter, which runs under the fsmonitor hardening: `A.swift` is rewritten with the same content, so its stat data differs from the index's and status runs the filter to compare; the untracked `B.swift` is the change the answer names. A control times a plain status in the same repository, so the test cannot pass on a status that is fast.
@@ -138,7 +157,8 @@ struct GitChildBoundTests {
     func theDirtySetOfARepositoryWhoseStatusTakesThreeSecondsIsStillRead() throws {
         let root = try TemporaryDirectory.make("git-child-bulk-caller")
         try TestSources.runGit(["init", "-q"], in: root)
-        try #require(GitContext.spawnedRoot(from: root)?.resolvingSymlinksInPath().path == root.resolvingSymlinksInPath().path, "the fixture repository is not the temporary directory")
+        try #require(ChildDeadline.gitRead(in: root) == ChildDeadline.git, "the repository's reads are widened, so a caller that dropped its bulk bound would pass")
+        try #require(GitContext.spawnedRoot(from: root, within: ChildDeadline.gitBulk)?.resolvingSymlinksInPath().path == root.resolvingSymlinksInPath().path, "the fixture repository is not the temporary directory")
         let identity = ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"]
         let source = root.appendingPathComponent("A.swift")
         try Data("struct A {}\n".utf8).write(to: source)
@@ -212,7 +232,8 @@ struct GitChildBoundTests {
     func theRangeDiffOfARepositoryWhoseObjectsTakeThreeSecondsToOpenIsStillRead() throws {
         let root = try TemporaryDirectory.make("git-child-bulk-range")
         try TestSources.runGit(["init", "-q"], in: root)
-        let toplevel = try #require(GitContext.spawnedRoot(from: root))
+        try #require(ChildDeadline.gitRead(in: root) == ChildDeadline.git, "the repository's reads are widened, so a caller that dropped its bulk bound would pass")
+        let toplevel = try #require(GitContext.spawnedRoot(from: root, within: ChildDeadline.gitBulk))
         try #require(toplevel.resolvingSymlinksInPath().path == root.resolvingSymlinksInPath().path, "the fixture repository is not the temporary directory")
         let identity = ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"]
         try Data("struct A {}\n".utf8).write(to: root.appendingPathComponent("A.swift"))

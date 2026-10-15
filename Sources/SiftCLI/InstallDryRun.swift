@@ -8,13 +8,13 @@ import SiftCore
 /// What `sift install --dry-run` prints: what was found and what an install would do to each file it writes, with what the Claude Code server and rule steps would do, read without writing a file or running a command.
 struct InstallDryRun {
     /// The answer for `picks`, found in `detection`, for `binary` under the home `environment` names.
-    static func lines(_ picks: [AgentSelection.Pick], detection: AgentDetection, binary: String, environment: [String: String]) -> [String] {
-        var lines = [text(detection, binary: binary, environment: environment)]
+    static func lines(_ picks: [AgentSelection.Pick], detection: AgentDetection, binary: String, environment: [String: String], claudeOnPath: Bool = true) -> [String] {
+        var lines = [text(detection, binary: binary, environment: environment, claudeOnPath: claudeOnPath)]
         lines += picks.compactMap(\.note)
         if picks.contains(where: { $0.agent == .claude }) {
             let config = SiftPaths.claudeConfig(environment: environment)
             let rule = SiftPaths.claudeRule(environment: environment)
-            lines.append("Claude Code MCP server: \(describe(ClaudeMcpInstall.plan(config: config, binary: binary), binary: binary, config: config))")
+            lines.append("Claude Code MCP server: \(describe(ClaudeMcpInstall.plan(config: config, binary: binary), binary: binary, config: config, claudeOnPath: claudeOnPath))")
             lines += LegacyBandCleanup.pending(settings: SiftPaths.claudeSettings(environment: environment))
             lines.append("Claude Code rule: \(describe(ClaudeRuleInstall.plan(source: ClaudeRuleInstall.source(forBinary: binary), destination: rule), at: rule))")
         }
@@ -26,9 +26,9 @@ struct InstallDryRun {
     /// One line per agent as detection says it, with each file an install writes beneath it and what the install would do to that file as it stands.
     ///
     /// A file the install would change reads exactly as ``AgentDetection/text`` has it, so on a machine with nothing installed the two are the same text.
-    private static func text(_ detection: AgentDetection, binary: String, environment: [String: String]) -> String {
+    private static func text(_ detection: AgentDetection, binary: String, environment: [String: String], claudeOnPath: Bool) -> String {
         detection.findings.flatMap { finding in
-            let states = states(of: finding.agent, binary: binary, environment: environment)
+            let states = states(of: finding.agent, binary: binary, environment: environment, claudeOnPath: claudeOnPath)
             return [finding.line] + finding.targets.map { target in
                 (states[target.url.path] ?? .write).line(target)
             }
@@ -37,7 +37,7 @@ struct InstallDryRun {
     }
 
     /// What an install into `agent` would do to each file it writes, by path, read through the installers' own merges.
-    private static func states(of agent: InstallAgent, binary: String, environment: [String: String]) -> [String: TargetState] {
+    private static func states(of agent: InstallAgent, binary: String, environment: [String: String], claudeOnPath: Bool) -> [String: TargetState] {
         let word = ShellWord.quoted(binary)
         switch agent {
         case .claude:
@@ -46,8 +46,8 @@ struct InstallDryRun {
             let rule = SiftPaths.claudeRule(environment: environment)
             return [
                 settings.path: TargetState.reading { try claudeSettings(settings, word: word) },
-                config.path: server(ClaudeMcpInstall.plan(config: config, binary: binary)),
-                rule.path: self.rule(ClaudeRuleInstall.plan(source: ClaudeRuleInstall.source(forBinary: binary), destination: rule)),
+                config.path: server(ClaudeMcpInstall.plan(config: config, binary: binary), binary: binary, claudeOnPath: claudeOnPath),
+                rule.path: self.rule(ClaudeRuleInstall.plan(source: ClaudeRuleInstall.source(forBinary: binary), destination: rule), at: rule),
             ]
         case .cursor:
             let directory = SiftPaths.cursorDirectory(environment: environment)
@@ -108,10 +108,12 @@ struct InstallDryRun {
         return changed ? .write : .installed
     }
 
-    private static func server(_ plan: ClaudeMcpInstall.Plan) -> TargetState {
+    private static func server(_ plan: ClaudeMcpInstall.Plan, binary: String, claudeOnPath: Bool) -> TargetState {
         switch plan {
-        case .absent, .stale:
-            .write
+        case .absent:
+            claudeOnPath ? .write : TargetState(verb: "would not write", reason: "`claude` is not on PATH — register the server with: \(ClaudeMcpInstall.manual(binary: binary))")
+        case let .stale(previous):
+            claudeOnPath ? .write : TargetState(verb: "would not write", reason: "`claude` is not on PATH — replace the stale registration (\(previous)) with: \(SiftUninstall.serverRemovalCommand); \(ClaudeMcpInstall.manual(binary: binary))")
         case .current:
             .installed
         case let .foreign(existing):
@@ -121,14 +123,14 @@ struct InstallDryRun {
         }
     }
 
-    private static func rule(_ plan: ClaudeRuleInstall.Plan) -> TargetState {
+    private static func rule(_ plan: ClaudeRuleInstall.Plan, at destination: URL) -> TargetState {
         switch plan {
         case .copy, .replace:
             .write
         case .identical:
             .installed
         case .noSource:
-            TargetState(verb: "would be skipped", reason: "no Sift.md ships with this binary")
+            noSourceState(at: destination)
         case let .symlink(target):
             TargetState(verb: "left alone", reason: "a symlink to \(target)")
         case .refused:
@@ -136,8 +138,13 @@ struct InstallDryRun {
         }
     }
 
-    private static func describe(_ plan: ClaudeMcpInstall.Plan, binary: String, config: URL) -> String {
-        switch plan {
+    private static func describe(_ plan: ClaudeMcpInstall.Plan, binary: String, config: URL, claudeOnPath: Bool) -> String {
+        let manual = ClaudeMcpInstall.manual(binary: binary)
+        return switch plan {
+        case .absent where !claudeOnPath:
+            "`claude` is not on PATH — register the server with: \(manual)"
+        case let .stale(previous) where !claudeOnPath:
+            "`claude` is not on PATH — replace the stale registration (\(previous)) with: \(SiftUninstall.serverRemovalCommand); \(manual)"
         case .absent:
             "would register \(binary) mcp through `claude mcp add`"
         case .current:
@@ -151,10 +158,19 @@ struct InstallDryRun {
         }
     }
 
+    /// What a rule with no `Sift.md` to install from is left as: kept where an earlier install put it, else skipped.
+    private static func noSourceState(at rule: URL) -> TargetState {
+        let exists = PathKind.of(rule) != .absent
+        return TargetState(verb: exists ? "left as installed" : "would be skipped", reason: ClaudeRuleInstall.noSourceReason(exists: exists))
+    }
+
     private static func describe(_ plan: ClaudeRuleInstall.Plan, at rule: URL) -> String {
         switch plan {
         case .noSource:
-            "would be skipped — no Sift.md ships with this binary"
+            {
+                let state = noSourceState(at: rule)
+                return "\(state.verb) — \(state.reason ?? "")"
+            }()
         case .copy:
             "would copy Sift.md to \(rule.path)"
         case .identical:

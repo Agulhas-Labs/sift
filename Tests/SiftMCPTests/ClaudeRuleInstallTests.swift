@@ -72,7 +72,7 @@ struct ClaudeRuleInstallTests {
         let outcome = try ClaudeRuleInstall.install(source: source, destination: destination)
 
         #expect(source == nil)
-        #expect(outcome.notes == ["rule: skipped — no Sift.md ships with this binary (the release bundle and Homebrew carry it)"])
+        #expect(outcome.notes == ["rule: skipped — no Sift.md ships with this binary (install.sh writes it; `sift install` from Homebrew or npm copies the Sift.md they ship)"])
         #expect(PathKind.of(destination) == .absent)
     }
 

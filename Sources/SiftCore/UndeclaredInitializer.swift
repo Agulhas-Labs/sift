@@ -18,6 +18,8 @@ struct UndeclaredInitializer {
     var callSiteCap = WhereRenderer.callSiteCap
     /// Pages the sites by file in place of `callSiteCap`, for a `--refs` sweep with no index store, where they are the whole sweep there is.
     var paging: SyntacticSweepPaging?
+    /// Where a files view (`where X --files`) records every type and site the answer lists, past its caps.
+    var filesCollector: WhereFilesCollector?
 
     /// Whether `query` is a `T.init` naming a type that declares no init and is built by calling its name, whose sites this answers with.
     func buildsAnUndeclaredType(_ query: String) throws -> Bool {
@@ -32,6 +34,8 @@ struct UndeclaredInitializer {
         let types = try types(for: query)
         guard !types.isEmpty else { return nil }
         let listed = types.prefix(listCap)
+        recordDeclarations(of: types)
+        filesCollector?.recordDeclarationsHeading("declarations (\(types.count)):")
         var body = ["declarations (\(types.count)):"] + listed.map { $0.row.declarationLine(qualifiedName: $0.path, compact: false) }
         body += try listed.map { try provenance(of: $0.row, named: types.count > 1 ? $0.path : $0.row.name) }
         body += try await siteLines(for: types.filter { SameNamedTypes.isConstructed($0.row.kind) })
@@ -43,6 +47,7 @@ struct UndeclaredInitializer {
         guard declarations.contains(where: { $0.kind == .initializer }) else { return [] }
         let types = try types(for: query).filter { SameNamedTypes.isConstructed($0.row.kind) }
         guard !types.isEmpty else { return [] }
+        recordDeclarations(of: types)
         var lines = ["", "declared with no init of their own (\(types.count)):"] + types.prefix(listCap).map { $0.row.declarationLine(qualifiedName: $0.path, compact: false) }
         lines += try types.prefix(listCap).map { try provenance(of: $0.row, named: $0.path) }
         return try await lines + siteLines(for: types)
@@ -88,6 +93,13 @@ struct UndeclaredInitializer {
         return opening + "the compiler writes its default init(), given every stored property has a default value"
     }
 
+    /// Records the file of each of `types` as declaring one, past the list's cap; the heading names the query, not the types.
+    private func recordDeclarations(of types: [SameNamedTypes.Candidate]) {
+        for type in types {
+            filesCollector?.recordDeclaration(path: type.row.path, owner: "\(type.path).init", isExtension: false)
+        }
+    }
+
     /// The name-matched sites where the types are built, scanned for as their initializers' sites are — by the type's name — and each credited to the type of that name it builds.
     private func siteLines(for types: [SameNamedTypes.Candidate]) async throws -> [String] {
         guard let callSites, !types.isEmpty else { return [] }
@@ -128,6 +140,7 @@ struct UndeclaredInitializer {
                     let owners = listed.first { $0.site == site }?.owners
                     return "in \(site.enclosing)" + (owners.map { SameNamedTypes.flag(of: $0, for: [type.path]) } ?? "")
                 }
+                filesCollector?.recordSites(listed.map(\.site))
                 if let paging {
                     lines += paging.rows(of: listed.map(\.site), detail: detail)
                     continue
@@ -143,6 +156,7 @@ struct UndeclaredInitializer {
                 guard let arguments = site.arguments else { return true }
                 return asked.contains { $0.fits(arguments) != false }
             }
+            filesCollector?.recordSites(untold)
             lines += SyntacticCallerFallback.nameOnlyLines(untold, cap: callSiteCap, initializerOf: name, narrowed: true, grouped: true, paging: paging).map { "  " + $0 }
         }
         return lines

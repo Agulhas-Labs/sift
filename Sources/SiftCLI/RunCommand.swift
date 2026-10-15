@@ -16,7 +16,7 @@ struct RunCommand: ParsableCommand {
             usage: "sift run [<command> ...] [--without <without> ...] [--without-line <file:line>] [--since <since>] [--keep-without-build] [--restore] [--proved] [--coverage] [--from <from>]",
             discussion: """
             Wraps `swift build`, `swift test` and `xcodebuild`, printing their errors, test failures, \
-            deduplicated warnings and own summary line instead of the thousands of progress lines a \
+            warnings grouped by message and own summary line instead of the thousands of progress lines a \
             verify loop otherwise costs. The wrapped command's exit code is passed through exactly, with \
             two exceptions: a run that names its tests (`swift test --filter …`, `xcodebuild \
             -only-testing:…`), exits 0 and executed none of them answers ✘ and exits 4 — never 1 or 65, \
@@ -529,7 +529,9 @@ struct RunCommand: ParsableCommand {
         }
         return answer.cannotTell ? 2 : 1
     }
+}
 
+extension RunCommand {
     /// Serves the filtered answer, or the raw log when there is no honest filtered answer to serve, and reports how many lines the caller was handed.
     ///
     /// That count is what the run log files as this run's `shown`, and it is taken from the thing that was printed rather than from anything counted on the way to it. `nil` where there is no measurement to make: a passthrough filtered nothing, and the two error branches below served no answer at all — the accessibility notes they still print are the one thing they handed the caller, and a `shown` of 1 beside a log nobody was served would read as a saving that never happened. The fail-open branch reports the whole transcript's length *and* those notes, because that is honestly what it printed — a run that served its raw log saved nothing, and recording the filtered answer it never printed would put a saving in the ledger that never happened.
@@ -538,11 +540,15 @@ struct RunCommand: ParsableCommand {
     /// - Parameter bundles: What the package's manifest says this run was owed, read by the caller because that is where argv is: what `swift test` was pointed at decides whether the manifest beside the reader is the package that ran. The same value decides whether the run may stand for its tree, and one reading serves both.
     /// - Parameter inventory: What ``RunInventoryCheck`` said about the run, which only the filtered answer carries.
     func report(_ outcome: RunOutcome, workingDirectory: URL, accessibility: [SimulatorAccessibility.Restoration], bundles: RunTestBundles, selector: RunTestSelector?, inventory: [String] = []) -> Int? {
+        // Owed by the run whichever way its answer goes out: in the filtered answer under its totals, beside the
+        // passthrough note, or among the notes that close the raw log.
+        let held = (outcome.heldOutput.map { [$0.note] } ?? []) + (outcome.exitCode != 0 && XcodebuildTestDiagnostics.turnsOff(in: asked.arguments) ? [XcodebuildTestDiagnostics.note] : [])
         guard outcome.kind.isFiltered else {
             output.emitError("sift run: no filter for this command — output passed through unchanged.")
+            held.forEach(output.emitError)
             return nil
         }
-        if let answer = outcome.filteredAnswer(workingDirectory: workingDirectory, accessibility: accessibility, testBundles: bundles, selector: selector, inventory: inventory, stamped: true) {
+        if let answer = outcome.filteredAnswer(workingDirectory: workingDirectory, accessibility: accessibility, testBundles: bundles, selector: selector, inventory: inventory + held, stamped: true) {
             output.emit(answer.text)
             return answer.lines
         }
@@ -551,7 +557,7 @@ struct RunCommand: ParsableCommand {
         // are the last thing printed either way. The outcome's own report — parsed before the filtered answer
         // was refused — still says whether its failures have the shape of an empty accessibility tree, so an
         // already-on device is not told there is nothing to say when there is.
-        let notes = Self.accessibilityNotes(for: outcome, workingDirectory: workingDirectory, accessibility: accessibility)
+        let notes = held + Self.accessibilityNotes(for: outcome, workingDirectory: workingDirectory, accessibility: accessibility)
         defer {
             for note in notes {
                 output.emit(note)
@@ -626,7 +632,7 @@ extension RunCommand {
     ///
     /// `.captureForPassthrough` hands `--` through with everything else, and both spellings — with it and without — have to reach the same command. The mark (``SiftCore/RunRewrite``) is never the command's: nothing past this sees it.
     private var arguments: [String] {
-        coverage ? RunCoverage.enabling(asked.arguments) : asked.arguments
+        XcodebuildTestDiagnostics.skipping(coverage ? RunCoverage.enabling(asked.arguments) : asked.arguments)
     }
 
     /// What was typed after `sift run`, the terminator and the hook's mark off, and whether the mark was there.

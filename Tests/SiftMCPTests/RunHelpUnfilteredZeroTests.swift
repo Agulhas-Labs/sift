@@ -14,4 +14,13 @@ struct RunHelpUnfilteredZeroTests {
 
         #expect(discussion.contains("An unfiltered `swift test` of a package whose manifest declares test targets that exits 0 having executed no test answers ✘ … nothing ran: no test executed and exits 4 as well."), "\(discussion)")
     }
+
+    /// Sites of one warning fold into the first with `×N`, so the help says warnings are grouped by message, not that each is deduplicated.
+    @Test
+    func theHelpSaysWarningsAreGroupedByMessage() {
+        let discussion = RunCommand.configuration.discussion.replacingOccurrences(of: "\n", with: " ")
+
+        #expect(discussion.contains("warnings grouped by message and own summary line"), "\(discussion)")
+        #expect(!discussion.contains("deduplicated warnings"), "\(discussion)")
+    }
 }

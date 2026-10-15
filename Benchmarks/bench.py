@@ -48,6 +48,27 @@ RESULTS = BENCH / "results"
 # even without session persistence. It is the run path's, so it is deleted after every run: one run
 # cannot leave memory for the next, and nothing is left behind.
 PROJECT_STATE = Path.home() / ".claude" / "projects" / re.sub(r"[/.]", "-", str(RUN))
+PATH_ONE = (RUN, TEMPLATE, STORE, PROJECT_STATE)
+
+
+def path_names(k: int) -> tuple:
+    """The run path, template, index store and Claude Code project state of path k (1-based). Path 1 keeps
+    the names a session always had; path k >= 2 adds `-k`, so the project state follows the run path by the
+    same rule Claude Code applies. Path 1 is the module's own, fixed at import, because select_path rebinds the
+    globals."""
+    if k == 1:
+        return PATH_ONE
+    run = RUN_HOME / ("corpus-%d" % k)
+    return (run, RUN_HOME / ("template-%d" % k), WORK / ("index-store-%d" % k),
+            Path.home() / ".claude" / "projects" / re.sub(r"[/.]", "-", str(run)))
+
+
+def select_path(k: int):
+    """Points RUN, TEMPLATE, STORE and PROJECT_STATE at path k. The model's tool choices turn out to follow
+    the prompt's bytes, and the run path is one of them, so a session spreads its repeats over several
+    paths; every function that reads these globals then works on the selected path unchanged."""
+    global RUN, TEMPLATE, STORE, PROJECT_STATE
+    RUN, TEMPLATE, STORE, PROJECT_STATE = path_names(k)
 
 # Ignored in every run's corpus (.git/info/exclude): arm B's settings, rule and index, and build products.
 TOOL_DEBRIS = [".claude/", ".sift/", ".sift.json", ".build/", ".swiftpm/", "DerivedData/", "xcuserdata/"]
@@ -218,7 +239,7 @@ def materialise(tasks: dict, source, env: dict, log: Path) -> dict:
     index_build = tasks["corpus"].get("index_build")
     if index_build:
         indexed = dict(corpus_indexed=True, **build_index_store(index_build, tasks, source, env,
-                                                                 log.with_name("index.log")))
+                                                                 log.with_name(log.name.replace("warm", "index"))))
     warm = tasks["corpus"].get("warm", DEFAULT_WARM)
     if warm:
         print("warming the corpus build (%s); log: %s" % (" ".join(warm), log), flush=True)
@@ -470,6 +491,139 @@ def invokes_sift(command: str) -> bool:
         if os.path.basename(words[0]) == "swift" and "run" in words[1:2] and "sift" in words:
             return True
     return False
+
+
+def sift_segments(command: str) -> list:
+    """The word lists of a shell command's segments that run sift, as `invokes_sift` reads them."""
+    found = []
+    for segment in re.split(COMMAND_SEPARATORS, command):
+        try:
+            words = shlex.split(segment)
+        except Exception:  # unbalanced quotes once the segment is cut out
+            words = segment.split()
+        while words and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]) or words[0] in COMMAND_PREFIXES):
+            words = words[1:]
+        if not words:
+            continue
+        if os.path.basename(words[0]) == "sift":
+            found.append(words[1:])
+        elif os.path.basename(words[0]) == "swift" and "run" in words[1:2] and "sift" in words:
+            found.append(words[words.index("sift") + 1:])
+    return found
+
+
+def first_command_word(command: str) -> str:
+    """The basename of the first command word of a shell command's first non-empty segment."""
+    for segment in re.split(COMMAND_SEPARATORS, command):
+        try:
+            words = shlex.split(segment)
+        except Exception:
+            words = segment.split()
+        while words and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]) or words[0] in COMMAND_PREFIXES):
+            words = words[1:]
+        if words:
+            return os.path.basename(words[0])
+    return ""
+
+
+def label(block: dict) -> str:
+    """A tool call's shape in a few words: the tool, and the options that change what it does, never the
+    operands. Benchmark results turn on which calls a run made, and this is what runs are compared by."""
+    name, given = block.get("name") or "", block.get("input") or {}
+    if name.startswith("mcp__sift__"):
+        keys = sorted(k for k, v in given.items()
+                      if k not in ("symbol", "target", "targets", "query", "root") and (v is not False))
+        return "%s(%s)" % (name[len("mcp__sift__"):], ",".join(keys)) if keys else name[len("mcp__sift__"):]
+    if name == "Bash":
+        command = given.get("command") or ""
+        segments = sift_segments(command)
+        if segments:
+            return " && ".join(" ".join(["sift"] + [w for w in words[:1] if not w.startswith("-")] +
+                                        sorted(w.split("=")[0] for w in words if w.startswith("-")))
+                               for words in segments)
+        return "Bash(%s)" % first_command_word(command)
+    if name == "Grep":
+        return "Grep(%s)" % ",".join(sorted(k for k in given if k != "pattern"))
+    if name == "Read":
+        return "Read(range)" if given.get("offset") or given.get("limit") else "Read"
+    return "%s(%s)" % (name, ",".join(sorted(given)))
+
+
+def result_text(content) -> str:
+    """A tool_result's text: its content is a string, or a list of text blocks."""
+    if isinstance(content, str):
+        return content
+    return "".join(b.get("text") or "" for b in content or [] if isinstance(b, dict))
+
+
+def call_records(stream: Path) -> list:
+    """Every tool call of a run in order, with its label, the length of its result, and whether the sift
+    hook answered it (an error result whose text says `sift answered`; the text opens with the hook's name,
+    so it is searched, not prefix-matched)."""
+    results, calls, seen = {}, [], set()
+    for message in read_stream(stream):
+        body = message.get("message") or {}
+        for block in body.get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            if message.get("type") == "user" and block.get("type") == "tool_result":
+                results[block.get("tool_use_id")] = block
+            elif message.get("type") == "assistant" and block.get("type") == "tool_use" and block.get("id") not in seen:
+                seen.add(block.get("id"))
+                calls.append(block)
+    records = []
+    for block in calls:
+        result = results.get(block.get("id")) or {}
+        text = result_text(result.get("content"))
+        hook = bool(result.get("is_error")) and "sift answered" in text
+        records.append({"name": block.get("name"), "input": block.get("input") or {},
+                        "label": label(block) + (" [hook]" if hook else ""), "result_chars": len(text), "hook": hook})
+    return records
+
+
+def call_shape(labels: list) -> str:
+    """A run's calls on one line: consecutive repeats collapsed as `label×n`, the first six items, and a
+    count of those dropped."""
+    items = []
+    for text in labels:
+        if items and items[-1][0] == text:
+            items[-1][1] += 1
+        else:
+            items.append([text, 1])
+    shown = " > ".join(t if n == 1 else "%s×%d" % (t, n) for t, n in items[:6])
+    return shown + (" > …+%d" % (len(items) - 6) if len(items) > 6 else "")
+
+
+def call_shape_lines(directory: Path) -> list:
+    """The analyse section tallying the valid runs' call shapes per task and arm (per path too, when a
+    task's summaries span several)."""
+    runs = []
+    for path in sorted(directory.glob("*.json")):
+        data = json.loads(path.read_text())
+        if "task" in data and "arm" in data and not data.get("warmup") and data.get("valid"):
+            runs.append((path, data))
+    order = task_order(directory)
+    tasks = sorted({d["task"] for _, d in runs}, key=lambda t: (order.get(t, len(order)), t))
+    lines = []
+    for task in tasks:
+        paths = {d.get("path", 1) for _, d in runs if d["task"] == task}
+        for arm in ARMS:
+            for k in sorted(paths):
+                chosen = [p for p, d in runs if d["task"] == task and d["arm"] == arm and d.get("path", 1) == k]
+                if not chosen:
+                    continue
+                tally = {}
+                for path in chosen:
+                    stream = path.with_name(path.stem + ".stream.jsonl")
+                    shape = call_shape([r["label"] for r in call_records(stream)]) if stream.exists() else "(no stream)"
+                    tally[shape] = tally.get(shape, 0) + 1
+                ranked = sorted(tally.items(), key=lambda item: (-item[1], item[0]))
+                text = "; ".join("%d/%d `%s`" % (n, len(chosen), shape) for shape, n in ranked[:4])
+                if len(ranked) > 4:
+                    text += "; %d other shapes" % (len(ranked) - 4)
+                where = "%s, %s" % (task, arm) + (", path %d" % k if len(paths) > 1 else "")
+                lines.append("- %s: %s" % (where, text))
+    return lines
 
 
 def native_swift_lookup(block: dict) -> bool:
@@ -766,11 +920,14 @@ def prompt_text(tasks: dict, task: dict) -> str:
 
 
 def run_one(tasks: dict, task: dict, arm: str, repeat: int, position: int, options, base_path: str, out_dir: Path,
-            warmup: bool = False):
+            warmup: bool = False, path: int = 1):
     """One run. A warm-up is the same arm and prompt cut to one turn and never scored: it puts the arm's
     fixed prefix in the prompt cache before the task's block, so neither arm's first scored run pays a
     cache write the other's later runs do not."""
-    stem = "%s-%s-%s" % (task["id"], arm, "warmup" if warmup else "r%d" % repeat)
+    if options.paths > 1:
+        stem = "%s-%s-p%d%s" % (task["id"], arm, path, "-warmup" if warmup else "r%d" % repeat)
+    else:
+        stem = "%s-%s-%s" % (task["id"], arm, "warmup" if warmup else "r%d" % repeat)
     print("[%s] %s" % (datetime.now().strftime("%H:%M:%S"), stem), flush=True)
     env_base = clean_env(base_path)
     shutil.rmtree(RUN, ignore_errors=True)
@@ -837,6 +994,7 @@ def run_one(tasks: dict, task: dict, arm: str, repeat: int, position: int, optio
         shutil.rmtree(PROJECT_STATE, ignore_errors=True)
     summary = {
         "task": task["id"], "kind": task["kind"], "arm": arm, "repeat": repeat, "position": position,
+        "path": path, "run_path": str(RUN),
         "model": MODEL, "effort": options.effort, "sift_version": options.sift_version,
         "started_at": datetime.fromtimestamp(started, timezone.utc).isoformat(),
         "wall_seconds": round(wall, 1), "exit_code": code, "timed_out": timed_out,
@@ -971,7 +1129,10 @@ def command_run(options):
     unknown = set(options.task or []) - {t["id"] for t in tasks["tasks"]}
     if unknown or not selected:
         raise Halt("unknown task: %s" % ", ".join(sorted(unknown)))
-    for leftover in (WORK, RUN_HOME, PROJECT_STATE):
+    if options.paths < 1:
+        raise Halt("--paths must be at least 1")
+    states = [path_names(k)[3] for k in range(1, options.paths + 1)]
+    for leftover in [WORK, RUN_HOME] + states:
         if leftover.exists():
             raise Halt("%s exists: another run is using it, or one was killed; remove it by hand" % leftover)
 
@@ -1002,6 +1163,7 @@ def command_run(options):
     out_dir.mkdir(parents=True, exist_ok=True)
     record = {
         "session": session, "model": MODEL, "effort": options.effort, "repeats": options.repeats,
+        "paths": options.paths,
         "warmups": not options.no_warmup,
         "tasks": [t["id"] for t in selected],
         "tasks_file": str(tasks["_path"]), "tasks_file_sha256": sha256(tasks["_path"]),
@@ -1021,9 +1183,22 @@ def command_run(options):
         WORK.mkdir(parents=True)
         write_wrapper(sift_binary)
         preflight_install(clean_env(str(WRAPPER_DIR) + os.pathsep + base_path), sift_binary)
-        record.update(materialise(tasks, source, env, WORK / "warm.log"))
-        record.update(probe_hook(base_path, sift_binary, options.rule_b))
+        detail = {}
+        run_paths = []
+        for k in range(1, options.paths + 1):
+            select_path(k)
+            run_paths.append(str(RUN))
+            built = materialise(tasks, source, env, WORK / ("warm.log" if k == 1 else "warm-%d.log" % k))
+            probed = probe_hook(base_path, sift_binary, options.rule_b)
+            detail[str(k)] = {**built, **probed}
+            if k == 1:
+                record.update(built)
+                record.update(probed)
+        record["run_paths"] = run_paths
+        if options.paths > 1:
+            record["path_detail"] = detail
         write_record()
+        select_path(1)
         record["fixed_overhead_estimates"] = fixed_overhead(clean_env(str(WRAPPER_DIR) + os.pathsep + base_path),
                                                             options.rule_b)
         if options.rule_a:
@@ -1032,20 +1207,23 @@ def command_run(options):
         position = 0
         for task in selected:
             index = tasks["tasks"].index(task)
-            if not options.no_warmup:
-                for arm in (ARMS if index % 2 == 0 else tuple(reversed(ARMS))):
-                    run_one(tasks, task, arm, 0, 0, options, base_path, out_dir, warmup=True)
-            for repeat in range(1, options.repeats + 1):
-                order = ARMS if (index + repeat) % 2 == 0 else tuple(reversed(ARMS))
-                for arm in order:
-                    position += 1
-                    run_one(tasks, task, arm, repeat, position, options, base_path, out_dir)
+            for k in range(1, options.paths + 1):
+                select_path(k)
+                if not options.no_warmup:
+                    for arm in (ARMS if (index + k - 1) % 2 == 0 else tuple(reversed(ARMS))):
+                        run_one(tasks, task, arm, 0, 0, options, base_path, out_dir, warmup=True, path=k)
+                for repeat in range(1, options.repeats + 1):
+                    order = ARMS if (index + repeat + k - 1) % 2 == 0 else tuple(reversed(ARMS))
+                    for arm in order:
+                        position += 1
+                        run_one(tasks, task, arm, repeat, position, options, base_path, out_dir, path=k)
     finally:
         if CURRENT_GROUP:
             kill_group(CURRENT_GROUP)
         shutil.rmtree(WORK, ignore_errors=True)
         shutil.rmtree(RUN_HOME, ignore_errors=True)
-        shutil.rmtree(PROJECT_STATE, ignore_errors=True)
+        for state in states:
+            shutil.rmtree(state, ignore_errors=True)
     print()
     print(analyse(out_dir))
 
@@ -1107,14 +1285,84 @@ def bootstrap_difference(a: list, b: list) -> tuple:
     return diffs[int(0.025 * BOOTSTRAP_RESAMPLES)], diffs[int(0.975 * BOOTSTRAP_RESAMPLES) - 1]
 
 
+# Below this many paths a bootstrap over paths resamples too few values to bound anything: two paths give an
+# interval that is just their two differences, so a sign shared by chance reads as a verdict.
+MIN_PATHS_FOR_INTERVAL = 3
+
+
+def bootstrap_paths(differences: list) -> tuple:
+    """95% interval of the mean of the per-path differences, resampling the paths with replacement (seed 1)."""
+    rng = random.Random(1)
+    means = sorted(sum(rng.choices(differences, k=len(differences))) / len(differences)
+                   for _ in range(BOOTSTRAP_RESAMPLES))
+    return means[int(0.025 * BOOTSTRAP_RESAMPLES)], means[int(0.975 * BOOTSTRAP_RESAMPLES) - 1]
+
+
+def path_of(summary: dict) -> int:
+    """The run path a summary was made at; a session from before `--paths` ran at path 1."""
+    return summary.get("path", 1)
+
+
+def path_prices(summaries: list, tasks: list) -> dict:
+    """{path: {task: {arm: [session prices of the valid runs]}}} for the named tasks."""
+    cells = {}
+    for s in summaries:
+        if s["task"] in tasks and s["valid"] and metric(s, "session_price") is not None:
+            cells.setdefault(path_of(s), {}).setdefault(s["task"], {arm: [] for arm in ARMS})[s["arm"]].append(
+                metric(s, "session_price"))
+    return cells
+
+
+def path_differences(cells: dict, tasks: list) -> tuple:
+    """Per path where every one of `tasks` is priced in both arms: (path, total of A's task means, total of B's
+    task means), the cost of the whole task set there. A path missing a task in either arm is left out, so
+    every row totals the same tasks and the rows can be averaged."""
+    rows = []
+    for k in sorted(cells):
+        both = [t for t in cells[k].values() if t["A"] and t["B"]]
+        if len(both) == len(tasks):
+            rows.append((k, sum(sum(t["A"]) / len(t["A"]) for t in both), sum(sum(t["B"]) / len(t["B"]) for t in both)))
+    return rows
+
+
 def price_means_table(summaries: list, task_ids: list) -> list:
-    """Mean session price per arm, per task and pooled, with a bootstrap interval of the difference."""
-    lines = ["Mean session price by arm (valid runs with a context series):", "",
+    """Mean session price per arm, per task and pooled, with a bootstrap interval of the difference. A task
+    that spans several run paths compares A with B at each path and bootstraps over the paths, since the
+    runs at one path share a behaviour mode; one path bootstraps over runs as it always did."""
+    paths = {path_of(s) for s in summaries}
+    lines = []
+    if len(paths) > 1:
+        lines += ["The 95%% interval resamples %d paths (a row spanning one path resamples its runs)." % len(paths), ""]
+    lines += ["Mean session price by arm (valid runs with a context series):", "",
              "| task | runs A | runs B | mean A | mean B | B minus A | % | 95% interval of the difference |",
              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     skipped = 0
     pooled = {arm: [] for arm in ARMS}
     for label, tasks in [(t, [t]) for t in task_ids] + [("**pooled**", task_ids)]:
+        if len({path_of(s) for s in summaries if s["task"] in tasks}) > 1:
+            cells = path_prices(summaries, tasks)
+            rows = path_differences(cells, tasks)
+            if label == "**pooled**":
+                skipped += sum(1 for s in summaries if s["task"] in tasks and s["valid"]
+                               and metric(s, "session_price") is None)
+            # Runs counted are the priced ones at the paths the row compares.
+            runs = {arm: sum(len(cells[r[0]][t][arm]) for r in rows for t in cells[r[0]]) for arm in ARMS}
+            if not rows:
+                lines.append("| %s | %d | %d | – | – | – | – | – |" % (label, runs["A"], runs["B"]))
+                continue
+            mean_a = sum(r[1] for r in rows) / len(rows)
+            mean_b = sum(r[2] for r in rows) / len(rows)
+            if len(rows) < MIN_PATHS_FOR_INTERVAL:
+                interval = "none: %d path(s) with every task in both arms, fewer than %d" % (
+                    len(rows), MIN_PATHS_FOR_INTERVAL)
+            else:
+                low, high = bootstrap_paths([r[2] - r[1] for r in rows])
+                interval = "[%+.0f, %+.0f] %s" % (low, high, "no detectable difference" if low <= 0 <= high
+                                                  else "B %s" % ("cheaper" if high < 0 else "dearer"))
+            lines.append("| %s | %d | %d | %.0f | %.0f | %+.0f | %+.1f%% | %s |" % (
+                label, runs["A"], runs["B"], mean_a, mean_b, mean_b - mean_a,
+                100 * (mean_b - mean_a) / mean_a if mean_a else 0, interval))
+            continue
         prices = {arm: [] for arm in ARMS}
         for s in summaries:
             if s["task"] in tasks and s["valid"]:
@@ -1133,6 +1381,22 @@ def price_means_table(summaries: list, task_ids: list) -> list:
             label, len(prices["A"]), len(prices["B"]), mean_a, mean_b, mean_b - mean_a,
             100 * (mean_b - mean_a) / mean_a if mean_a else 0, low, high, verdict))
     lines += ["", "%d valid run(s) with an empty or missing context series left out of the session price." % skipped]
+    if len(paths) > 1:
+        lines += ["", "Mean session price per run path:", "",
+                  "| task | path | runs A | runs B | mean A | mean B | B minus A | % |",
+                  "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+        for task in task_ids:
+            for k in sorted({path_of(s) for s in summaries if s["task"] == task}):
+                prices = {arm: [metric(s, "session_price") for s in summaries
+                                if s["task"] == task and path_of(s) == k and s["arm"] == arm and s["valid"]
+                                and metric(s, "session_price") is not None] for arm in ARMS}
+                if not (prices["A"] and prices["B"]):
+                    lines.append("| %s | %d | %d | %d | – | – | – | – |" % (task, k, len(prices["A"]), len(prices["B"])))
+                    continue
+                mean_a, mean_b = (sum(prices[arm]) / len(prices[arm]) for arm in ARMS)
+                lines.append("| %s | %d | %d | %d | %.0f | %.0f | %+.0f | %+.1f%% |" % (
+                    task, k, len(prices["A"]), len(prices["B"]), mean_a, mean_b, mean_b - mean_a,
+                    100 * (mean_b - mean_a) / mean_a if mean_a else 0))
     return lines
 
 
@@ -1169,7 +1433,11 @@ def task_order(directory: Path) -> dict:
 
 def analyse(directory: Path) -> str:
     summaries = load_summaries(directory)
-    by_key = {(s["task"], s["arm"], s["repeat"]): s for s in summaries}
+    by_key = {(s["task"], s["arm"], path_of(s), s["repeat"]): s for s in summaries}
+    multi_path = len({path_of(s) for s in summaries}) > 1
+
+    def run_label(s):
+        return ("p%dr%d" % (path_of(s), s["repeat"])) if multi_path else "r%d" % s["repeat"]
     task_ids = []
     for s in summaries:
         if s["task"] not in task_ids:
@@ -1205,7 +1473,7 @@ def analyse(directory: Path) -> str:
     arm_values = {arm: {key: [] for key, _ in DELTA_METRICS} for arm in ARMS}
     for task in task_ids:
         runs = [s for s in summaries if s["task"] == task]
-        repeats = sorted({s["repeat"] for s in runs})
+        repeats = sorted({(path_of(s), s["repeat"]) for s in runs})
         invalid = sum(1 for s in runs if not s["valid"])
         success = {}
         for arm in ARMS:
@@ -1219,7 +1487,7 @@ def analyse(directory: Path) -> str:
         deltas = {key: [] for key, _ in DELTA_METRICS}
         pairs = 0
         for repeat in repeats:
-            a, b = by_key.get((task, "A", repeat)), by_key.get((task, "B", repeat))
+            a, b = by_key.get((task, "A") + repeat), by_key.get((task, "B") + repeat)
             if not (a and b and a["valid"] and b["valid"]):
                 continue
             pairs += 1
@@ -1257,8 +1525,11 @@ def analyse(directory: Path) -> str:
             native = sum(u.get("native_swift_lookups", 0) for u in uses)
             share = "%.0f%%" % (100.0 * sum(sift) / (sum(sift) + native)) if sum(sift) + native else "–"
             lines.append("| %s | %d | %d | %d | %s |" % (arm, sift[0], sift[1], native, share))
+    shapes = call_shape_lines(directory)
+    if shapes:
+        lines += ["", "Call shapes (valid runs; consecutive repeats of one call collapsed as ×n):", ""] + shapes
     lines += [""] * bool(cache_carried_warnings(summaries, task_ids)) + cache_carried_warnings(summaries, task_ids)
-    parts = ["- %s-%s-r%d: %d/%d parts" % (s["task"], s["arm"], s["repeat"], s["parts_right"], s["parts_total"])
+    parts = ["- %s-%s-%s: %d/%d parts" % (s["task"], s["arm"], run_label(s), s["parts_right"], s["parts_total"])
              for s in summaries if "parts_total" in s]
     if parts:
         lines += ["", "Sub-questions answered right (chained tasks):", ""] + parts
@@ -1271,7 +1542,7 @@ def analyse(directory: Path) -> str:
                        "Arm B's fixed start, estimated at chars/4 (the measured figure is the first-call context row "
                        "above): ") + ", ".join("%s %s" % (k, v["tokens_est"] if isinstance(v, dict) else v)
                                          for k, v in overhead.items())]
-    reasons = ["- %s-%s-r%d: %s" % (s["task"], s["arm"], s["repeat"], "; ".join(s["invalid_reasons"])) for s in summaries if not s["valid"]]
+    reasons = ["- %s-%s-%s: %s" % (s["task"], s["arm"], run_label(s), "; ".join(s["invalid_reasons"])) for s in summaries if not s["valid"]]
     if reasons:
         lines += ["", "Invalid runs (not counted):", ""] + reasons
     return "\n".join(lines) + "\n"
@@ -1405,7 +1676,129 @@ def command_reparse(options):
     print(analyse(directory))
 
 
+def command_calls(options):
+    """Prints each matching run's tool calls, one per line, so a result can be read call by call."""
+    directory = Path(options.session) if Path(options.session).exists() else RESULTS / options.session
+    shown = 0
+    for path in sorted(directory.glob("*.json")):
+        data = json.loads(path.read_text())
+        if data.get("task") != options.task or data.get("warmup"):
+            continue
+        if (options.arm and data.get("arm") != options.arm or options.run and data.get("repeat") != options.run
+                or options.path and data.get("path", 1) != options.path):
+            continue
+        stream = path.with_name(path.stem + ".stream.jsonl")
+        if not stream.exists():
+            continue
+        shown += 1
+        print(path.stem)
+        for i, record in enumerate(call_records(stream), 1):
+            given = json.dumps(record["input"], ensure_ascii=False)
+            print("  %d. %s  in=%s  out=%d" % (i, record["label"], given[:100], record["result_chars"]))
+    if not shown:
+        raise Halt("no run of task %s matches in %s" % (options.task, directory))
+
+
+def resolve_session(name: str) -> Path:
+    """An existing path as given, else a name under the results directory, as `reparse` reads it."""
+    return Path(name) if Path(name).exists() else RESULTS / name
+
+
+def side_runs(sessions: list, task: str, arm: str, key: str) -> list:
+    """One value per valid run of the task across the pooled sessions: an arm's own, or the per-pair B minus A.
+
+    A pair is matched within its session on (path, repeat), since repeat numbers restart in every session; a
+    summary without a path is path 1. A pair counts only when both runs are valid and carry the metric.
+    Each value is (the summary's run path or None, value), so the caller can tell whether paths are named.
+    """
+    runs = []
+    for name in sessions:
+        summaries = [s for s in load_summaries(resolve_session(name)) if s["task"] == task and s["valid"]]
+        if arm == "diff":
+            by_pair = {(s["arm"], s.get("path", 1), s["repeat"]): s for s in summaries}
+            for (which, path, repeat), a in sorted(by_pair.items()):
+                b = by_pair.get(("B", path, repeat))
+                if which == "A" and b is not None and metric(a, key) is not None and metric(b, key) is not None:
+                    runs.append((run_path_of(a), metric(b, key) - metric(a, key)))
+        else:
+            runs += [(run_path_of(s), metric(s, key)) for s in summaries
+                     if s["arm"] == arm and metric(s, key) is not None]
+    return runs
+
+
+def run_path_of(summary: dict):
+    """The directory a run was made in, or None for a session from before `--paths`. Paths are matched across
+    sessions by this, not by number: path 2 of another checkout is another directory, so other prompt bytes."""
+    return summary.get("run_path") if summary.get("path") is not None else None
+
+
+def describe_side(label: str, sessions: list, values: list) -> str:
+    return "%s: %d session(s), n %d, mean %.3f, SD %.3f, median %.3f" % (
+        label, len(sessions), len(values), statistics.mean(values),
+        statistics.stdev(values) if len(values) > 1 else 0.0, statistics.median(values))
+
+
+def verdict_of(low: float, high: float) -> str:
+    return "no detectable difference" if low <= 0 <= high else "Y %s" % ("cheaper" if high < 0 else "dearer")
+
+
+def path_comparison(x: list, y: list) -> list:
+    """Per-path means and a bootstrap over paths of the mean per-path Y minus X, or one line saying why not.
+
+    Comparing path by path removes the between-path spread, which pooling leaves in the interval; it needs both
+    sides to name a path on every run and to cover the same paths, more than one.
+    """
+    if any(path is None for path, _ in x + y):
+        return ["Per-path comparison skipped: a side has runs without a path."]
+    by_x, by_y = ({path: [v for p, v in side if p == path] for path in {p for p, _ in side}} for side in (x, y))
+    if set(by_x) != set(by_y):
+        return ["Per-path comparison skipped: the sides cover different run paths (X %s, Y %s); compare sessions "
+                "run from the same checkout." % (sorted(by_x), sorted(by_y))]
+    if len(by_x) < MIN_PATHS_FOR_INTERVAL:
+        return ["Per-path comparison skipped: %d path(s), fewer than %d." % (len(by_x), MIN_PATHS_FOR_INTERVAL)]
+    lines = ["", "| path | n X | n Y | mean X | mean Y | Y minus X |", "| --- | --- | --- | --- | --- | --- |"]
+    differences = []
+    for path in sorted(by_x):
+        mean_x, mean_y = (sum(side[path]) / len(side[path]) for side in (by_x, by_y))
+        differences.append(mean_y - mean_x)
+        lines.append("| %s | %d | %d | %.3f | %.3f | %+.3f |" % (
+            os.path.basename(path), len(by_x[path]), len(by_y[path]), mean_x, mean_y, mean_y - mean_x))
+    rng = random.Random(1)
+    means = sorted(sum(rng.choices(differences, k=len(differences))) / len(differences)
+                   for _ in range(BOOTSTRAP_RESAMPLES))
+    low, high = means[int(0.025 * BOOTSTRAP_RESAMPLES)], means[int(0.975 * BOOTSTRAP_RESAMPLES) - 1]
+    mean = sum(differences) / len(differences)
+    return lines + ["", "Mean over %d paths of Y minus X: %+.3f, 95%% interval [%+.3f, %+.3f] %s" % (
+        len(differences), mean, low, high, verdict_of(low, high))]
+
+
+def command_compare(options):
+    """Compares one task's values between two sides, each pooling the runs of one or more sessions."""
+    sides = []
+    for label, sessions in (("X", options.sessions), ("Y", options.versus)):
+        runs = side_runs(sessions, options.task, options.arm, options.metric)
+        if not runs:
+            raise Halt("side %s has no valid runs of task %r" % (label, options.task))
+        sides.append(runs)
+    x, y = sides
+    values_x, values_y = ([v for _, v in side] for side in sides)
+    print("compare %s, arm %s, metric %s" % (options.task, options.arm, options.metric))
+    print(describe_side("X", options.sessions, values_x))
+    print(describe_side("Y", options.versus, values_y))
+    mean_x, mean_y = statistics.mean(values_x), statistics.mean(values_y)
+    low, high = bootstrap_difference(values_x, values_y)
+    print("Y minus X: %+.3f (%+.1f%% of mean X), 95%% interval [%+.3f, %+.3f] %s" % (
+        mean_y - mean_x, 100 * (mean_y - mean_x) / mean_x if mean_x else 0, low, high, verdict_of(low, high)))
+    print("\n".join(path_comparison(x, y)))
+
+
 def main(argv):
+    # argparse swallows a literal `--`, so the two sides of `compare X... -- Y...` are split here first.
+    versus = []
+    if argv[:1] == ["compare"] and "--" in argv:
+        split = argv.index("--")
+        end = next((i for i in range(split + 1, len(argv)) if argv[i].startswith("-")), len(argv))
+        argv, versus = argv[:split] + argv[end:], argv[split + 1:end]
     parser = argparse.ArgumentParser(description="The paired sift benchmark (see Benchmarks/README.md).")
     commands = parser.add_subparsers(dest="command", required=True)
     run = commands.add_parser("run", help="run tasks in both arms")
@@ -1413,7 +1806,9 @@ def main(argv):
     run.add_argument("--corpus", help="<repository path>@<commit>, over the tasks file's own corpus")
     run.add_argument("--no-warmup", action="store_true", help="skip the unscored warm-up run per arm per task")
     run.add_argument("--task", action="append", help="a task id; repeat for several (default: every task)")
-    run.add_argument("--repeats", type=int, default=3)
+    run.add_argument("--repeats", type=int, default=3, help="repeats per path")
+    run.add_argument("--paths", type=int, default=1,
+                     help="spread the repeats over this many run paths, pairing A with B at each (#799)")
     run.add_argument("--session", help="the results directory name (default: a timestamp)")
     run.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
     run.add_argument("--timeout", type=int, default=1200, help="wall-clock seconds per claude run")
@@ -1431,12 +1826,28 @@ def main(argv):
     analyse_parser.add_argument("session", nargs="?", help="a session directory or name (default: the latest)")
     reparse = commands.add_parser("reparse", help="recompute a session's summaries from its kept streams")
     reparse.add_argument("session")
+    calls = commands.add_parser("calls", help="list a session's tool calls, one per line, per run")
+    calls.add_argument("session")
+    calls.add_argument("--task", required=True)
+    calls.add_argument("--arm", choices=ARMS)
+    calls.add_argument("--run", type=int, help="the repeat number")
+    calls.add_argument("--path", type=int)
+    compare = commands.add_parser("compare", help="compare one task between two sides of pooled sessions: "
+                                                  "compare X... -- Y... --task T")
+    compare.add_argument("sessions", nargs="+", help="side X's sessions (directories or names); side Y follows a --")
+    compare.add_argument("--task", required=True)
+    compare.add_argument("--arm", default="B", choices=["A", "B", "diff"], help="an arm's runs, or the per-pair B - A")
+    compare.add_argument("--metric", default="session_price")
     validate = commands.add_parser("validate", help="check every task's check against its controls, no model")
     validate.add_argument("--tasks", help="the tasks file (default: Benchmarks/tasks.json)")
     validate.add_argument("--corpus", help="<repository path>@<commit>, over the tasks file's own corpus")
     validate.add_argument("--sift", help="the sift binary whose hook is probed (default: the one on PATH)")
     commands.add_parser("paths", help="print, as shell assignments, the directories a run writes outside the results")
     options = parser.parse_args(argv)
+    if options.command == "compare":
+        if not versus:
+            parser.error("compare takes X sessions, then --, then Y sessions")
+        options.versus = versus
     if options.command == "paths":
         for name, path in (("WORK", WORK), ("RUN_HOME", RUN_HOME), ("PROJECT_STATE", PROJECT_STATE)):
             print("%s=%s" % (name, shlex.quote(str(path))))
@@ -1445,7 +1856,7 @@ def main(argv):
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     try:
         {"run": command_run, "analyse": command_analyse, "reparse": command_reparse,
-         "validate": command_validate}[options.command](options)
+         "validate": command_validate, "calls": command_calls, "compare": command_compare}[options.command](options)
     except Halt as error:
         print("error: %s" % error, file=sys.stderr)
         return 3

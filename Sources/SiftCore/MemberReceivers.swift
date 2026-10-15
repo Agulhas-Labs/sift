@@ -43,14 +43,16 @@ struct MemberReceivers {
                 // A case, function or property of the name may be what the site writes, and build or hold the owner.
                 guard !declared.contains(where: \.kind.namesAValue) else { return .untyped }
                 // A qualifier the scan does not resolve may be a module whose type of the name is not the tree's.
-                guard !isQualified else { return .outsideTree }
+                guard !isQualified else { return .unproven(.qualified) }
                 let isTreeType = try declared.contains { try isSeen($0, from: site) }
-                // A name written in an extension may be the extended type's generic parameter, any type where the tree declares none of the name in sight.
-                guard isTreeType || !mayBeUnseen else { return .outsideTree }
-                // A tree type of the name, in sight or not, may hand on any member through a supertype outside the tree, and a type only a framework declares through a dynamic member subscript the tree cannot show.
                 let declaresType = declared.contains(where: \.kind.isTypeDeclaration)
-                guard try !declaresType || self.supertypes(of: [name], aliases: aliases).unseen.isEmpty else { return .outsideTree }
-                guard isTreeType || PlainFrameworkTypes.contains(name) else { return .outsideTree }
+                // Where none is in sight, a tree type of the name is out of the site's sight, and a name the tree declares no type of is outside it.
+                let notInSight: ReceiverReach = declaresType ? .unproven(.outOfSight) : .unproven(.undeclared)
+                // A name written in an extension may be the extended type's generic parameter, any type where the tree declares none of the name in sight.
+                guard isTreeType || !mayBeUnseen else { return notInSight }
+                // A tree type of the name, in sight or not, may hand on any member through a supertype outside the tree, and a type only a framework declares through a dynamic member subscript the tree cannot show.
+                guard try !declaresType || self.supertypes(of: [name], aliases: aliases).unseen.isEmpty else { return .unproven(.inheritsOutside) }
+                guard isTreeType || PlainFrameworkTypes.contains(name) else { return notInSight }
                 // A scope around the site may supply the name ahead of the tree's type of it, and a macro may reshape either.
                 return try scopeNames.keeping(name, at: site) ?? .another
             case .enclosingSelf:
@@ -64,7 +66,7 @@ struct MemberReceivers {
                         return .reaches
                     }
                     if !unseen.isEmpty, !declared.contains(where: \.kind.isTypeDeclaration) {
-                        reach = .outsideTree
+                        reach = .unproven(.undeclared)
                     }
                 }
                 return reach

@@ -40,7 +40,7 @@ struct WhereNonCodeSectionTests {
     func severalOwnersOrAQualifiedQuerySayTheSectionMayHoldOtherSymbols() {
         let section = WhereNonCodeSection(mentions: Self.mentions([Self.swiftFile("A.swift", [Line(number: 1, kind: .comment)])]), isAmbiguous: true)
 
-        #expect(section.header == "not code, by written name; may include same-named symbols' — 1 comment line:")
+        #expect(section.header == "not code, by written name; may include same-named symbols — 1 comment line:")
     }
 
     @Test
@@ -152,7 +152,7 @@ struct WhereNonCodeSectionTests {
     @Test
     func theNoStorePointerQualifiesAnAmbiguousName() async throws {
         let root = try TestSources.makeTempRepo()
-        try TestSources.write("class Alpha { class Gizmo {} }\nclass Beta: Alpha { class Gizmo {} }\nlet one = Alpha.Gizmo()\n", to: "Sources/App/Owners.swift", in: root)
+        try TestSources.write("class Alpha { class Gizmo {} }\nclass Beta: Alpha { class Gizmo {} }\nlet one = Alpha.Gizmo()\n" + (1 ... 8).map { "let more\($0) = Alpha.Gizmo()\n" }.joined(), to: "Sources/App/Owners.swift", in: root)
         try TestSources.commitAll(in: root, message: "seed")
         let engine = try SiftEngine(directory: root)
         let freshness = try await engine.ensureFresh()

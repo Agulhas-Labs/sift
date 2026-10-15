@@ -19,7 +19,7 @@ struct NewFileRefusalTests {
 
         let output = try await engine.lookup(symbol: "Beta", freshness: freshness)
 
-        #expect(output.contains("semantic: stale since last build (1 file changed: Sources/Beta/Beta.swift)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 cited file changed: Sources/Beta/Beta.swift)"), "\(output)")
         #expect(output.contains("Beta.Beta — struct"), "\(output)")
         #expect(output.contains("semantic REFUSED — changed since the last build; rebuild with `sift run -- swift build`, then retry"), "\(output)")
     }
@@ -62,7 +62,7 @@ struct NewFileRefusalTests {
         let judge = try Self.judge(#require(engine.whereSemanticInput().context), engine: engine, root: root)
         let kind = judge.kind(of: root.standardizedFileURL.path + "/Sources/Alpha/Later.swift")
 
-        #expect(output.contains("semantic: stale since last build (1 new file: Sources/Alpha/Later.swift)"), "\(output)")
+        #expect(output.contains("semantic: stale since last build (1 new cited file: Sources/Alpha/Later.swift)"), "\(output)")
         #expect(output.contains("semantic REFUSED — new since the last build; rebuild with `sift run -- swift build`, then retry"), "\(output)")
         #expect(!output.contains("was changed since the last build"), "\(output)")
         #expect(kind == .new)
@@ -70,7 +70,7 @@ struct NewFileRefusalTests {
         #expect(judge.modifiedFiles.isEmpty)
     }
 
-    /// A unit-less file in a declared module that a build since its change left out reads as not found in the store, not stale.
+    /// A unit-less file in a declared module that a build since its change left out reads as not found in the store, not stale; its target has no unit at all, but writes the name only where it declares it, so the header names no target not built.
     @Test
     func aUnitLessFileABuildSinceItsChangeLeftOutReadsNotFound() async throws {
         let root = try await Self.builtPackage(targets: ["Alpha", "Gamma"], extraFiles: ["Sources/Gamma/Later.swift": "public struct Later {}\n"], building: "Alpha")
@@ -81,6 +81,7 @@ struct NewFileRefusalTests {
         let output = try await engine.lookup(symbol: "Later", freshness: freshness)
 
         #expect(output.contains("semantic: fresh, 1 declaration not found in the store"), "\(output)")
+        #expect(output.contains("semantic REFUSED — no unit in the store covers it"), "\(output)")
         #expect(!output.contains("since the last build"), "\(output)")
     }
 

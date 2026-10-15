@@ -38,6 +38,11 @@ struct ConformanceHeads {
         }
     }
 
+    /// Where `row`'s own inheritance clause writes `name`, each head's line and column, given the `declarations` parsed from its file.
+    static func starts(writing name: String, in row: SymbolRow, of declarations: [Start: [String: Set<Start>]]) -> Set<Start> {
+        declarations[Start(line: row.line, column: row.column)]?[name] ?? []
+    }
+
     /// The name tokens `type` writes as what is conformed to: an identifier's or a member type's own last name, each element of a composition, under any attribute; never a generic argument, an existential's protocol or a suppressed `~Copyable`.
     static func heads(of type: TypeSyntax) -> [TokenSyntax] {
         if let identifier = type.as(IdentifierTypeSyntax.self) {

@@ -99,9 +99,14 @@ enum SweepPattern: Equatable {
     }
 
     /// The name an alternation branch is, once its anchors and grouping are set aside, or `nil` when it is anything more.
+    ///
+    /// An escaped call paren closing the branch — `Depot\(`, `Depot\.pending\(`, `Depot\.pending\(for:` — is set aside with its label before the grouping is, which would otherwise take its `(` and leave a stray backslash, and the branch is the name it calls. A call with no name in front of it — `\.pending\(for:` — names no type to ask about, and is left to a search.
     private static func name(of branch: String) -> String? {
-        let bare = branch.replacing(anchor, with: "").trimmingCharacters(in: CharacterSet(charactersIn: " ()"))
-        guard !bare.isEmpty else { return nil }
+        let unanchored = branch.replacing(anchor, with: "")
+        let call = unanchored.firstMatch(of: escapedCall)
+        let bare = (call.map { String(unanchored[..<$0.range.lowerBound]) } ?? unanchored)
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ()"))
+        guard !bare.isEmpty, call == nil || bare.first?.isLetter == true || bare.first == "_" else { return nil }
         if let name = PatternReading.identifier(in: bare, certain: true) {
             return name
         }
@@ -209,6 +214,17 @@ enum SweepPattern: Equatable {
 
     /// `|` in an extended pattern, `\|` in a basic one.
     nonisolated(unsafe) private static let alternation = /\\?\|/
+
+    /// An escaped call paren and the first argument's label closing a branch, with any grouping or space after it — `\(`, `\(for:`, `\()`.
+    nonisolated(unsafe) private static let escapedCall = Regex {
+        "\\("
+        Optionally {
+            IndexSuggestion.identifier
+            ":"
+        }
+        ZeroOrMore { CharacterClass.anyOf(" )") }
+        Anchor.endOfSubject
+    }
 
     /// The anchors and boundaries a branch may carry around its name.
     nonisolated(unsafe) private static let anchor = /\\[b<>]|[\^$]/

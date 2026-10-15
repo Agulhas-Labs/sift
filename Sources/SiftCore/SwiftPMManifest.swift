@@ -23,6 +23,8 @@ public struct SwiftPMManifest {
     let computedTargetNames: Bool
     /// The package's own name, as the `Package(name:)` call writes it in a plain literal, and `nil` where it is computed or no such call is read.
     let packageName: String?
+    /// The names of the targets declared with `.plugin` or `.macro`, which SwiftPM compiles for the host with no index store, so no build of the package ever records a unit for them.
+    let hostBuiltTargets: Set<String>
 
     /// `true` for a SwiftPM manifest at any depth — source to the build system, not to any module.
     ///
@@ -44,7 +46,7 @@ public struct SwiftPMManifest {
 
     static func parse(fileAt url: URL) -> SwiftPMManifest {
         guard let data = FileManager.default.contents(atPath: url.path),
-              let source = String(data: data, encoding: .utf8) else { return SwiftPMManifest(targets: [], testTargets: [], conditionalTestTargets: false, computedTargetNames: false, packageName: nil) }
+              let source = String(data: data, encoding: .utf8) else { return SwiftPMManifest(targets: [], testTargets: [], conditionalTestTargets: false, computedTargetNames: false, packageName: nil, hostBuiltTargets: []) }
         return parse(source: source)
     }
 
@@ -52,7 +54,7 @@ public struct SwiftPMManifest {
         NestingGate.parseOrEmpty(source) { tree in
             let visitor = Visitor(viewMode: .sourceAccurate)
             visitor.walk(tree)
-            return SwiftPMManifest(targets: visitor.targets, testTargets: visitor.testTargets, conditionalTestTargets: visitor.conditionalTestTargets, computedTargetNames: visitor.computedTargetNames, packageName: visitor.packageName)
+            return SwiftPMManifest(targets: visitor.targets, testTargets: visitor.testTargets, conditionalTestTargets: visitor.conditionalTestTargets, computedTargetNames: visitor.computedTargetNames, packageName: visitor.packageName, hostBuiltTargets: visitor.hostBuiltTargets)
         }
     }
 }
@@ -76,6 +78,7 @@ private extension SwiftPMManifest {
         var computedTargetNames = false
         /// The name the first `Package(name:)` call writes as a plain literal.
         var packageName: String?
+        var hostBuiltTargets: Set<String> = []
         /// How many `#if` declarations enclose the node being visited, so a target inside one is known to be conditional whatever the condition says.
         private var ifConfigDepth = 0
 
@@ -100,6 +103,9 @@ private extension SwiftPMManifest {
                 return .visitChildren
             }
             targets.append(SwiftPMManifest.Target(name: name, path: literal(labeled: "path", in: node)))
+            if ["plugin", "macro"].contains(callee.declName.baseName.text) {
+                hostBuiltTargets.insert(name)
+            }
             if callee.declName.baseName.text == "testTarget" {
                 testTargets.append(name)
                 conditionalTestTargets = conditionalTestTargets || ifConfigDepth > 0

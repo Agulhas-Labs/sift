@@ -18,7 +18,7 @@ public final class RootDiscovery: @unchecked Sendable {
     private var remembered: [String: URL?] = [:]
 
     /// A discovery that asks `discover` about each directory the first time it is asked, and remembers the answer — a missing root as much as a found one.
-    public init(discover: @escaping @Sendable (URL) -> URL? = GitContext.spawnedRoot(from:)) {
+    public init(discover: @escaping @Sendable (URL) -> URL? = { GitContext.spawnedRoot(from: $0) }) {
         self.discover = discover
     }
 

@@ -198,14 +198,15 @@ extension CursorPostToolUseTests {
             environment["SIFT_NO_ADVICE"] = disabled ? "1" : nil
             environment["CLAUDE_CODE_SESSION_ID"] = nil
             process.environment = environment
-            let input = Pipe()
+            // Fed from a file, not a pipe: a hook that has nothing to do (advice off) exits without reading its input, and a write into a pipe it has already closed fails the test with a broken pipe.
+            let payload = home.appendingPathComponent("stdin-\(UUID().uuidString).json")
+            try stdin.write(to: payload)
+            defer { try? FileManager.default.removeItem(at: payload) }
             let output = Pipe()
-            process.standardInput = input
+            process.standardInput = try FileHandle(forReadingFrom: payload)
             process.standardOutput = output
             process.standardError = Pipe()
             try process.run()
-            try input.fileHandleForWriting.write(contentsOf: stdin)
-            input.fileHandleForWriting.closeFile()
             let printed = output.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             return (process.terminationStatus, String(bytes: printed, encoding: .utf8) ?? "")

@@ -32,13 +32,13 @@ cannot be sure.
 
 ### What it does not claim
 
-Sift does not promise to save tokens. Measured end to end on nine tasks, it made no detectable difference
-to the pooled cost of a session: cheaper on some tasks, dearer on others, plus a small fixed start cost.
+Sift does not promise to save tokens. Measured end to end on nine tasks, 0.1.5 cut the pooled cost of a
+session by about a tenth: cheaper on four tasks, dearer on two, no detectable difference on three, plus a small
+fixed start cost.
 Those are runs on one codebase with one model, not a promise about yours. The numbers, the method and
 the limits are in the
-[README](https://github.com/Agulhas-Labs/sift/blob/main/README.md#what-we-measured) and the repository's
-`Benchmarks/` folder, and the weaker spots are listed under
-[Known gaps](https://github.com/Agulhas-Labs/sift/blob/main/README.md#known-gaps).
+[end-to-end results](https://github.com/Agulhas-Labs/sift/blob/main/Benchmarks/RESULTS-live.md) and the
+repository's `Benchmarks/` folder.
 
 ### Requirements
 

@@ -97,14 +97,15 @@ struct StringsAroundInterpolationTests {
     }
 
     @Test
-    func aPlainAnswerGainsOnlyTheCountLine() throws {
+    func aPlainAnswerGainsNoCountLine() throws {
         var files = Self.crates(count: 1)
         files["Sources/App/Plain.swift"] = "struct Plain {\n    let label = \"twelve 5 crates\"\n}\n"
         let engine = try Self.makeRepo(files: files)
 
         let output = try engine.strings(query: "twelve 5 crates")
 
-        #expect(output.hasSuffix("\n  Plain.label — Sources/App/Plain.swift:2: \"twelve 5 crates\"\n3 lines match it around interpolations on only one word of literal text, tests included, not listed — \"crates\" 3; add a word to narrow"))
+        #expect(output.hasSuffix("\n  Plain.label — Sources/App/Plain.swift:2: \"twelve 5 crates\""))
+        #expect(!output.contains("only one word of literal text"))
         #expect(!output.contains("literals with interpolations, matched around them"))
     }
 
@@ -125,7 +126,7 @@ struct StringsAroundInterpolationTests {
         "Sources/App/Plain.swift": "struct Plain {\n    let label = \"twelve 5 crates\"\n}\n",
         "Sources/App/Pair.swift": "struct Pair {\n    func label(n: Int) -> String {\n        \"twelve \\(n) crates\"\n    }\n}\n",
     ])
-    func aRareOneWordMatchStaysCountedBesideAPlainOrTwoWordSite(path: String, source: String) throws {
+    func aRareOneWordMatchIsNotListedBesideAPlainOrTwoWordSite(path: String, source: String) throws {
         var files = Self.crates(count: 1)
         files[path] = source
         let engine = try Self.makeRepo(files: files)
@@ -135,6 +136,21 @@ struct StringsAroundInterpolationTests {
         #expect(output.contains(path))
         #expect(!output.contains("Sources/App/Crate1.swift:3"))
         #expect(!output.contains(Self.oneWordHeading(limit: 8)))
+        // Counted beside a two-word site; beside a plain literal, which spells the query whole, not even counted.
+        #expect(output.contains("3 more lines match it on only one word of literal text") == (path == "Sources/App/Pair.swift"))
+    }
+
+    @Test
+    func aPlainLiteralDropsTheCountUnderAListedTwoWordSite() throws {
+        var files = Self.crates(count: 3)
+        files["Sources/App/Plain.swift"] = "struct Plain {\n    let label = \"twelve 5 crates\"\n}\n"
+        files["Sources/App/Pair.swift"] = "struct Pair {\n    func label(n: Int) -> String {\n        \"twelve \\(n) crates\"\n    }\n}\n"
+        let engine = try Self.makeRepo(files: files)
+
+        let output = try engine.strings(query: "twelve 5 crates")
+
+        #expect(output.contains("Sources/App/Pair.swift:3"))
+        #expect(!output.contains("only one word of literal text"))
     }
 
     @Test
@@ -292,6 +308,5 @@ struct StringsAroundInterpolationTests {
 
         #expect(output.contains("  Manifest.name — Sources/App/Manifest.swift:2: \"Package.swift\""))
         #expect(!output.contains("Sources/App/Globber.swift:3"))
-        #expect(output.contains("1 line matches it around interpolations on only one word of literal text"))
     }
 }

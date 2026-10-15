@@ -1,8 +1,8 @@
 {
   "lookup": {
-    "session_id": "01a0f6b0-7dce-7ba3-b30a-733df9d66b97",
-    "turn_id": "01a0f6b0-7e00-7e63-bb48-d2462150b0dd",
-    "transcript_path": "/Users/someone/.codex/sessions/2026/10/01/rollout-2026-10-01T09-59-16-01a0f6b0-7dce-7ba3-b30a-733df9d66b97.jsonl",
+    "session_id": "00000000-0000-7000-8000-000000000001",
+    "turn_id": "00000000-0000-7000-8000-000000000002",
+    "transcript_path": "/Users/someone/.codex/sessions/2026/10/01/rollout-2026-10-01T09-59-16-00000000-0000-7000-8000-000000000001.jsonl",
     "cwd": "/Users/someone/project",
     "hook_event_name": "PostToolUse",
     "model": "gpt-5",
@@ -29,9 +29,9 @@
     "tool_use_id": "call_probe_1"
   },
   "truncated": {
-    "session_id": "01a0f6b3-861a-7e90-b168-058114aff398",
-    "turn_id": "01a0f6b3-8674-7ee2-a570-be2fe6985f25",
-    "transcript_path": "/Users/someone/.codex/sessions/2026/10/01/rollout-2026-10-01T10-02-35-01a0f6b3-861a-7e90-b168-058114aff398.jsonl",
+    "session_id": "00000000-0000-7000-8000-000000000003",
+    "turn_id": "00000000-0000-7000-8000-000000000004",
+    "transcript_path": "/Users/someone/.codex/sessions/2026/10/01/rollout-2026-10-01T10-02-35-00000000-0000-7000-8000-000000000003.jsonl",
     "cwd": "/Users/someone/project",
     "hook_event_name": "PostToolUse",
     "model": "gpt-5",

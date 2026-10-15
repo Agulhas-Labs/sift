@@ -37,8 +37,30 @@ public struct BuildTimingParser {
         )
     }
 
-    /// Every timing in a build's output, in the order it was printed.
+    /// Every timing in a build's output, in the order it was printed, each distinct block of consecutive timing lines once.
+    ///
+    /// The native build system prints a batch frontend job's whole output under each file heading of that batch, byte-identical, so a block whose lines match one already read is dropped whole. Single lines are never deduplicated: the same site timed in different jobs, with different times, counts each time.
     public static func timings(in output: String) -> [BuildTiming] {
-        output.split(whereSeparator: \.isNewline).compactMap { timing(in: $0) }
+        var seenBlocks: Set<[Substring]> = []
+        var timings: [BuildTiming] = []
+        var block: [(line: Substring, timing: BuildTiming)] = []
+        func endBlock() {
+            guard !block.isEmpty else {
+                return
+            }
+            if seenBlocks.insert(block.map(\.line)).inserted {
+                timings.append(contentsOf: block.map(\.timing))
+            }
+            block.removeAll()
+        }
+        for line in output.split(whereSeparator: \.isNewline) {
+            if let timing = timing(in: line) {
+                block.append((line, timing))
+            } else {
+                endBlock()
+            }
+        }
+        endBlock()
+        return timings
     }
 }

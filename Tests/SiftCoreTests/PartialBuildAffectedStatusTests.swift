@@ -60,10 +60,10 @@ struct PartialBuildAffectedStatusTests {
         let range = try DiffRange.resolve(nil, git: GitContext(repoRoot: root))
         let diff = try await engine.diff(options: DiffOptions(range: range), freshness: freshness)
 
-        #expect(diff.contains("2 files: 1 changed, 1 new"), "\(diff)")
+        #expect(diff.contains("2 cited files: 1 changed, 1 new"), "\(diff)")
     }
 
-    /// `status` never opens the store, so after the same build it reads fresh and names the case among those only a query shows.
+    /// `status` never opens the store, so after the same build it reads fresh and names the help topic that lists the case among those only a query shows.
     @Test
     func statusReadsFreshAndNamesThePartialBuildCase() async throws {
         let root = try await Self.partiallyRebuiltPackage()
@@ -74,7 +74,8 @@ struct PartialBuildAffectedStatusTests {
         let status = try engine.statusText(freshness: freshness)
 
         #expect(status.contains("semantic: fresh"), "\(status)")
-        #expect(status.contains("unbuilt test files, a file a partial build skipped, a store"), "\(status)")
+        #expect(status.contains(SiftEngine.statusAxisNote), "\(status)")
+        #expect(HelpTopics.topic(named: "answers")?.body.contains("unbuilt test files, a file a partial build skipped, a store") == true)
     }
 }
 

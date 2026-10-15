@@ -15,7 +15,7 @@ The header of an answer says how far to trust it. After you edit a file the comp
 `sift run -- swift build --build-tests`, append a comment line to `Sources/Stacks/Library.swift`, and ask:
 
 ```text
-tree: Shelf  head: ec26cde  dirty: 1  parse_errors: 0  semantic: stale since last build (1 file changed: Sources/Stacks/Library.swift)
+tree: Shelf  head: ec26cde  dirty: 1  parse_errors: 0  semantic: stale since last build (1 cited file changed: Sources/Stacks/Library.swift)
 
 declarations (1):
   Stacks.Library.count(for:) — func — public func count(for borrower: String) -> Int — Sources/Stacks/Library.swift:38-40
@@ -65,8 +65,8 @@ sift run -- swift build --build-tests
 ```
 
 For an Xcode project use `sift run -- xcodebuild -scheme <Scheme> build`; an iOS project also needs a
-destination. A package nested below the repository root, or a custom derived data path, needs
-`indexStorePath` in `.sift.json`. `sift status` then reports which store it found, or names one it read and
+destination. A custom derived data path needs `indexStorePath` in `.sift.json`; a package nested below
+the repository root is found with nothing to set. `sift status` then reports which store it found, or names one it read and
 rejected.
 
 ### Check the install with `sift doctor`
@@ -108,8 +108,8 @@ there), and not run it from `npx`, which the install refuses.
 
 ### Other entries
 
-- **It dies at once with no output (exit 137).** A new binary was copied over an installed one in place. `rm`
-  the old one first, then `cp`.
+- **It dies at once with no output (exit 137).** A new binary was copied over an installed one in place. Copy
+  to a temporary name beside it, then rename it over the old one (new inode).
 - **The MCP server does not appear in Claude Code.** Start a new session first, then check `claude mcp list`.
   When registering by hand, the scope option must come before the `--`.
 - **`where` says the store is "still warming".** A large store takes minutes to read the first time, and the

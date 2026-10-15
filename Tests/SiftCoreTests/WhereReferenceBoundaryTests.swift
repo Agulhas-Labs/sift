@@ -6,7 +6,7 @@ import Foundation
 @testable import SiftCore
 import Testing
 
-/// Covers the reference boundary a `where` answer once carried over reference and usage material: it holds of every such answer, so it is said once per session (``StandingCaveats``) and on no answer (Docs/Design.md §2, *standing caveats*).
+/// Covers the reference boundary a `where` answer once carried over reference and usage material: it holds of every such answer, so it is said in the answers it applies to (``StandingCaveats``: an empty verdict) and on no other (Docs/Design.md §2, *standing caveats*).
 ///
 /// Their own suite rather than a corner of `SemanticWhereTests`, because they are one subject — the contract that every caveat in an answer is about something *in* that answer — and they share that suite's built-store fixture, which is why they lived there.
 @Suite(.temporaryDirectories)

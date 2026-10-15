@@ -70,7 +70,7 @@ public struct ScanWindowLog: Sendable, Equatable, Codable {
         guard state.windowLog != nil else { return nil }
         let tool: String? = if let pending = state.pendingIndexCalls[call] {
             pending.tool
-        } else if state.pendingShellDigests[call] != nil || state.pendingShellAnswers[call] != nil || state.pendingShellLookups.contains(call) {
+        } else if state.pendingShellDigests[call] != nil || state.pendingShellAnswers[call] != nil || state.pendingShellLookups.keys.contains(call) {
             "bash"
         } else if state.pendingReads[call] != nil {
             "answer"

@@ -50,7 +50,7 @@ public struct TranscriptScan {
         else {
             return []
         }
-        guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { return [] }
+        guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any], !TranscriptRepeats.isRequestBlob(object) else { return [] }
         TranscriptAccess.note(object, in: &state)
         guard let message = object["message"] as? [String: Any],
               let content = message["content"] as? [[String: Any]]
@@ -85,6 +85,7 @@ public struct TranscriptScan {
         for block in content {
             switch block["type"] as? String {
             case "tool_use":
+                state.callInstant = timestamp
                 // The next tool call the transcript writes after a solo refusal is what followed it, whatever
                 // it turns out to be — dequeued here, ahead of that call's own classification, because this is
                 // the first point every `tool_use` block of every tool passes through. Only the oldest pending
@@ -119,6 +120,10 @@ public struct TranscriptScan {
                 // Where the windows are kept, what this result locates and does to its own window is settled as it closes.
                 let mark = ScanWindowLog.mark(id, events: events.count, in: state)
                 defer { ScanWindowLog.close(mark, events: events, in: &state) }
+                // Whatever this result takes back or scores again belongs to the day its call was counted on, read before the pending entries are consumed.
+                let firstEvent = events.count
+                let calledAt = state.calledAt(answering: id)
+                defer { state.stampCorrections(in: events, from: firstEvent, calledAt: calledAt) }
                 // Ahead of the guards below, which end at the first entry they find: a Bash line can hold a read too.
                 events += creditShellCall(answering: id, block: block, failed: failed, in: &state)
                 events += AnswerThenRead.noteResult(id: id, block: block, failed: failed, in: &state)
@@ -339,7 +344,8 @@ public struct TranscriptScan {
                     digestTargets: tool == "digest" ? LocatedDigest.targets(in: input) : [],
                     root: input["root"] as? String ?? workingDirectory,
                     servesWorkingTree: servesWorkingTree,
-                    counted: consultFilesystem
+                    counted: consultFilesystem,
+                    calledAt: state.callInstant
                 )
             }
             // **A document lookup is no Swift lookup, on either side of the share.** The read population
@@ -524,7 +530,7 @@ public struct TranscriptScan {
                 if invokesIndexCLI(command), !IndexCallTarget.documentDigest(inCommand: command) {
                     taken.append(contentsOf: [.lookup(.indexed), .cliLookup])
                     if consultFilesystem {
-                        holdShellIndexedLookup(block: block, in: &state)
+                        state.holdShellIndexedLookup(block)
                     }
                 }
                 state.holdShellDigests(of: command, block: block, directory: directory)
@@ -971,6 +977,7 @@ extension TranscriptScan {
             fallback: fallback,
             turn: turn,
             directory: directory,
+            calledAt: state.callInstant,
             shape: shape
         )
         return .lookup(lookup)
@@ -1041,15 +1048,6 @@ extension TranscriptScan {
         return query.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "_" }).contains(Substring(IndexToolName.server))
     }
 
-    /// Holds the `tool_use_id` of a Bash call counted as an indexed lookup on the way out, so its line's result can take that count back if it errors.
-    ///
-    /// Called only for a call counted inside the window, so the held set is exactly what an error could take back.
-    private static func holdShellIndexedLookup(block: [String: Any], in state: inout TranscriptScanState) {
-        if let id = block["id"] as? String {
-            state.pendingShellLookups.insert(id)
-        }
-    }
-
     /// Everything a Bash line's result credits: what its shell digests located, the files a line of `sift where`/`sift search` lookups listed, and — taken back if the line errored — the `.indexed`/``TranscriptEvent/cliLookup`` a lookup-shaped call on it was provisionally counted as.
     ///
     /// Only a call counted inside the window is held for that, so the result is taken back whichever side of the window it lands on.
@@ -1058,7 +1056,7 @@ extension TranscriptScan {
     private static func creditShellCall(answering id: String, block: [String: Any], failed: Bool, in state: inout TranscriptScanState) -> [TranscriptEvent] {
         state.creditShellDigests(answering: id, block: block, failed: failed)
         state.creditShellAnswer(answering: id, block: block, failed: failed)
-        guard state.pendingShellLookups.remove(id) != nil, failed else { return [] }
+        guard state.pendingShellLookups.removeValue(forKey: id) != nil, failed else { return [] }
         return [.lookupRetracted(.indexed), .cliLookupRetracted]
     }
 

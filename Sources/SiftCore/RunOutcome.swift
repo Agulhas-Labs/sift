@@ -26,13 +26,17 @@ public struct RunOutcome {
     /// Carried on the outcome rather than rediscovered by the caller because discovering it costs a `git` process, and the launcher has already paid for one on its way to excluding the cache directory.
     public let repositoryRoot: URL?
 
-    public init(kind: RunCommandKind, logKey: String, exitCode: Int32, report: RunReport?, log: RunLog?, repositoryRoot: URL?) {
+    /// What the command left running holding its output open when reading stopped, or `nil` where the output reached its end.
+    public let heldOutput: RunHeldOutput?
+
+    public init(kind: RunCommandKind, logKey: String, exitCode: Int32, report: RunReport?, log: RunLog?, repositoryRoot: URL?, heldOutput: RunHeldOutput? = nil) {
         self.kind = kind
         self.logKey = logKey
         self.exitCode = exitCode
         self.report = report
         self.log = log
         self.repositoryRoot = repositoryRoot
+        self.heldOutput = heldOutput
     }
 }
 

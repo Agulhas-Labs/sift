@@ -149,9 +149,9 @@ struct SignatureParenSpacingTests {
         #expect(!answer.contains("[ Int"), "\(answer)")
     }
 
-    /// A line asked for inside a long member with a long signature gets the declaration wrapped, with an inner bracket the source broke closed up.
+    /// A line asked for inside a long member with a long, bracket-broken signature gets its numbered window alone: the header names the member, so no declaration is laid out beneath it to reflow.
     @Test
-    func lineWindowDeclarationClosesAnInnerBracket() throws {
+    func lineWindowInsideABracketBrokenSignatureCarriesNoDeclaration() throws {
         let body = (1 ... 30).map { "        _ = \"line\($0)\"" }.joined(separator: "\n")
         let source = """
         struct Answerer {
@@ -182,7 +182,8 @@ struct SignatureParenSpacingTests {
         let renderer = try DigestRenderer(store: store, moduleNames: store.moduleNames(), repoRoot: root)
         let output = try renderer.render(target: "Sources/Gizmo/Answerer.swift:30", options: DigestOptions())
 
-        #expect(output.contains("_ first: [Int]"), "\(output)")
+        #expect(output.contains(">   30\t"), "\(output)")
+        #expect(!output.contains("static func answer("), "\(output)")
         #expect(!output.contains("[ Int"), "\(output)")
     }
 

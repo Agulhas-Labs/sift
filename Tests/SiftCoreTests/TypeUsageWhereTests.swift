@@ -109,16 +109,16 @@ struct TypeUsageWhereTests {
         }
     }
 
-    /// Asked where a type is, the store's answer counts its uses on the verdict line, names the query that lists them, and lists none.
+    /// Asked where a type is, the store's answer counts its few uses on the verdict line and lists them under it, with no pointer to `--refs`.
     @Test
     func aPlainAnswerCountsTheUsesAndNamesTheQueryListingThem() async throws {
         try await Self.usageFixture().withEngine { engine in
             let output = try await engine.lookup(symbol: "Widget", freshness: engine.ensureFresh())
 
             #expect(output.contains("used by Lib.Widget: 3 references in 2 files — 2 production · 1 test"), "\(output)")
-            #expect(output.contains(" — where --refs Widget lists them\n"), "\(output)")
-            #expect(!output.contains("Sources/Lib/Assembly.swift (2)"), "\(output)")
-            #expect(!output.contains(":6  | _ = Widget().spin()"), "\(output)")
+            #expect(!output.contains("where --refs Widget lists them"), "\(output)")
+            #expect(output.contains("Sources/Lib/Assembly.swift (2):\n    :1  | public func assemble() -> Widget {"), "\(output)")
+            #expect(output.contains(":6  testExample()  | _ = Widget().spin()"), "\(output)")
         }
     }
 
@@ -131,8 +131,8 @@ struct TypeUsageWhereTests {
             let output = try await engine.lookup(symbol: "Widget", freshness: freshness, options: WhereOptions(standsInForSearch: true))
 
             #expect(output.contains("used by Lib.Widget: 3 references in 2 files — 2 production · 1 test"))
-            #expect(output.contains("Sources/Lib/Assembly.swift (2):\n    :1  | public func assemble() -> Widget {\n    :2  | Widget()"))
-            #expect(output.contains("Tests/LibTests/WidgetTests.swift (1):\n    :6  | _ = Widget().spin()"))
+            #expect(output.contains("Sources/Lib/Assembly.swift (2):\n    :1  | public func assemble() -> Widget {\n    :2  assemble()  | Widget()"))
+            #expect(output.contains("Tests/LibTests/WidgetTests.swift (1):\n    :6  testExample()  | _ = Widget().spin()"))
             // The reference boundary holds of every such verdict, so the session hears it once and the answer does not repeat it.
             #expect(!output.contains("references: code occurrences"))
         }
@@ -196,7 +196,7 @@ struct TypeUsageWhereTests {
 
             // `Console.boot()` names `Host` on its return type and in its body, both in `Host`'s own file.
             #expect(output.contains("used by Lib.Host: 2 references in 1 file — 2 production · 0 tests"))
-            #expect(output.contains("Sources/Lib/Host.swift (2):\n    :8  | public func boot() -> Host {\n    :9  | Host()"))
+            #expect(output.contains("Sources/Lib/Host.swift (2):\n    :8  | public func boot() -> Host {\n    :9  boot()  | Host()"))
             #expect(!output.contains("no uses of Lib.Host"))
         }
     }
@@ -220,7 +220,7 @@ struct TypeUsageWhereTests {
             // block instead of the listing the sentence owns.
             let lines = swept.split(separator: "\n", omittingEmptySubsequences: false)
             let listing = try #require(lines.firstIndex(where: { $0.hasSuffix("  Sources/Lib/Lonely.swift (3):") }), "\(swept)")
-            #expect(lines[(listing + 1) ... (listing + 3)].map { String($0.prefix { $0 != "|" }) } == ["    :5  ", "    :6  ", "    :7  "], "\(swept)")
+            #expect(lines[(listing + 1) ... (listing + 3)].map { String($0.prefix { $0 != "|" }) } == ["    :5  ", "    :6  ", "    :7  twin()  "], "\(swept)")
             let sentence = try #require(lines.firstIndex(where: { $0.contains("the references listed above are those lines") }), "\(swept)")
             #expect(listing < sentence, "\(swept)")
         }
@@ -325,7 +325,7 @@ struct TypeUsageWhereTests {
             // The line a deletion is decided on, which the fold exists to stop being false.
             #expect(!output.contains("· 0 tests"))
             // A fold that cannot be read is a number that is merely larger, so the row names what is written at the site.
-            #expect(output.contains("Tests/LibTests/Crates.swift (3): — written as Lib.Box and Lib.Crate\n    :6  | XCTAssertEqual(Crate.go(), 1)\n    :10  | _ = Crate()\n    :14  | let made: Box = Box()"))
+            #expect(output.contains("Tests/LibTests/Crates.swift (3): — written as Lib.Box and Lib.Crate\n    :6  testOne()  | XCTAssertEqual(Crate.go(), 1)\n    :10  testTwo()  | _ = Crate()\n    :14  testThree()  | let made: Box = Box()"))
             #expect(output.contains("written as Lib.Box and Lib.Crate, typealiases naming it — recorded against the alias, folded in here"))
         }
     }
@@ -343,7 +343,7 @@ struct TypeUsageWhereTests {
             let heading = try #require(lines.firstIndex(where: { $0.contains("Tests/LibTests/Crates.swift") }), "\(output)")
 
             #expect(lines[heading].contains("Lib.Box"), "\(output)")
-            #expect(lines[(heading + 1)...].prefix { $0.hasPrefix("    :") }.contains("    :14  | let made: Box = Box()"), "\(output)")
+            #expect(lines[(heading + 1)...].prefix { $0.hasPrefix("    :") }.contains("    :14  testThree()  | let made: Box = Box()"), "\(output)")
         }
     }
 }

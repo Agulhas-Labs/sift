@@ -167,7 +167,7 @@ struct SemanticGeneratedCodeTests {
             #expect(count.contains("    :11  init(lamp:) — write via _count  | _count = State(initialValue: 3)"))
             #expect(count.contains("    :17  getter:body — read  | Text(\"\\(count)\")"))
             #expect(sweep.contains("references to GizmoApp.Panel.flag (1 in 1 file, including $flag):"))
-            #expect(sweep.contains("  Sources/GizmoApp/Panel.swift (1):\n    :16  | Toggle(\"f\", isOn: $flag)"))
+            #expect(sweep.contains("  Sources/GizmoApp/Panel.swift (1):\n    :16  getter:body  | Toggle(\"f\", isOn: $flag)"))
             #expect(unused.contains("no reads or writes of GizmoApp.Idle.on recorded in the store"))
             #expect(!unused.contains("getter:$on"))
             #expect(unusedSweep.contains("no references to GizmoApp.Idle.on recorded in the store"))

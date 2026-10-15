@@ -83,7 +83,7 @@ struct InstallCommand: ParsableCommand {
         case .ask:
             break
         case let .install(picks) where dryRun:
-            for line in InstallDryRun.lines(picks, detection: detection, binary: binary, environment: environment) {
+            for line in InstallDryRun.lines(picks, detection: detection, binary: binary, environment: environment, claudeOnPath: machine.pathLookup("claude") != nil) {
                 output.emit(line)
             }
         case let .install(picks):

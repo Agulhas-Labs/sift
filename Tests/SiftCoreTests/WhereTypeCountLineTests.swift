@@ -16,10 +16,14 @@ struct WhereTypeCountLineTests {
     ]
 
     /// The answer `where` gives for `symbol` over the fixture, with no index store.
-    private static func answer(_ symbol: String, options: WhereOptions = WhereOptions()) async throws -> String {
+    private static func answer(_ symbol: String, padded: Bool = false, options: WhereOptions = WhereOptions()) async throws -> String {
         let root = try TestSources.makeTempRepo()
         for (path, source) in files {
             try TestSources.write(source, to: path, in: root)
+        }
+        if padded {
+            // Seven more lines make nine uses, past the few a plain answer lists in place.
+            try TestSources.write((1 ... 7).map { "let pad\($0) = Net.Gizmo()\n" }.joined(), to: "Sources/App/Pad.swift", in: root)
         }
         try TestSources.commitAll(in: root, message: "a nested type, unbuilt")
         let engine = try SiftEngine(directory: root)
@@ -29,21 +33,31 @@ struct WhereTypeCountLineTests {
     /// Asked where a type is, the answer counts its uses on the verdict line and lists none of them.
     @Test
     func aPlainAnswerCountsTheUsesAndNamesTheQueryListingThem() async throws {
-        let output = try await Self.answer("Gizmo")
+        let output = try await Self.answer("Gizmo", padded: true)
 
-        #expect(output.contains("\"Gizmo\" (2 uses by written name in 1 file) — 2 production · 0 tests"), "\(output)")
+        #expect(output.contains("\"Gizmo\" (9 uses by written name in 2 files) — 9 production · 0 tests"), "\(output)")
         #expect(output.contains("(for Sources.Net.Gizmo) — where --refs Gizmo lists them\n") || output.hasSuffix("(for Sources.Net.Gizmo) — where --refs Gizmo lists them"), "\(output)")
         #expect(!output.contains("Sources/App/Use.swift (2)"), "\(output)")
         #expect(!output.contains(":1  | let first"), "\(output)")
+        #expect(!output.contains("Sources/App/Pad.swift ("), "\(output)")
     }
 
     /// A qualified query is named back as it was asked, so the pointer lists this type's uses and no other's of the name.
     @Test
     func aQualifiedQueryIsTheOneThePointerNames() async throws {
-        let output = try await Self.answer("Net.Gizmo")
+        let output = try await Self.answer("Net.Gizmo", padded: true)
 
         #expect(output.contains(" — where --refs Net.Gizmo lists them"), "\(output)")
         #expect(!output.contains(":2  | let second"), "\(output)")
+    }
+
+    /// Asked where a type is, with two uses, the answer lists them under the verdict and names no pointer.
+    @Test
+    func aFewUsesAreListedWithNoPointer() async throws {
+        let output = try await Self.answer("Gizmo")
+
+        #expect(output.contains("Sources/App/Use.swift (2):\n    :1  | let first = Net.Gizmo()\n    :2  | let second = Net.Gizmo()"), "\(output)")
+        #expect(!output.contains("lists them"), "\(output)")
     }
 
     /// A caller standing the answer in for a search's lines keeps every row under the verdict, and no pointer.

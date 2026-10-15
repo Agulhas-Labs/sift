@@ -208,7 +208,9 @@ struct SemanticPropertyUseTests {
         let output = try await Self.lookup("Limits.unused")
 
         #expect(output.contains("no reads or writes of GizmoCore.Limits.unused recorded in the store"))
-        #expect(!output.contains("callers"))
+        #expect(output.contains(StandingCaveats.sentences))
+        let verdict = output.replacingOccurrences(of: StandingCaveats.sentences, with: "")
+        #expect(!verdict.contains("callers"))
     }
 
     /// A function and a property of one name under two owners, each queried by its owner, say of each only what was looked for in it — neither is counted under the other's word.

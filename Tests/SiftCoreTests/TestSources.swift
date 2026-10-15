@@ -77,6 +77,10 @@ struct TestSources {
     /// The same repository at a caller-chosen path, for tests whose point is where the repo sits — inside a container folder, say.
     static func makeTempRepo(at root: URL) throws -> URL {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        // A git read the code under test makes here may outlast the two seconds production gives it, on a
+        // machine too loaded to schedule it sooner; only this repository's reads are widened, so a test
+        // pinning the production bound keeps it by making its repository elsewhere.
+        ChildDeadline.widenGitReads(under: root, to: 120)
         try runGit(["init", "-b", "main"], in: root)
         try runGit(["config", "user.email", "test@example.com"], in: root)
         try runGit(["config", "user.name", "Tester"], in: root)
@@ -99,6 +103,8 @@ struct TestSources {
     static func makeBareRepo(named name: String) throws -> URL {
         let seed = try makeTempRepo()
         let container = try makeTempDirectory()
+        // The container, not the repository: its worktrees are made beside it (`makeTempRepo(at:)` says why).
+        ChildDeadline.widenGitReads(under: container, to: 120)
         let bare = container.appendingPathComponent("\(name).git")
         try runGit(["clone", "--bare", seed.path, bare.path], in: container)
         return bare.resolvingSymlinksInPath()
@@ -116,6 +122,8 @@ struct TestSources {
     /// The other layout whose git directory is not `<checkout>/.git`, and the one that shows the difference between asking git and doing path arithmetic: nothing about either path says the two belong together.
     static func makeRepoWithSeparateGitDirectory(named name: String) throws -> (checkout: URL, gitDirectory: URL) {
         let container = try makeTempDirectory()
+        // The container, which holds the checkout and its git directory both (`makeTempRepo(at:)` says why).
+        ChildDeadline.widenGitReads(under: container, to: 120)
         let gitDirectory = container.appendingPathComponent("\(name)-gitdir")
         let checkout = container.appendingPathComponent(name)
         try runGit(["init", "--separate-git-dir", gitDirectory.path, "-b", "main", checkout.path], in: container)
@@ -200,6 +208,8 @@ struct TestSources {
     ///
     /// It is the shipped rule and not a copy of it: ``ProcessEnvironment/withoutGit(from:)`` is what `GitContext` hands its own reads, for the same reason one level up.
     ///
+    /// It commits as a fixed identity, so no fixture depends on the user's git config.
+    ///
     /// `dated` puts back exactly two keys, the author and committer dates, for a fixture whose history has to be older than the moment it was made — the only way to date a commit's committer, which is the date `git log --since` reads.
     @discardableResult
     static func runGit(_ arguments: [String], in directory: URL, dated date: Date? = nil) throws -> String {
@@ -208,6 +218,10 @@ struct TestSources {
         process.arguments = arguments
         process.currentDirectoryURL = directory
         var environment = ProcessEnvironment.withoutGit()
+        environment["GIT_AUTHOR_NAME"] = "Tester"
+        environment["GIT_AUTHOR_EMAIL"] = "test@example.com"
+        environment["GIT_COMMITTER_NAME"] = "Tester"
+        environment["GIT_COMMITTER_EMAIL"] = "test@example.com"
         if let date {
             let stamp = "@\(Int(date.timeIntervalSince1970)) +0000"
             environment["GIT_AUTHOR_DATE"] = stamp

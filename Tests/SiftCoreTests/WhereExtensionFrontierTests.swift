@@ -1,3 +1,7 @@
+//
+// Copyright © Agulhas Labs
+//
+
 import Foundation
 import SiftCore
 import Testing

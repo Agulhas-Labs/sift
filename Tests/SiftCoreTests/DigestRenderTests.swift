@@ -1997,6 +1997,14 @@ extension DigestRenderTests {
         lines.map { "        _ = \"long-\($0 - 3)\"" }.joined(separator: "\n")
     }
 
+    /// Lines `lines` of `long()` (`:2-62`) as a single cited line's answer numbers them: six columns, a tab, the line; `>` for the first padding space of `cited`.
+    private static func numberedLongLines(_ lines: ClosedRange<Int>, cited: Int) -> String {
+        lines.map { line in
+            let text = line == 2 ? "    private static func long() {" : "        _ = \"long-\(line - 3)\""
+            return (line == cited ? ">" : " ") + String(repeating: " ", count: 5 - String(line).count) + String(line) + "\t" + text
+        }.joined(separator: "\n")
+    }
+
     @Test
     func aRangeInsideALongMemberServesOnlyTheLinesAskedFor() throws {
         let output = try Self.ledgerRenderer().render(target: "Sources/Gizmo/Ledger.swift:20-30", options: DigestOptions())
@@ -2015,9 +2023,11 @@ extension DigestRenderTests {
         let nearTheTop = try renderer.render(target: "Sources/Gizmo/Ledger.swift:4", options: DigestOptions())
 
         #expect(middle.hasPrefix("Sources/Gizmo/Ledger.swift lines 27-33 (line 30 with up to 3 lines either side), in Gizmo.Ledger.long() — func — :2-62"))
-        #expect(middle.hasSuffix("\n\n    private static func long()\n(…24 lines skipped)\n" + Self.longLines(27 ... 33) + "\nlines 2-62; read it by range"))
+        #expect(middle.hasSuffix("\n\n" + Self.numberedLongLines(27 ... 33, cited: 30)))
+        #expect(!middle.contains("read it by range"))
         #expect(nearTheTop.hasPrefix("Sources/Gizmo/Ledger.swift lines 2-7 (line 4 with up to 3 lines either side)"))
-        #expect(nearTheTop.hasSuffix("\n\n    private static func long() {\n" + Self.longLines(3 ... 7) + "\nlines 2-62; read it by range"))
+        #expect(nearTheTop.hasSuffix("\n\n" + Self.numberedLongLines(2 ... 7, cited: 4)))
+        #expect(!nearTheTop.contains("read it by range"))
     }
 
     @Test

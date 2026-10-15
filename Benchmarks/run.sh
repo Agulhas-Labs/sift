@@ -2,9 +2,11 @@
 # Runs the paired benchmark (Benchmarks/README.md): every task, or each --task named, in both arms,
 # --repeats times, then prints the paired table. Results go to Benchmarks/results/<session>/.
 #
-# Usage:  sh Benchmarks/run.sh [--task <id>]... [--repeats N] [--session NAME] [--effort LEVEL]
+# Usage:  sh Benchmarks/run.sh [--task <id>]... [--repeats N] [--paths K] [--session NAME] [--effort LEVEL]
 #                              [--timeout SECONDS] [--budget USD] [--sift PATH] [--claude PATH]
 #                              [--rule-b PATH] [--rule-a PATH | --mod-b DIR [--mod-env NAME=VALUE]...]
+#        --paths spreads the repeats over K run paths (--repeats is per path), pairing A with B at each, and the
+#        analysis bootstraps over paths, since the run path is part of the prompt and one path samples one mode.
 #        --rule-a runs arm A with sift too, under that rule file, so the table is rule A against rule B.
 #        --mod-b runs both arms with sift and loads that Claude Code plugin in arm B only: mod against none.
 #        --mod-env sets a variable in arm B's environment only (SIFT_MOD_BASH=on, say).
@@ -25,14 +27,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 paths="$(/usr/bin/python3 "$HERE/bench.py" paths)" || exit 3
 eval "$paths"
 
-for leftover in "$WORK" "$RUN_HOME"; do
+for leftover in "$WORK" "$RUN_HOME" "$PROJECT_STATE"-[0-9]*; do
     if [ -e "$leftover" ]; then
         echo "error: $leftover exists: another run is using it, or one was killed; remove it by hand" >&2
         exit 3
     fi
 done
 child=
-trap 'rm -rf "$WORK" "$RUN_HOME" "$PROJECT_STATE"' EXIT
+trap 'rm -rf "$WORK" "$RUN_HOME" "$PROJECT_STATE" "$PROJECT_STATE"-[0-9]*' EXIT
 # The runner goes in the background so a signal reaches this trap at once, rather than after the run: it is
 # forwarded, and the runner unwinds (stopping whatever it started) before the directories go.
 trap 'if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null; wait "$child"; fi; exit 130' INT TERM

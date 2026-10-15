@@ -32,13 +32,13 @@ struct NonCodeMentions: Equatable {
         files.reduce(0) { $0 + $1.codeLines }
     }
 
-    /// Scans the repo-relative `swiftFiles` and `markdownFiles` under `root` for `name`.
-    static func scan(name: String, swiftFiles: [String], markdownFiles: [String], under root: URL) -> NonCodeMentions {
+    /// Scans the repo-relative `swiftFiles` and `markdownFiles` under `root` for `name`, a Swift file the answer's conformers block already read for it taken from `reads`.
+    static func scan(name: String, swiftFiles: [String], markdownFiles: [String], under root: URL, reads: TextSearchFiles.Reads? = nil) -> NonCodeMentions {
         let needle = Array(name.utf8)
         let backtickedOnly = name.first?.isLowercase ?? false
         var files: [File] = []
         for path in swiftFiles {
-            guard let data = FileManager.default.contents(atPath: root.appendingPathComponent(path).path) else { continue }
+            guard let data = reads?.bytes(of: path, for: name) ?? FileManager.default.contents(atPath: root.appendingPathComponent(path).path) else { continue }
             if let file = data.withUnsafeBytes({ swiftFile(path: path, needle: needle, backtickedOnly: backtickedOnly, in: $0) }) {
                 files.append(file)
             }

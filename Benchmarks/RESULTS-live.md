@@ -1,4 +1,29 @@
-# Results: hook live, compiler index, run `sg-live10` (2026-10-01)
+# Results: hook live, compiler index
+
+## 0.1.5 over paired paths (`rel015`, 2026-10-15)
+
+Sift 0.1.5 (`ad01a26a`) with the hook live and a compiler index, on the same nine tasks, private corpus and model
+as the runs below (Sonnet 5.5, effort medium). The method changed: each task ran on 6 run paths with 2 repeats per
+arm on each, 216 scored runs in sessions `rel015-a` (five tasks) and `rel015-b` (four), and each interval resamples
+the paths, since repeats on one path were found to settle into one mode of behaviour. Correct 108/108 in both arms.
+
+| task | session price, with sift against without | 95% interval of the difference |
+| --- | --- | --- |
+| trace UI text to its code | -41% | [-11.2k, -8.4k] |
+| understand a large type | -26% | [-9.7k, -3.5k] |
+| find callers across modules | -16% | [-3.3k, -2.9k] |
+| a long open-ended chain | -14% | [-16.5k, -5.6k] |
+| locate and fix a bug | -3% | [-5.3k, +2.7k], no detectable difference |
+| find conformers | +1% | [-0.2k, +0.3k], no detectable difference |
+| log triage | +5% | [-0.3k, +1.8k], no detectable difference |
+| chained questions on one type | +6% | [+0.2k, +4.7k] |
+| rename sweep | +11% | [+1.2k, +2.7k] |
+| pooled over the 216 runs | -9.5% | by session: five tasks -16.9% [-21.8k, -13.1k], four tasks -5.3% [-15.8k, -3.2k] |
+
+Four tasks cost less with sift, two cost more, and three show no detectable difference. The two sessions ran on
+separate sets of paths, so the pooled figure has no single interval; each session's own pooled interval excludes zero.
+
+## The first runs (`sg-live10`, 2026-10-01)
 
 Main at b663ae84, the hook live (unlike the earlier runs, whose corpus sat under a build directory the hook never
 reads), and a compiler index, so `where` answered callers from the index store. 9 tasks, 10 repeats x 2 arms = 180

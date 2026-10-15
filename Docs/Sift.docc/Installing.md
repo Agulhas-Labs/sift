@@ -4,8 +4,8 @@ Set sift up in Claude Code, Cursor and Codex with one command, and take it out a
 
 ## Overview
 
-With `sift` on your `PATH` (see <doc:GettingStarted>: install it with Homebrew or npm, or build it from source
-and copy the binary there), one command sets it up in every agent you use:
+With `sift` on your `PATH` (see <doc:GettingStarted>: install it with Homebrew, with `npm install -g @agulhas-labs/sift`, or build it from
+source and copy the binary there), one command sets it up in every agent you use:
 
 ```sh
 sift install
@@ -17,17 +17,17 @@ write, and asks once per agent found. Re-running it is safe: a second run change
 it is also the upgrade path.
 
 To see what it would do first, ask for a dry run. This writes nothing and runs neither `claude` nor
-`codex`. This is the Claude Code part of its answer, from a binary built from source, abridged:
+`codex`. This is the Claude Code part of its answer from a binary with no `Sift.md` beside it (a source build, say), on a machine where only the rule is in place, abridged:
 
 ```text
 $ sift install --dry-run --agent claude
 Claude Code: found — `claude` on PATH
     would write ~/.claude/settings.json (hooks)
     would write ~/.claude.json (the MCP server at user scope, through `claude mcp add`)
-    would be skipped ~/.claude/rules/sift.md (the agent rule) — no Sift.md ships with this binary
+    left as installed ~/.claude/rules/sift.md (the agent rule) — no Sift.md ships beside this binary to refresh it from (install.sh writes it; `sift install` from Homebrew or npm copies the Sift.md they ship)
 …
 Claude Code MCP server: would register ~/.local/bin/sift mcp through `claude mcp add`
-Claude Code rule: would be skipped — no Sift.md ships with this binary
+Claude Code rule: left as installed — no Sift.md ships beside this binary to refresh it from (install.sh writes it; `sift install` from Homebrew or npm copies the Sift.md they ship)
 dry run: nothing written and nothing run; without --dry-run this installs into Claude Code
 ```
 
@@ -59,12 +59,12 @@ route. It is not published yet, so `sift install` is the one that works today.
 The merge into `settings.json` preserves every other key and hook, refuses a file that will not parse, and
 copies it to `settings.json.bak-sift` first.
 
-**The one manual step:** start a new Claude Code session. A running session keeps its old server.
+**The one manual step:** start a new Claude Code session, for the session primer, the tool list and the rule file, which load at session start. On an upgrade a running session's server re-executes into the replaced binary before its next request and the hooks apply at once; after a first install there is no sift server in it yet.
 
 **From a source build:** `sift install` registers the path of the binary you ran, so run it as `sift` from
 the copy on your `PATH` (see <doc:GettingStarted>) and not from `.build/release`. It writes the hooks and
 the MCP server as above. It does not write the agent rule: nothing ships a `Sift.md` beside a
-source build, so the install prints `rule: skipped — no Sift.md ships with this binary` and goes on. The
+source build, so the install prints ``rule: skipped — no Sift.md ships with this binary (install.sh writes it; `sift install` from Homebrew or npm copies the Sift.md they ship)`` and goes on. The
 file is in the root of the source tree; to add the rule, copy it to `~/.claude/rules/sift.md` yourself.
 
 **Uninstall:**

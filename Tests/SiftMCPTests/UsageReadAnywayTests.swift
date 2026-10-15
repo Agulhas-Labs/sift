@@ -51,14 +51,14 @@ struct UsageReadAnywayTests {
     }
 
     /// The hook's decision on `command`, run in the fixture's repository in the session it answered in.
-    private static func decide(_ command: String, id: String, in fixture: AlreadyDigestedReadTests.Fixture) -> PreToolUseCommand.Verdict {
-        PreToolUseCommand.decided(
+    private static func decide(_ command: String, id: String, in fixture: AlreadyDigestedReadTests.Fixture) throws -> PreToolUseCommand.Verdict {
+        try PreToolUseCommand.decided(
             command: nil,
             payload: payload(command, id: id),
             cwd: fixture.repo.path,
             session: "s1",
             context: fixture.context("s1"),
-            ledger: fixture.ledger,
+            answerer: InPlaceAnswerTests.scratchAnswerer(), ledger: fixture.ledger,
             usage: UsageLog(fileURL: usage(fixture)),
             suppressions: fixture.stores.appendingPathComponent("suppressions.jsonl"),
             couldAnswer: { _, _ in true }
@@ -78,7 +78,7 @@ struct UsageReadAnywayTests {
         let fixture = try AlreadyDigestedReadTests.Fixture()
         try Self.answerTheRead(fixture)
 
-        let verdict = Self.decide(Self.cat, id: "toolu_again", in: fixture)
+        let verdict = try Self.decide(Self.cat, id: "toolu_again", in: fixture)
 
         #expect(verdict.token == "allowed", "\(verdict.line)")
         let readAnyway = try Self.lines(fixture).filter { $0["readAnyway"] != nil }
@@ -95,8 +95,8 @@ struct UsageReadAnywayTests {
         let fixture = try AlreadyDigestedReadTests.Fixture()
         try Self.answerTheRead(fixture)
 
-        _ = Self.decide(Self.cat, id: "toolu_again", in: fixture)
-        _ = Self.decide(Self.cat, id: "toolu_third", in: fixture)
+        _ = try Self.decide(Self.cat, id: "toolu_again", in: fixture)
+        _ = try Self.decide(Self.cat, id: "toolu_third", in: fixture)
 
         #expect(try Self.lines(fixture).count { $0["readAnyway"] != nil } == 1)
     }
@@ -107,7 +107,7 @@ struct UsageReadAnywayTests {
         let fixture = try AlreadyDigestedReadTests.Fixture()
         try Self.answerTheRead(fixture)
 
-        let verdict = Self.decide("sed -n '2,10p' Sources/App/Shell.swift", id: "toolu_window", in: fixture)
+        let verdict = try Self.decide("sed -n '2,10p' Sources/App/Shell.swift", id: "toolu_window", in: fixture)
 
         #expect(verdict.token == "allowed", "\(verdict.line)")
         #expect(try Self.lines(fixture).allSatisfy { $0["readAnyway"] == nil })

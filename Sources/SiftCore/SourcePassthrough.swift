@@ -219,6 +219,18 @@ public struct SourcePassthrough {
         )
     }
 
+    /// `digest`, a whole-file digest, with everything after its file header replaced by the file's own `source` under the note a digest served as source carries, giving `reason` — the shape the floor serves a small file in, so a reader and ``fileVerdict(in:)`` read it as served source — or `nil` where `digest` carries no file header.
+    public static func servingSource(insteadOf digest: String, source: String, reason: String) -> String? {
+        let digestLines = digest.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let header = digestLines.prefix(headerSearchDepth).firstIndex(where: { $0.wholeMatch(of: fileHeader) != nil }) else { return nil }
+        let body = lines(of: source)
+        var served = digestLines[...header].map(String.init)
+        served.append(note(totalLines: body.count, siteCount: 1, suffix: servedSourceSuffix, reason: reason))
+        served.append("")
+        served += body
+        return served.joined(separator: "\n")
+    }
+
     private static func note(totalLines: Int, siteCount: Int, suffix: String, reason: String) -> String {
         let counted = "\(totalLines) line\(totalLines == 1 ? "" : "s")"
         let span = siteCount == 1 ? counted : "\(counted) across \(siteCount) sites"

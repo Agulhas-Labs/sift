@@ -45,6 +45,7 @@ public struct TranscriptAudit {
         shareOnly: Bool = false,
         usageLog: URL? = nil,
         excludingScratch: Bool = false,
+        trend: AuditTrendUnit? = nil,
         progress: @escaping (String) -> Void = { _ in }
     ) -> String {
         let sweep = sweep(
@@ -52,13 +53,14 @@ public struct TranscriptAudit {
             since: since,
             until: until,
             timeZone: timeZone,
+            datesEveryLookup: trend != nil,
             root: root,
             excludingScratch: excludingScratch,
             suppressionLog: suppressionLog,
             progress: progress
         )
         let saving = usageLog.flatMap { AuditLoggedSaving.line($0, since: since, until: until, root: root, transcript: transcript, includeScratch: !excludingScratch) }
-        return sweep.noted(rendered(sweep, directory: projectsDirectory, since: since, until: until, timeZone: timeZone, roots: roots, redactor: redactor, root: root, summary: summary, shareOnly: shareOnly, saving: saving))
+        return sweep.noted(rendered(sweep, directory: projectsDirectory, since: since, until: until, timeZone: timeZone, roots: roots, redactor: redactor, root: root, summary: summary, shareOnly: shareOnly, saving: saving, trend: trend))
     }
 
     /// The audit's text for a sweep already made: what `render` prints, and what `renderWithTallies` prints beside the counts it hands on.
@@ -73,7 +75,8 @@ public struct TranscriptAudit {
         root: String? = nil,
         summary: Bool = false,
         shareOnly: Bool = false,
-        saving: String? = nil
+        saving: String? = nil,
+        trend: AuditTrendUnit? = nil
     ) -> String {
         guard !sweep.transcripts.isEmpty else {
             let scope = since == nil && until == nil ? "" : " in that window"
@@ -100,8 +103,19 @@ public struct TranscriptAudit {
             summary: summary,
             shareOnly: shareOnly,
             saving: saving,
-            overruns: sweep.overruns
+            overruns: sweep.overruns,
+            trend: trend.map { trendLines(scans: active, unit: $0, since: since, until: until, timeZone: timeZone) }
         )
+    }
+
+    /// The first line's ` (27%)`: sift's answers over every Swift lookup by any route, rounded and floored as `TranscriptTally.shareText` is.
+    ///
+    /// The `indexed` row's share has a narrower denominator (the lookups that had a choice), so a reader taking either figure for "how much did sift serve" gets the other's answer; this one is named on the line that says so. Empty with no lookups, where there is no share.
+    static func plainShare(served: Int, of everything: Int) -> String {
+        guard everything > 0 else { return "" }
+        // 199 of 200 rounds to 100, which beside a count that is not everything reads as all of it.
+        let percent = served < everything ? min(99, Int((Double(served) / Double(everything) * 100).rounded())) : 100
+        return percent == 0 && served > 0 ? " (<1%)" : " (\(percent)%)"
     }
 
     private static func render(
@@ -113,12 +127,11 @@ public struct TranscriptAudit {
         summary: Bool = false,
         shareOnly: Bool = false,
         saving: String? = nil,
-        overruns: Int = 0
+        overruns: Int = 0,
+        trend: [String]? = nil
     ) -> String {
         let totals = findings.totals
-        let everything = totals.indexed + totals.guided + totals.readWholeAfterDigest
-            + totals.revisited + totals.belowFloor + totals.cold + totals.textSearches
-            + totals.withheldOnWorth + totals.unreachable
+        let everything = totals.everything
         if shareOnly {
             return shareLines(totals).joined(separator: "\n")
         }
@@ -126,13 +139,17 @@ public struct TranscriptAudit {
             // Lookups by every route, and how many of them sift served, so the figure `usage` counts (sift's own
             // answers, from its log) is named here in the same words rather than left to look like this one.
             "audit — \(SessionCount(sessions: findings.sessions, subagents: findings.subagents).spelled)\(window), "
-                + "\(everything) Swift lookup\(everything == 1 ? "" : "s") by any route, \(totals.indexed) served by sift",
+                + "\(everything) Swift lookup\(everything == 1 ? "" : "s") by any route, \(totals.indexed) served by sift\(plainShare(served: totals.indexed, of: everything))",
             "scanned: \(redactor == nil ? directory.path : Redactor.tilded(directory.path))",
             "live: name and names judge each name against each index as this run first opened it, held for the run; "
                 + "below floor, path and unreplayable read the disk as each is asked, and replayed hook answers read the indexes live — "
                 + "all of these, and cold, text search and the share with them, can move between runs",
             "",
         ]
+
+        if let trend {
+            return ([lines[0], lines[2]] + trend + summaryTrailer()).joined(separator: "\n")
+        }
 
         let tallies = findings.scans.map(\.tally)
         lines.append(indexedLine(totals, tallies: tallies))
@@ -407,12 +424,17 @@ extension TranscriptAudit {
             // for its timestamp would double the JSON work over transcripts that reach 60 MB.
             let wantsDay = options.datesEveryLookup ? !events.isEmpty : events.contains(where: isDated)
             let day = wantsDay ? day(ofLine: line, timeZone: timeZone) : nil
-            for event in events {
+            let corrected = state.takeCorrectionStamps()
+            for (index, event) in events.enumerated() {
+                // A correction of a lookup already counted is filed under the day of its call, never the day its result landed on.
+                let eventDay = corrected[index].map { $0.map { Self.day(of: $0, timeZone: timeZone) } } ?? day
                 scan.tally.fold(event)
-                if options.datesEveryLookup, let day {
-                    scan.byDay[day, default: TranscriptTally()].fold(event)
+                if options.datesEveryLookup, let eventDay {
+                    scan.byDay[eventDay, default: TranscriptTally()].fold(event)
+                } else if options.datesEveryLookup {
+                    scan.undated.fold(event)
                 }
-                apply(event, day: day, to: &scan)
+                apply(event, day: eventDay, to: &scan)
             }
         }
         // Every refusal still waiting for a follow-up has none: the transcript ends on its round trip.
@@ -737,15 +759,6 @@ extension TranscriptAudit {
     /// The `voluntary` row under `indexed`: the lookups the agent chose the index for, the hook's own answers taken out, with the arithmetic behind the percentage.
     static func voluntaryLine(_ totals: TranscriptTally) -> String {
         "  voluntary   \(pad(totals.voluntary))  chosen by the agent, not answered by the hook — \(totals.voluntaryShareText ?? "n/a") of the lookups that had a choice"
-    }
-
-    /// The two lines `--share` prints: the headline share and the voluntary share, each with its fraction.
-    static func shareLines(_ totals: TranscriptTally) -> [String] {
-        let headline = totals.total > 0 ? "\(totals.shareText ?? "n/a") = \(totals.indexed) / \(totals.total)" : "n/a"
-        return [
-            "served by sift — \(headline) of the lookups that had a choice",
-            "voluntary — \(totals.voluntaryShareText ?? "n/a") of the lookups that had a choice",
-        ]
     }
 
     /// The `not worth` row split by rule, mirroring the text-search row's own split: the rules argue for different fixes, and pooling them into the parent count would hide which one applies.

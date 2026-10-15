@@ -80,7 +80,7 @@ if [ -n "${SIFT_PUBLIC_COMMIT:-}" ]; then
     STAMP_LABEL="public commit"
 else
     STAMP="$(git rev-parse --short 'HEAD^{tree}')"
-    STAMP_LABEL="source tree"
+    STAMP_LABEL="source tree hash"
 fi
 DATE="$(git log -1 --format=%cd --date=short)"
 ARCHS="$(lipo -archs "$BIN")"
@@ -125,6 +125,9 @@ sh "$REPO/Distribution/third-party-notices.sh" "$REPO" "$SCRATCH/checkouts" > "$
 # The provenance line is generated, never hand-maintained: a bundle that misstates which build it
 # carries is worse than one that says nothing, and hand-edited version strings always drift.
 PROVENANCE="**Build provenance:** \`sift\` $VERSION, $STAMP_LABEL \`$STAMP\` ($DATE), built with Apple Swift $SWIFT_VERSION on macOS $MACOS_VERSION. Architecture: \`$ARCHS\` (Apple Silicon only)."
+# INSTALL.md is the bundle-facing install guide: this copies it into the tarball, replacing the
+# PROVENANCE placeholder with the real build facts. Keep it evergreen: what changed in a release goes
+# in CHANGELOG.md, which ships beside it. Maintainer notes belong here, not in the shipped file.
 awk -v line="$PROVENANCE" '{ if ($0 == "<!-- PROVENANCE -->") print line; else print }' \
     "$REPO/Distribution/INSTALL.md" | sh "$REPO/Distribution/bundle-links.sh" rewrite Distribution/INSTALL.md "$VERSION" > "$STAGE/INSTALL.md"
 

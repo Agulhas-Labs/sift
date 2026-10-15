@@ -23,16 +23,24 @@ extension WhereRenderer {
         occurrences: OccurrenceFreshness,
         paging: SyntacticSweepPaging? = nil,
         callSitesAbove: Set<String> = [],
+        conformanceLines: Set<String> = [],
         generatedMentions: Int = 0,
         shown: (SemanticStore.Hit) -> Void = { _ in }
     ) -> [String] {
         let all = ReferencedFiles(hits: hits, context: context, occurrences: occurrences)
-        let rest = hits.filter { !callSitesAbove.contains("\(context.relativePath($0.path)):\($0.line)") }
-        let grouped = rest.count == hits.count ? all : ReferencedFiles(hits: rest, context: context, occurrences: occurrences)
+        let afterCalls = hits.filter { !callSitesAbove.contains("\(context.relativePath($0.path)):\($0.line)") }
+        let afterCallsGrouped = afterCalls.count == hits.count ? all : ReferencedFiles(hits: afterCalls, context: context, occurrences: occurrences)
+        // A protocol's conformance lines are listed once, in its conformers block, and counted here rather than listed twice; `--files` still names their files, recorded from `all` below.
+        let rest = conformanceLines.isEmpty ? afterCalls : afterCalls.filter { !conformanceLines.contains("\(context.relativePath($0.path)):\($0.line)") }
+        let grouped = rest.count == afterCalls.count ? afterCallsGrouped : ReferencedFiles(hits: rest, context: context, occurrences: occurrences)
         let files = grouped.paths
         var details = ["\(all.sites) in \(all.paths.count) file\(all.paths.count == 1 ? "" : "s")"]
-        if all.sites > grouped.sites {
-            details.append("\(all.sites - grouped.sites) of them the call sites above")
+        if all.sites > afterCallsGrouped.sites {
+            details.append("\(all.sites - afterCallsGrouped.sites) of them the call sites above")
+        }
+        let conformances = afterCallsGrouped.sites - grouped.sites
+        if conformances > 0 {
+            details.append("\(conformances) of them the conformance\(conformances == 1 ? "" : "s") listed below")
         }
         // A rename sweeps the wrapper's `$flag` and `_flag` spellings too, so the heading names the ones its lines hold.
         if !all.siblings.isEmpty {
@@ -44,6 +52,13 @@ extension WhereRenderer {
             details.append("\(generatedMentions) more line\(generatedMentions == 1 ? "" : "s") a macro generated, not listed")
         }
         var block = ["", "references to \(qualified) (\(details.joined(separator: ", "))):"]
+        // Every file and line, the call sites above too, before the page is cut.
+        if let filesCollector {
+            for path in all.paths {
+                filesCollector.recordCode(path: path, lines: all.lines(in: path), state: all.state(of: path))
+            }
+            filesCollector.recordReferenceDetails(siblings: all.siblings, generatedLines: generatedMentions, heading: block[1])
+        }
         let skipped = min(max(0, offset), files.count)
         // Registered with the answer's pager on every page, so a list past its end elsewhere knows this one continues.
         let pastEnd = paging?.pastEnd(ofOutsideList: files.count)
@@ -65,6 +80,9 @@ extension WhereRenderer {
         }
         return block
     }
+
+    /// Uses a plain answer on a type lists under the verdict, beyond a protocol's conformances, before it hands the listing to `--refs`.
+    static let listedInPlaceCap = 8
 
     /// A type's usage: the verdict a deletion decision is made from, then the files that back it.
     ///
@@ -89,27 +107,29 @@ extension WhereRenderer {
         pointing: String,
         context: SemanticContext,
         occurrences: OccurrenceFreshness,
-        shown: (SemanticStore.Hit) -> Void = { _ in }
+        targetsNotBuilt: [String] = [],
+        shown: (SemanticStore.Hit, _ listed: Bool) -> Void = { _, _ in }
     ) throws -> [String] {
         let sweepFollows = options.includeReferences
         let offset = options.offset
-        let pointer = sweepFollows || options.standsInForSearch ? nil : pointing
         let grouped = ReferencedFiles(hits: hits, context: context, occurrences: occurrences)
         let files = grouped.paths
         let deleted = try Set(store.deletionLedger().entries.keys)
         let split = try countingUnbuiltTests(in: Self.usageSplit(
             sitesByPath: grouped.paths.map { ($0, grouped.lines(in: $0).count) },
             deleted: deleted
-        ) { try store.fileRow(path: $0)?.imports }, context: context)
+        ) { try store.fileRow(path: $0)?.imports }, context: context, targetsNotBuilt: targetsNotBuilt)
         var verdict = "used by \(qualified): \(grouped.sites) reference\(grouped.sites == 1 ? "" : "s") in \(files.count) file\(files.count == 1 ? "" : "s")"
-        // A protocol's conformance lines are listed once, in its conformers block below, and counted here rather than listed twice.
-        let listedHits = sweepFollows || conformanceLines.isEmpty ? hits : hits.filter { !conformanceLines.contains("\(context.relativePath($0.path)):\($0.line)") }
+        // A protocol's conformance lines are listed once, in its conformers block below, and counted here rather than listed twice, under `--refs` too.
+        let listedHits = conformanceLines.isEmpty ? hits : hits.filter { !conformanceLines.contains("\(context.relativePath($0.path)):\($0.line)") }
         let rest = listedHits.count == hits.count ? grouped : ReferencedFiles(hits: listedHits, context: context, occurrences: occurrences)
         let conformances = grouped.sites - rest.sites
+        // Few enough uses beyond the conformances are listed in place, so a reader is not sent to --refs for a handful of lines.
+        let pointer = sweepFollows || options.standsInForSearch || rest.sites <= WhereRenderer.listedInPlaceCap ? nil : pointing
         if conformances > 0 {
             verdict += ", \(conformances) of them the conformance\(conformances == 1 ? "" : "s") listed below"
         }
-        // What decides the split, the XCTest or Testing import and never the path, is said once per session.
+        // What decides the split, the XCTest or Testing import and never the path, is said by the standing caveats (``StandingCaveats``) on an empty verdict, not here.
         verdict += " — " + split.tally.joined(separator: " · ")
         var clauses = Self.driftDetails(states: grouped.states)
         // A folded line is named for what it is written as, because the reader who goes to check it will not find
@@ -176,13 +196,13 @@ extension WhereRenderer {
             block.append("(offset \(offset) unused — this section pages under --refs, not here)")
         }
         guard pointer == nil else {
-            // Every use is handed on though none is listed, so a refused declaration's scan by name still leaves out the lines this one resolved.
-            listedHits.forEach(shown)
+            // Every use is handed on though none is listed, as counted, so a refused declaration's scan by name still leaves out the lines this one resolved and says it counted them.
+            listedHits.forEach { shown($0, false) }
             return block
         }
         let page = rest.liveFirst(Array(rest.paths.prefix(Self.listCap)))
         let listed = rest.fileLines(page, namingAliases: true)
-        rest.handOn(listedHits, listedIn: page, relativePath: context.relativePath, to: shown)
+        rest.handOn(listedHits, listedIn: page, relativePath: context.relativePath) { shown($0, true) }
         block.append(contentsOf: listed.rows)
         let hiddenFiles = rest.paths.count - page.count
         if hiddenFiles > 0 {
@@ -221,11 +241,13 @@ extension WhereRenderer {
         return split
     }
 
-    /// `split` with the test files no store holds a unit for recorded on it, so its tally does not state `0 tests` of code the store never indexed.
-    func countingUnbuiltTests(in split: UsageSplit, context: SemanticContext) throws -> UsageSplit {
-        let coverage = try context.testFileCoverage(in: store)
-        guard coverage.withoutUnit > 0 else { return split }
+    /// `split` with the test files no store holds a unit for, and the answer's `targetsNotBuilt`, recorded on it, so its tally does not state `0 tests` of code the store never indexed, nor a production count as whole.
+    func countingUnbuiltTests(in split: UsageSplit, context: SemanticContext, targetsNotBuilt: [String]) throws -> UsageSplit {
         var marked = split
+        marked.targetsNotBuilt = targetsNotBuilt
+        defer { filesCollector?.recordLowerBound(marked.lowerBoundReasons) }
+        let coverage = try context.testFileCoverage(in: store)
+        guard coverage.withoutUnit > 0 else { return marked }
         marked.unbuiltTestBuild = coverage.build
         if coverage.neverBuilt {
             marked.unbuiltTestFiles = coverage.withoutUnit
@@ -295,6 +317,7 @@ extension WhereRenderer {
                 guard let aliasUSR = context.store.usr(for: row), aliasUSR != asked, !followed.contains(aliasUSR) else { continue }
                 guard followed.count < Self.typealiasFoldCap else {
                     fold.reachedCap = true
+                    filesCollector?.recordAliasFoldCapped()
                     break
                 }
                 followed.insert(aliasUSR)
@@ -493,12 +516,15 @@ extension WhereRenderer {
         var unbuiltTestBuild = ""
         /// Of the files with no unit where a test build ran, how many sit outside any target a build of the store's project compiles, so `unbuiltTestFiles` holds only those the last build skipped.
         var outsideTestFiles = 0
+        /// The non-test targets no store holds a unit for, so the production bucket is a lower bound.
+        var targetsNotBuilt: [String] = []
 
         /// The split as the verdict states it, one entry per bucket, the two row-less buckets only when they hold a site.
         ///
         /// A path with no row is one of two causes, and each is named for what it counts: a label taken from the first cause explained a generated source's real count with a deletion that never happened. The test bucket never states a count the store cannot back: where test files have no unit, `0 tests` would be said of code nobody indexed, so it says that tests were not counted, and a nonzero count says it is a lower bound.
         var tally: [String] {
-            var tally = ["\(production) production", testsEntry]
+            let productionEntry = targetsNotBuilt.isEmpty ? "\(production) production" : "\(production) production, a lower bound (\(SemanticAxis.namingTargets(targetsNotBuilt)) not built)"
+            var tally = [productionEntry, testsEntry]
             if deleted > 0 {
                 tally.append("\(deleted) in files deleted from the tree")
             }
@@ -508,9 +534,13 @@ extension WhereRenderer {
             return tally
         }
 
-        private var testsEntry: String {
-            let counted = "\(tests) test\(tests == 1 ? "" : "s")"
-            guard unbuiltTestFiles + outsideTestFiles > 0 else { return counted }
+        /// What keeps the production or test count from being whole, in the words the verdict puts in its parentheses; empty where every count is complete.
+        var lowerBoundReasons: [String] {
+            (targetsNotBuilt.isEmpty ? [] : ["\(SemanticAxis.namingTargets(targetsNotBuilt)) not built"]) + (testsReason.map { [$0] } ?? [])
+        }
+
+        private var testsReason: String? {
+            guard unbuiltTestFiles + outsideTestFiles > 0 else { return nil }
             var reasons: [String] = []
             if unbuiltTestFiles > 0 {
                 let plural = unbuiltTestFiles == 1 ? "" : "s"
@@ -521,7 +551,12 @@ extension WhereRenderer {
             if outsideTestFiles > 0 {
                 reasons.append(unbuiltTestFiles > 0 ? "\(outsideTestFiles) outside any built target" : TestFileCoverage.outsideTargets(outsideTestFiles))
             }
-            let why = reasons.joined(separator: "; ")
+            return reasons.joined(separator: "; ")
+        }
+
+        private var testsEntry: String {
+            let counted = "\(tests) test\(tests == 1 ? "" : "s")"
+            guard let why = testsReason else { return counted }
             return tests == 0 ? "tests not counted (\(why))" : "\(counted), a lower bound (\(why))"
         }
     }
@@ -533,6 +568,8 @@ extension WhereRenderer {
         /// Every file the hits touch, repo-relative, in alphabetical order — an order that depends on nothing but the file names, which is what makes a cursor over it survive the sweep editing the files it already served.
         let paths: [String]
         private let linesByPath: [String: [Int]]
+        /// Per file and line, the declarations the store records the hits there inside, sorted; a hit the store records inside none is left out.
+        private let enclosingByPath: [String: [Int: [String]]]
         private let stateByPath: [String: OccurrenceState]
         /// The property wrapper's siblings a reference went through, `$flag` and `_count`, which a heading names because a rename sweeps their spellings too.
         let siblings: [String]
@@ -541,17 +578,26 @@ extension WhereRenderer {
         /// Each file as the store names it, absolute, which is where a row's text is read from.
         private let absoluteByPath: [String: String]
 
+        /// The name the store's reference hits carry when it records no declaration around them.
+        private static var noEnclosing: String {
+            "(top level)"
+        }
+
         init(hits: [SemanticStore.Hit], context: SemanticContext, occurrences: OccurrenceFreshness) {
             var byPath: [String: Set<Int>] = [:]
             var states: [String: OccurrenceState] = [:]
             var absolute: [String: String] = [:]
             var directLines: [String: Set<Int>] = [:]
+            var enclosing: [String: [Int: Set<String>]] = [:]
             var spellingsByLine: [String: [Int: Set<String>]] = [:]
             for hit in hits {
                 let relative = context.relativePath(hit.path)
                 byPath[relative, default: []].insert(hit.line)
                 states[relative] = occurrences.state(of: hit.path)
                 absolute[relative] = absolute[relative] ?? hit.path
+                if hit.name != Self.noEnclosing {
+                    enclosing[relative, default: [:]][hit.line, default: []].insert(hit.name)
+                }
                 if let spelling = hit.writtenAs {
                     spellingsByLine[relative, default: [:]][hit.line, default: []].insert(spelling)
                 } else {
@@ -560,6 +606,7 @@ extension WhereRenderer {
             }
             paths = byPath.keys.sorted()
             linesByPath = byPath.mapValues { $0.sorted() }
+            enclosingByPath = enclosing.mapValues { $0.mapValues { $0.sorted() } }
             stateByPath = states
             absoluteByPath = absolute
             siblings = Set(hits.compactMap(\.through)).sorted()
@@ -593,6 +640,11 @@ extension WhereRenderer {
             linesByPath[path] ?? []
         }
 
+        /// Where the repo-relative `path` stands against the build.
+        func state(of path: String) -> OccurrenceState {
+            stateByPath[path] ?? .live
+        }
+
         /// The given files with the ones the tree still backs first, so a truncated listing spends its room on the rows that can still be acted on.
         func liveFirst(_ subset: [String]) -> [String] {
             subset.filter { stateByPath[$0]?.isLive ?? true } + subset.filter { !(stateByPath[$0]?.isLive ?? true) }
@@ -603,7 +655,7 @@ extension WhereRenderer {
             sites <= WhereRenderer.siteTextLineCap
         }
 
-        /// `path (count): line, line, …` per file, and how many lines the per-file cap hid across them all — or, where ``listsSiteText``, each file's `path (count):` heading and one `:line` row per line under it, closing on the line's text, with nothing hidden.
+        /// `path (count): line, line, …` per file, a file with at most ``WhereRenderer/rowedFileSiteCap`` lines listed as rows instead, and how many lines the per-file cap hid across them all — or, where ``listsSiteText``, each file's `path (count):` heading and one `:line` row per line under it, closing on the line's text, with nothing hidden.
         ///
         /// Marking the rows a typealias fold reached with the spelling written there is what the usage verdict asks for and the rename sweep does not: a sweep's siblings are named in its heading, where a folded row is a line that spells no form of this type's name at all and is unfindable from the row without it.
         ///
@@ -612,18 +664,16 @@ extension WhereRenderer {
             var rows: [String] = []
             var hiddenLines = 0
             if listsSiteText {
-                for path in subset {
-                    let recorded = lines(in: path)
-                    let state = stateByPath[path] ?? .live
-                    let source = WhereRenderer.StoreSiteText(path: absoluteByPath[path] ?? path, state: state)
-                    rows.append("  \(path) (\(recorded.count)):\(state.marker ?? "")\(namingAliases ? aliasSuffix(path) : "")")
-                    rows.append(contentsOf: recorded.map { "    :\($0)" + NameMatchedSites.textSuffix(source.text(at: $0)) })
-                }
-                return (rows, 0)
+                return (subset.flatMap { siteRows($0, namingAliases: namingAliases) }, 0)
             }
             let cap = listsEveryLine ? Int.max : WhereRenderer.lineListCap
             for path in subset {
                 let recorded = lines(in: path)
+                // A file the type is used in once or twice is where a lone production use sits, and its line number alone sends the reader back to find what encloses it.
+                if recorded.count <= WhereRenderer.rowedFileSiteCap {
+                    rows.append(contentsOf: siteRows(path, namingAliases: namingAliases))
+                    continue
+                }
                 var rendered = recorded.prefix(cap).map(String.init).joined(separator: ", ")
                 if recorded.count > cap {
                     hiddenLines += recorded.count - cap
@@ -632,6 +682,48 @@ extension WhereRenderer {
                 rows.append("  \(path) (\(recorded.count)): \(rendered)\(stateByPath[path]?.marker ?? "")\(namingAliases ? aliasSuffix(path) : "")")
             }
             return (rows, hiddenLines)
+        }
+
+        /// A file's `path (count):` heading and one `:line` row per line under it, naming the declaration around the line and closing on its text.
+        private func siteRows(_ path: String, namingAliases: Bool) -> [String] {
+            let recorded = lines(in: path)
+            let state = stateByPath[path] ?? .live
+            let source = WhereRenderer.StoreSiteText(path: absoluteByPath[path] ?? path, state: state)
+            let heading = "  \(path) (\(recorded.count)):\(state.marker ?? "")\(namingAliases ? aliasSuffix(path) : "")"
+            return [heading] + recorded.map { line in
+                let text = source.text(at: line)
+                return "    :\(line)\(enclosingSuffix(path, line: line, text: text))" + NameMatchedSites.textSuffix(text)
+            }
+        }
+
+        /// The declarations around a row's line, after two spaces as the callers rows print theirs, or nothing where the store records none.
+        ///
+        /// A declaration whose own line the row is — a parameter's type or default in a function's signature, a property's annotation — is named by the text the row closes on already, so naming it again only makes the answer longer than the search it stands in for.
+        private func enclosingSuffix(_ path: String, line: Int, text: String?) -> String {
+            guard let names = enclosingByPath[path]?[line]?.filter({ !Self.declares($0, on: text) }), !names.isEmpty else { return "" }
+            return "  " + names.map(Self.shortened).joined(separator: ", ")
+        }
+
+        /// The longest enclosing name a row prints whole: past it a row stops reading as a line of code, and the base name is enough for `digest Type.base` to find the declaration.
+        static let enclosingNameLimit = 30
+
+        /// A name past the limit with an argument-label list, as its base name and `(…)`; any other name as it is.
+        private static func shortened(_ name: String) -> String {
+            guard name.count > enclosingNameLimit, let open = name.firstIndex(of: "(") else { return name }
+            return name[..<open] + "(…)"
+        }
+
+        /// Whether `text` is the line declaring `name`: its keyword and base name, or `init(` for an initializer.
+        private static func declares(_ name: String, on text: String?) -> Bool {
+            guard let text else { return false }
+            let base = name.prefix { $0 != "(" }
+            guard !base.isEmpty, base.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { return false }
+            if base == "init" || base == "subscript" {
+                return text.contains("\(base)(") || text.contains("\(base)?(") || text.contains("\(base)<")
+            }
+            let keywords = "func|var|let|case|struct|class|enum|protocol|actor|typealias|macro|associatedtype"
+            guard let pattern = try? Regex("\\b(?:\(keywords))\\s+`?\(base)`?\\b") else { return false }
+            return text.contains(pattern)
         }
 
         /// What a file's row closes on where a typealias fold reached some of its lines: the spelling written there, and how many lines it reached when not all of them.

@@ -19,6 +19,12 @@ struct StringsCommand: AsyncParsableCommand {
 
     @OptionGroup var rootOptions: RootOptions
 
+    func validate() throws {
+        if let message = BlankTargetRefusal.message(tool: "strings", targets: [query]) {
+            throw ValidationError(message)
+        }
+    }
+
     func run() async throws {
         try await LoggedLookup.emit(tool: "strings", target: query, in: rootOptions.directory) { try served() }
     }

@@ -26,5 +26,10 @@ public extension ShellGrep {
             case .system: []
             }
         }
+
+        /// Which ignore files a recursive walk honours: `ugrep --ignore-files` reads those it meets at or below the directory it searches.
+        var ignoreScope: IgnoreScope {
+            self == .ugrep ? .belowOnly : .none
+        }
     }
 }

@@ -1,6 +1,4 @@
 //
-// ChangelogHygieneTests.swift
-//
 // Copyright © Agulhas Labs
 //
 

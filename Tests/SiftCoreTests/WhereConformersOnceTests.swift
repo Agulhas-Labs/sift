@@ -112,7 +112,7 @@ struct WhereConformersOnceTests {
             #expect(output.contains("  Lib.Soldier — struct — Sources/Lib/Ranks.swift:1-4 — direct\n"), "\(output)")
             #expect(output.contains("  Lib.Int — extension — Sources/Lib/Ranks.swift:24-26 — direct\n"), "\(output)")
             #expect(output.contains("  Lib.Medic — struct — Sources/Lib/Ranks.swift:28-30 — direct\n"), "\(output)")
-            #expect(output.hasSuffix("  Lib.Recruit — class — Sources/Lib/Ranks.swift:22 — inherited through Sergeant"), "\(output)")
+            #expect(output.hasSuffix("  Lib.Recruit — class — Sources/Lib/Ranks.swift:22 — inherited through Sergeant\nevery Swift file that writes Greeter is accounted for (4, a text search of the Swift files git shows): 2 declare a conformer (above), 1 declares or extends it, 1 uses it (used by, above)"), "\(output)")
         }
     }
 
@@ -149,10 +149,12 @@ struct WhereConformersOnceTests {
             let all = Self.fileLines(under: "references to Lib.Greeter (", in: swept)
             let listed = Self.fileLines(under: "used by Lib.Greeter:", in: plain)
             let spans = Self.conformerSpans(in: plain)
-            #expect(all.values.map(\.count).reduce(0, +) == 8, "\(swept)")
+            // Eight references, five of them conformance lines the sweep counts in its heading and leaves to the conformers block.
+            #expect(swept.contains("references to Lib.Greeter (8 in 2 files, 5 of them the conformances listed below):"), "\(swept)")
+            #expect(all.values.map(\.count).reduce(0, +) == 3, "\(swept)")
             var unlisted: [String] = []
             for (path, lines) in all {
-                for line in lines where !(listed[path]?.contains(line) ?? false) && !spans.contains(where: { $0.path == path && $0.lines.contains(line) }) {
+                for line in lines where !(listed[path]?.contains(line) ?? false) && !spans.contains(where: { $0.path == path && $0.lines.lowerBound == line }) {
                     unlisted.append("\(path):\(line)")
                 }
             }

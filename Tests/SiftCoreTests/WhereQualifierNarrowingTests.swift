@@ -348,7 +348,7 @@ struct WhereQualifierNarrowingTests {
         #expect(output.contains("in Calls.shared()"))
         // The scan does not resolve the qualifier, so App.Orchard is not proven the tree's Orchard.
         #expect(output.contains("in Calls.other()"))
-        #expect(output.contains("2 on types outside the tree"))
+        #expect(output.contains("2 on types behind a qualifier the scan does not resolve"))
     }
 
     /// Where every call by name is on another type, the name line says so and counts them.

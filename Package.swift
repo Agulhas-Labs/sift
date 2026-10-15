@@ -1,4 +1,8 @@
 // swift-tools-version: 6.2
+//
+// Copyright © Agulhas Labs
+//
+
 import PackageDescription
 
 /// Swift 6 language mode + zero-warning builds for every target.

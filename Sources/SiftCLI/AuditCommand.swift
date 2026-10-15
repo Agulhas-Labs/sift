@@ -67,6 +67,9 @@ struct AuditCommand: ParsableCommand {
     @Flag(name: .customLong("share"), help: "Print only two lines: the headline share (served by sift) and the voluntary share (the indexed lookups the advice hook did not answer, out of the indexed and the cold), each with its fraction, for comparing --root and --since windows in a script. Drops every other row, list and footnote, and --summary's; refuses --replay.")
     var share = false
 
+    @Option(name: .customLong("by"), help: "Print the summary as a trend: the first line and the live note for the whole window, then one line per day or per week (starting Monday), oldest first, clipped to --since and --until, each with the choice count, the indexed and voluntary shares, the cold count and the answered count for that window. A window with no lookups reads choice 0. Implies --summary; refuses --transcript, --replay, --share and --unredact. Give day or week.")
+    var trendLength: String?
+
     @Option(name: .customLong("sample"), help: "With --replay, replay sessions, each with all its subagents, until this many contexts (a session or a subagent each) are replayed, the session that reaches it kept whole; sessions are taken in the order of a digest of each one's file name, so two runs over one window replay the same ones, and the report says how many it left out. Defaults to \(Self.defaultSample), a few minutes' replay even with --against. 0 replays every session: about 10 minutes over a week of sessions, nearly 4 times that with --against.")
     var sample: Int?
 
@@ -79,6 +82,7 @@ struct AuditCommand: ParsableCommand {
     var output: CommandOutput = .standard
 
     func validate() throws {
+        try validateTrend()
         if sample != nil, !replay {
             throw ValidationError("--sample bounds the contexts --replay replays: add --replay.")
         }
@@ -215,11 +219,12 @@ struct AuditCommand: ParsableCommand {
             against: againstBinary,
             suppressionLog: SuppressionLog.standardFileURL,
             interruptions: interruptions,
-            summary: summary,
+            summary: summary || trendLength != nil,
             window: Self.windowArguments(sinceValue: sinceValue, until: until, all: all, transcript: transcript),
             shareOnly: share,
             usageLog: UsageLog.standardFileURL(),
             excludingScratch: Self.excludesScratch(includeScratch: includeScratch, transcript: transcript),
+            trend: trendLength.flatMap { AuditTrendUnit(rawValue: $0) },
             sample: bounds.sample,
             progress: bounds.progress
         )
@@ -254,6 +259,7 @@ struct AuditCommand: ParsableCommand {
         shareOnly: Bool = false,
         usageLog: URL? = nil,
         excludingScratch: Bool = false,
+        trend: AuditTrendUnit? = nil,
         sample: ReplaySample = .everySession,
         progress: @escaping (String) -> Void = { _ in }
     ) -> (report: String, shapes: String?) {
@@ -272,6 +278,7 @@ struct AuditCommand: ParsableCommand {
                 shareOnly: shareOnly,
                 usageLog: usageLog,
                 excludingScratch: excludingScratch,
+                trend: trend,
                 progress: progress
             )
             return (text, nil)
@@ -488,6 +495,28 @@ extension AuditCommand {
 }
 
 extension AuditCommand {
+    /// Refuses `--by` with a window length that is not a day or a week, or with a flag the trend has no form for.
+    func validateTrend() throws {
+        guard let length = trendLength else { return }
+        guard AuditTrendUnit(rawValue: length) != nil else {
+            throw ValidationError("--by \(length) is not a window length: give day or week.")
+        }
+        if transcript != nil {
+            throw ValidationError("--by trends the window's sessions and has no form for one transcript: drop --transcript or --by.")
+        }
+        if replay || scanDiff || against != nil || shapes != nil || sample != nil {
+            throw ValidationError("--by prints the summary as a trend and has no replay or scan-diff form: drop --replay, --shapes, --sample, --against and --scan-diff, or --by.")
+        }
+        if share {
+            throw ValidationError("--by and --share are two different summaries: drop one.")
+        }
+        if unredact {
+            throw ValidationError("--by prints no names for --unredact to reveal: drop --unredact.")
+        }
+    }
+}
+
+extension AuditCommand {
     /// Only the flags and options come off the command line.
     ///
     /// Spelled out for the reason ``BuildCommand``'s keys are: an output is not something a decoder can produce.
@@ -506,6 +535,7 @@ extension AuditCommand {
         case allWindows
         case summary
         case share
+        case trendLength
         case sample
         case progress
         case includeScratch

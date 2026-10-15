@@ -24,13 +24,15 @@ struct CompoundLineParts {
     var unattached: [String] = []
 
     /// Adds `found`, resolved against `directory`, and says whether it could be: a second directory, a file read whole twice, or whole beside a window of it, cannot — nor a window of a file windowed before with a literal printed since, which the one digest both windows share would move to after it.
-    mutating func add(_ found: (call: InPlaceCall, isWindow: Bool), from directory: String?, answering unit: [String]) -> Bool {
+    ///
+    /// `asks` is false for every file of a `cat` of several after the first: the statement is one lookup however many files it names, so it counts once towards the lookups a compound line needs.
+    mutating func add(_ found: (call: InPlaceCall, isWindow: Bool), from directory: String?, answering unit: [String], asks: Bool = true) -> Bool {
         if let earlier = self.directory, earlier != directory {
             return false
         }
         self.directory = .some(directory)
-        lookups += 1
-        if found.call.shape != .outline {
+        lookups += asks ? 1 : 0
+        if asks, found.call.shape != .outline {
             asking += 1
         }
         let file = found.call.readPath.map { InPlaceShape.resolve($0, against: directory) ?? $0 }

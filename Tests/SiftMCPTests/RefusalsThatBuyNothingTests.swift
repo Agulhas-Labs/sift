@@ -90,7 +90,7 @@ struct RefusalsThatBuyNothingTests {
             couldAnswer: { _, _ in true }
         ))
         #expect(answered.suggestion.call == "where SimilarTarget")
-        let verdict = PreToolUseCommand.outcome(
+        let verdict = try PreToolUseCommand.outcome(
             to: answered,
             session: "s",
             context: context,
@@ -98,7 +98,7 @@ struct RefusalsThatBuyNothingTests {
             cwd: nil,
             ledger: ledger,
             usage: usage,
-            suppressions: noted
+            suppressions: noted, answerer: InPlaceAnswerTests.scratchAnswerer()
         )
         #expect(verdict.json == nil)
         #expect(verdict.verdict.token == "allowed")
@@ -111,7 +111,7 @@ struct RefusalsThatBuyNothingTests {
             noting: noted,
             couldAnswer: { _, _ in true }
         ))
-        let refused = PreToolUseCommand.outcome(
+        let refused = try PreToolUseCommand.outcome(
             to: fresh,
             session: "s",
             context: context,
@@ -119,7 +119,7 @@ struct RefusalsThatBuyNothingTests {
             cwd: nil,
             ledger: ledger,
             usage: usage,
-            suppressions: noted
+            suppressions: noted, answerer: InPlaceAnswerTests.scratchAnswerer()
         )
         // Both outcomes are `allowed` now — the hook answers in place or lets the call through — so what
         // tells rule 1's allow from an ordinary one is the rule: `ledger` only where the offer bought nothing.
@@ -172,9 +172,9 @@ struct RefusalsThatBuyNothingTests {
             noting: noted,
             couldAnswer: { _, _ in true }
         ))
-        let deniedAcrossRepos = PreToolUseCommand.outcome(
+        let deniedAcrossRepos = try PreToolUseCommand.outcome(
             to: inCheckout, session: "s", context: context, payload: [:], cwd: nil,
-            ledger: ledger, usage: usage, suppressions: noted
+            ledger: ledger, usage: usage, suppressions: noted, answerer: InPlaceAnswerTests.scratchAnswerer()
         )
         #expect(deniedAcrossRepos.verdict.rule != "ledger")
 
@@ -197,9 +197,9 @@ struct RefusalsThatBuyNothingTests {
             noting: noted,
             couldAnswer: { _, _ in true }
         ))
-        let allowedInSameTree = PreToolUseCommand.outcome(
+        let allowedInSameTree = try PreToolUseCommand.outcome(
             to: sameCheckout, session: "s", context: context, payload: [:], cwd: nil,
-            ledger: ledger, usage: usage, suppressions: noted
+            ledger: ledger, usage: usage, suppressions: noted, answerer: InPlaceAnswerTests.scratchAnswerer()
         )
         #expect(allowedInSameTree.verdict.token == "allowed")
 
@@ -211,9 +211,9 @@ struct RefusalsThatBuyNothingTests {
             noting: noted,
             couldAnswer: { _, _ in true }
         ))
-        let deniedForDifferentSymbol = PreToolUseCommand.outcome(
+        let deniedForDifferentSymbol = try PreToolUseCommand.outcome(
             to: differentSymbol, session: "s", context: context, payload: [:], cwd: nil,
-            ledger: ledger, usage: usage, suppressions: noted
+            ledger: ledger, usage: usage, suppressions: noted, answerer: InPlaceAnswerTests.scratchAnswerer()
         )
         #expect(deniedForDifferentSymbol.verdict.rule != "ledger")
     }

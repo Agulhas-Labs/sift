@@ -23,8 +23,8 @@ public struct GitContext {
     }
 
     /// The root `git rev-parse --show-toplevel` names for `directory`, asked afresh.
-    public static func spawnedRoot(from directory: URL) -> URL? {
-        guard let output = try? run(arguments: ["rev-parse", "--show-toplevel"], in: directory) else { return nil }
+    public static func spawnedRoot(from directory: URL, within bound: TimeInterval? = nil) -> URL? {
+        guard let output = try? run(arguments: ["rev-parse", "--show-toplevel"], in: directory, within: bound) else { return nil }
         let path = output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !path.isEmpty else { return nil }
         return URL(fileURLWithPath: path)
@@ -504,23 +504,16 @@ public struct GitContext {
     /// Every read this type makes, run in `directory` and with **no repository in its environment** (``ProcessEnvironment/withoutGit(from:)``) — a `GIT_DIR` inherited from a caller running under a git hook would otherwise answer about the hook's repository instead of this one.
     ///
     @discardableResult
-    static func run(arguments: [String], in directory: URL, within bound: TimeInterval = ChildDeadline.git) throws -> String {
+    static func run(arguments: [String], in directory: URL, within bound: TimeInterval? = nil) throws -> String {
         try String(data: runData(arguments: arguments, in: directory, within: bound), encoding: .utf8) ?? ""
     }
 
-    /// No repository (``ProcessEnvironment/withoutGit(from:)``) and `GIT_OPTIONAL_LOCKS=0`, so a read never takes `index.lock` to write a stat-cache refresh back.
-    static func readEnvironment() -> [String: String] {
-        var environment = ProcessEnvironment.withoutGit()
-        environment["GIT_OPTIONAL_LOCKS"] = "0"
-        return environment
-    }
-
-    /// **Bounded by `bound`, ``ChildDeadline/git`` unless the caller says otherwise; a read whose cost grows with the repository or with its input (a listing, a status, a diff, a history walk, a blob, a batch of paths) says ``ChildDeadline/gitBulk``.** A git that has not answered by then is sent `SIGTERM`, then `SIGKILL`, with every process still in its group, and reaped; reading stops whatever still holds its pipes, and the call fails as any failed git does: a repository git cannot read (a config `include.path` naming a FIFO, say) would otherwise hang the call for good.
+    /// **Bounded by `bound`, ``ChildDeadline/gitRead(in:)`` (``ChildDeadline/git`` outside a test fixture) unless the caller says otherwise; a read whose cost grows with the repository or with its input (a listing, a status, a diff, a history walk, a blob, a batch of paths) says ``ChildDeadline/gitBulk``.** A git that has not answered by then is sent `SIGTERM`, then `SIGKILL`, with every process still in its group, and reaped; reading stops whatever still holds its pipes, and the call fails as any failed git does: a repository git cannot read (a config `include.path` naming a FIFO, say) would otherwise hang the call for good.
     ///
     /// The same, returning stdout's bytes undecoded, with `input` (when given) written to the child's stdin, and failing on any exit status it is not told to take as success.
     ///
     /// **No read writes the index**, which two of git's reads otherwise do behind the caller's back. `git status` refreshes the index's stat cache and, when it can take `index.lock`, writes it back; `GIT_OPTIONAL_LOCKS=0` — the one `GIT_` key put back into the scrubbed environment — turns that off. A porcelain `git diff` against the working tree (``lineStats(from:to:)``, ``diffByteCount(from:to:)``) does the same through `refresh_index_quietly`, which ignores that variable; `diff.autoRefreshIndex=false` turns it off instead, and costs those two nothing in accuracy: a file whose stat changed and content did not is compared by content and still prints no count and no byte. It is not free for every diff — a `--name-only` or `--name-status` diff against the working tree cannot look at content and lists that file, which is why a list of changed working-tree paths comes from `status` (``dirtyFiles()``). The setting means nothing to any other command, so it rides on every one — a diff added later cannot forget it.
-    static func runData(arguments: [String], in directory: URL, input: Data? = nil, succeedingOn: Set<Int32> = [0], within bound: TimeInterval = ChildDeadline.git) throws -> Data {
+    static func runData(arguments: [String], in directory: URL, input: Data? = nil, succeedingOn: Set<Int32> = [0], within bound: TimeInterval? = nil) throws -> Data {
         // A working directory `Process` cannot enter — one spelled `/..` from a transcript's relative
         // worktree path, or one gone since the transcript named it — would make it raise an Objective-C
         // exception nothing here can catch, taking the whole command down; the path is standardised first
@@ -531,6 +524,7 @@ public struct GitContext {
         guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw GitError(message: "git \(arguments.joined(separator: " ")) failed: \(directory.path) is not a directory")
         }
+        let bound = bound ?? ChildDeadline.gitRead(in: directory)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = ["-c", "diff.autoRefreshIndex=false"] + ProcessEnvironment.gitHardening + arguments
@@ -585,6 +579,15 @@ public struct GitContext {
             throw GitError(message: "git \(arguments.joined(separator: " ")) failed: \(detail)", detail: detail)
         }
         return data
+    }
+}
+
+extension GitContext {
+    /// No repository (``ProcessEnvironment/withoutGit(from:)``) and `GIT_OPTIONAL_LOCKS=0`, so a read never takes `index.lock` to write a stat-cache refresh back.
+    static func readEnvironment() -> [String: String] {
+        var environment = ProcessEnvironment.withoutGit()
+        environment["GIT_OPTIONAL_LOCKS"] = "0"
+        return environment
     }
 }
 
@@ -656,5 +659,64 @@ public extension GitContext {
             in: repoRoot, within: ChildDeadline.gitBulk
         )
         return output.split(separator: "\0").map(String.init)
+    }
+}
+
+public extension GitContext {
+    /// The files git lists under `directory`, relative to it — tracked plus untracked-but-not-ignored, by the `.gitignore` files alone (not `.git/info/exclude` or the user's excludes file, which `ugrep --ignore-files` does not read either) — or `nil` where git cannot answer: `directory` is no work tree, or git did not answer within `bound` seconds.
+    static func listedFiles(under directory: URL, within bound: TimeInterval) -> [String]? {
+        guard let output = try? run(
+            arguments: ["ls-files", "--cached", "--others", "--exclude-per-directory=.gitignore", "-z", "--", "."],
+            in: directory, within: bound
+        ) else {
+            return nil
+        }
+        return output.split(separator: "\0").map(String.init)
+    }
+}
+
+public extension GitContext {
+    /// The paths below `directory`, relative to it, that git's ignore rules keep out of ``listedFiles(under:within:)`` and that only a `.gitignore` above `directory` names — the ones `ugrep --ignore-files`, which reads no ignore file above the directory it searches, still searches — or `nil` where git cannot answer within `bound` seconds.
+    ///
+    /// A path git ignores whole is named at its topmost level, a directory with a trailing slash. The ignored paths come from `git ls-files --others --ignored`, and `git check-ignore --verbose --no-index` names the `.gitignore` each is ignored by: one at or below `directory` leaves the path out, one above it puts it here. A path ignored by a source that is no `.gitignore` (an excludes file, `.git/info/exclude`) stays out, as `ugrep` does not read those.
+    static func parentIgnoredPaths(under directory: URL, within bound: TimeInterval) -> [String]? {
+        let started = Date()
+        let remaining = { max(bound - Date().timeIntervalSince(started), 0.001) }
+        guard let prefixOutput = try? run(arguments: ["rev-parse", "--show-prefix"], in: directory, within: bound),
+              let ignored = try? runData(
+                  arguments: ["ls-files", "-z", "--others", "--ignored", "--exclude-per-directory=.gitignore", "--directory", "--", "."],
+                  in: directory, within: remaining()
+              )
+        else {
+            return nil
+        }
+        let prefix = prefixOutput.trimmingCharacters(in: .newlines)
+        let paths = ignored.split(separator: 0).map { String(bytes: $0, encoding: .utf8) ?? "" }.filter { !$0.isEmpty }
+        guard !paths.isEmpty else { return [] }
+        let disguised = paths.map(literalPathspec)
+        let original = Dictionary(zip(disguised, paths), uniquingKeysWith: { first, _ in first })
+        let input = Data(disguised.map { $0 + "\0" }.joined().utf8)
+        guard let verdicts = try? runData(
+            arguments: ["check-ignore", "--verbose", "--no-index", "-z", "--stdin"],
+            in: directory, input: input, succeedingOn: [0, 1], within: remaining()
+        ) else {
+            return nil
+        }
+        // Four fields a path: the pattern's source (repo-relative), its line, the pattern, then the path.
+        let fields = verdicts.split(separator: 0, omittingEmptySubsequences: false).map { String(bytes: $0, encoding: .utf8) ?? "" }
+        var parentOnly: [String] = []
+        var index = 0
+        while index + 3 < fields.count {
+            let source = fields[index]
+            let pattern = fields[index + 2]
+            let path = original[fields[index + 3]] ?? fields[index + 3]
+            index += 4
+            let isGitignore = source == ".gitignore" || source.hasSuffix("/.gitignore")
+            // An empty prefix is the repository root: nothing lies above it.
+            if isGitignore, !pattern.hasPrefix("!"), !source.hasPrefix(prefix) {
+                parentOnly.append(path)
+            }
+        }
+        return parentOnly
     }
 }

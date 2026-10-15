@@ -77,8 +77,30 @@ struct PostToolUseCommand: ParsableCommand {
         if json == nil {
             json = nudge(forEach: payloads, roots: &roots, lookUp: lookUp, marks: marks, deadline: deadline)
         }
+        if json == nil {
+            for payload in payloads {
+                json = diagnosticNote(for: payload, lookUp: lookUp, deadline: deadline)
+                if json != nil {
+                    break
+                }
+            }
+        }
         guard let json else { return }
         output.emit(json)
+    }
+
+    /// The hook JSON locating the diagnostics a `Grep` or `Bash` call printed, or `nil` where it printed none, its directory is in no repository or `deadline` has passed.
+    private static func diagnosticNote(for payload: [String: Any], lookUp: (_ directory: String) -> String?, deadline: Date) -> String? {
+        guard let tool = payload["tool_name"] as? String, tool == "Grep" || tool == "Bash",
+              deadline.timeIntervalSinceNow > 0,
+              let response = diagnosticText(payload["tool_response"]), response.contains(".swift:"),
+              let cwd = (payload["cwd"] as? String).flatMap({ $0.isEmpty ? nil : $0 }),
+              let root = lookUp(cwd),
+              let note = DiagnosticSites.note(forResponse: response, cwd: cwd, root: root, deadline: deadline)
+        else {
+            return nil
+        }
+        return HookOutput.postToolUseContext(note)
     }
 
     /// The repository holding `file`, or `nil` where none does, looked up by `lookUp` once for each directory `roots` has not seen.
@@ -138,6 +160,16 @@ struct PostToolUseCommand: ParsableCommand {
         )
         ledger.forgetDigests(session: context.key, digests: asked)
         return true
+    }
+
+    /// The text the diagnostic note reads from a `tool_response`: ``responseText(_:)``, and for a Bash call's object its `stderr` after its `stdout`, since a compiler such as plain `swiftc` prints its diagnostics there.
+    ///
+    /// ``forgetMissedDigest(payload:ledger:)`` keeps to ``responseText(_:)``, since a digest miss is judged on the answer.
+    private static func diagnosticText(_ response: Any?) -> String? {
+        guard let object = response as? [String: Any], let stderr = object["stderr"] as? String, !stderr.isEmpty else {
+            return responseText(response)
+        }
+        return [responseText(response), stderr].compactMap(\.self).joined(separator: "\n")
     }
 
     /// The text a tool's `tool_response` carries, in whichever of the shapes the harness writes it: a string, a list of content blocks, or an object holding `stdout` (a Bash call) or `content`.

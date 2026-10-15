@@ -16,6 +16,8 @@ struct WhereChangedFileMentions {
     private let listsEveryLine: Bool
     /// Whether this is the first page of a paged sweep, the only one the line of files without a mark is on.
     private let isFirstPage: Bool
+    /// The lines the unbuilt line and the not-in-the-store line list, and the files holding the names they counted without reading.
+    private let listed: (mentions: [NameMention], unscanned: Int)
 
     /// The repo-relative files no store holds a unit for that the not-in-the-store line lists.
     var newFiles: Set<String> {
@@ -33,11 +35,13 @@ struct WhereChangedFileMentions {
         isFirstPage = offset <= 0
         let rootPath = context.repoRoot.path
         // On the first page only, as the `file names:` row is: a later page of a paged sweep repeats neither, and this line's files are bounded while its lines per file are not.
-        let unbuiltLine = offset > 0 ? nil : WhereUnbuiltMentions.line(for: names, in: unbuilt, under: rootPath, listsEveryLine: listsEveryLine)
+        let unbuiltScan: (mentions: [NameMention], unscanned: Int) = offset > 0 || names.isEmpty || unbuilt.isEmpty ? ([], 0) : WhereUnbuiltMentions.mentionScan(of: names, in: unbuilt, under: rootPath, lexCap: WhereUnbuiltMentions.scanCap)
+        let unbuiltLine = WhereUnbuiltMentions.line(listing: unbuiltScan.mentions, unscanned: unbuiltScan.unscanned, listsEveryLine: listsEveryLine)
         guard !names.isEmpty else {
             listedFiles = [:]
             lines = []
             writtenSince = [:]
+            listed = ([], 0)
             return
         }
         let excluded = refused.union(unbuilt)
@@ -86,6 +90,18 @@ struct WhereChangedFileMentions {
             unscannedNoun: "new or changed file"
         )
         lines = [unbuiltLine, newLine].compactMap(\.self).flatMap { ["", $0] }
+        listed = offset > 0 ? ([], 0) : (unbuiltScan.mentions + notInStore, unbuiltScan.unscanned + unscanned)
+    }
+
+    /// Records for the `--files` view each file this lists a line of, a changed one marked so, and the files it counted without reading.
+    func record(into collector: WhereFilesCollector) {
+        for (path, mentions) in Dictionary(grouping: listed.mentions, by: \.path) {
+            collector.recordCode(path: path, lines: mentions.map(\.line))
+        }
+        for (path, surplus) in writtenSince {
+            collector.recordCode(path: path, lines: surplus.lines, state: .modifiedSinceBuild)
+        }
+        collector.recordNotScanned(listed.unscanned)
     }
 
     /// `answer` with each listed line of a file the store holds placed under that file's `(file changed since last build)` mark, the first the answer shows, then this type's own lines: the unbuilt line, the not-in-the-store line, and the files the answer shows no mark for.

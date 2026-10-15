@@ -21,6 +21,13 @@ sift --version
 Give the full name: homebrew-core has an unrelated formula called `sift` (a grep alternative), so
 asking Homebrew for plain `sift` installs the wrong tool.
 
+Or with npm:
+
+```sh
+npm install -g @agulhas-labs/sift
+sift --version
+```
+
 Or build it from source with Swift 6.2 or later:
 
 ```sh

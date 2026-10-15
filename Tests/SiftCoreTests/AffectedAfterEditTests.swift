@@ -114,10 +114,12 @@ struct AffectedAfterEditTests {
         #expect(!output.contains("BystanderTests"))
         // Every test of WideTests is reached by name match: the answer says it could not narrow, with why and the command, and lists none of them.
         #expect(output.contains("  WideTests: could not narrow below the target — 26 of its 26 tests are reached by name match from the 3 touched names (gate, mainGate, operateValve)"))
-        #expect(output.contains("    run the target rather than a list: swift test --filter '^WideTests\\.' — xcodebuild test -only-testing:WideTests"))
+        #expect(output.contains("    run the target rather than a list: swift test --filter '^WideTests\\.'"))
+        // The store is SwiftPM's own `.build`, so only the repository's runner is printed, and the heading says so.
+        #expect(output.contains("commands only (the index store is .build)"))
+        #expect(!output.contains("xcodebuild"))
         #expect(!output.contains("operation0()"))
         // The commands under the list select only the listed target, beside one named by its own command, and say so.
-        #expect(output.contains("xcodebuild — one argument per selection (listed targets only; the targets above are named by their own command)"))
         #expect(output.contains("swift test — SwiftPM matches --filter as a regex against the printed test id (listed targets only; the targets above are named by their own command):"))
     }
 }

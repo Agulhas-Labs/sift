@@ -120,8 +120,7 @@ struct WhereExtensionSpellingTests {
         let output = try await Self.noStoreAnswer(query, files: ["Package.swift": Self.manifest, "Sources/App/Box.swift": Self.boxFile])
 
         #expect(Self.extensionsBlock(of: output) == [
-            "extensions of Box (4):",
-            "  extension Box — 1 members — Sources/App/Box.swift:5-7",
+            "extensions of Box (4, 1 under declarations):",
             "  extension Box<Int> — 1 members — Sources/App/Box.swift:9-11",
             "  extension App.Box<String> — 1 members — Sources/App/Box.swift:13-15",
             "  extension App.Box — 1 members — Sources/App/Box.swift:17-19",
@@ -140,8 +139,7 @@ struct WhereExtensionSpellingTests {
 
             #expect(output.contains("semantic: fresh"), "\(output)")
             #expect(Self.extensionsBlock(of: output) == [
-                "extensions of Box (4):",
-                "  extension Box — 1 members — Sources/App/Box.swift:5-7",
+                "extensions of Box (4, 1 under declarations):",
                 "  extension Box<Int> — 1 members — Sources/App/Box.swift:9-11",
                 "  extension App.Box<String> — 1 members — Sources/App/Box.swift:13-15",
                 "  extension App.Box — 1 members — Sources/App/Box.swift:17-19",
@@ -213,7 +211,7 @@ struct WhereExtensionSpellingTests {
 
         #expect(Self.declarationsBlock(of: output) == [
             "declarations (1):",
-            "  App.Swift.Dictionary — extension — extension Swift.Dictionary — Sources/App/Dictionary.swift:7-9",
+            "  App.Swift.Dictionary — extension — extension Swift.Dictionary — 1 members — Sources/App/Dictionary.swift:7-9",
         ], "\(output)")
     }
 
@@ -227,7 +225,7 @@ struct WhereExtensionSpellingTests {
 
         #expect(Self.declarationsBlock(of: output) == [
             "declarations (1):",
-            "  App.Dictionary — extension — extension Dictionary — Sources/App/Other.swift:5",
+            "  App.Dictionary — extension — extension Dictionary — 0 members — Sources/App/Other.swift:5",
         ], "\(output)")
     }
 
@@ -239,7 +237,7 @@ struct WhereExtensionSpellingTests {
             "Sources/App/Depot.swift": "import Shelf\n\n\(leading)\n\nextension Depot.Gizmo {}\n\nextension Gizmo {}\n",
         ])
 
-        #expect(output.contains("— extension — extension Depot.Gizmo — Sources/App/Depot.swift:5"), "\(output)")
+        #expect(output.contains("— extension — extension Depot.Gizmo — 0 members — Sources/App/Depot.swift:5"), "\(output)")
         #expect(!output.contains("extension Gizmo —"), "\(output)")
     }
 
@@ -295,12 +293,11 @@ struct WhereExtensionSpellingTests {
         ]
     }
 
-    /// The extensions of `Other`'s `Box`: one written through `Other`, one bare in a module importing it that declares no `Box`, and one bare in `Other` itself.
+    /// The extensions of `Other`'s `Box`: one written through `Other`, one bare in a module importing it that declares no `Box`, and one bare in `Other` itself, which `declarations` prints and the block counts.
     private static let otherBoxBlock = [
-        "extensions of Box (3):",
+        "extensions of Box (3, 1 under declarations):",
         "  extension Other.Box — 1 members — Sources/App/Box.swift:15-17",
         "  extension Box — 1 members — Sources/Kit/Box.swift:3-5",
-        "  extension Box — 1 members — Sources/Other/Box.swift:5-7",
     ]
 
     /// The package of ``moduleFiles``, built once for the suite.
@@ -359,10 +356,10 @@ struct WhereExtensionSpellingTests {
         ])
 
         #expect(Self.extensionsBlock(of: output) == [
-            "extensions of Box (2):",
+            "extensions of Box (2, 1 under declarations):",
             "  extension Shelf.Box<Int> — 0 members — Sources/App/Box.swift:3 — may extend another module's Box",
-            "  extension Box — 0 members — Sources/App/Box.swift:5",
         ], "\(output)")
+        #expect(output.contains("\n  App.Box — extension — extension Box — 0 members — Sources/App/Box.swift:5\n"), "\(output)")
     }
 
     /// A conformance written with generic arguments through a typealias of the protocol is listed once, with its extension's row, rather than also as a bare store hit.

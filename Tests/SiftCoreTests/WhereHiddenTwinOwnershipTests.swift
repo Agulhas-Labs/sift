@@ -48,7 +48,7 @@ struct WhereHiddenTwinOwnershipTests {
         let output = try await Self.answer(gizmo: gizmo)
 
         #expect(output.contains("\"JSONDecoder\" (1 use by written name in 1 file) — "), "\(output)")
-        #expect(output.contains("\n    :3  | extension JSONDecoder {\n"), "\(output)")
+        #expect(output.split(separator: "\n").contains("    :3  | extension JSONDecoder {"), "\(output)")
         #expect(!output.contains("inside its own declaration or its extensions in this module"), "\(output)")
     }
 

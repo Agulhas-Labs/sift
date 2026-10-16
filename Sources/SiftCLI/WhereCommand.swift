@@ -23,6 +23,9 @@ struct WhereCommand: AsyncParsableCommand {
     @Flag(name: .customLong("files"), help: "With --refs (implied): only the files the sweep names, one per line, with counts.")
     var filesOnly = false
 
+    @Flag(name: .customLong("decl"), help: "Only the declarations: where it is defined, nothing else.")
+    var declarationsOnly = false
+
     @Option(name: .customLong("offset"), help: "Skip this many files in the references listing (from a truncated: marker).")
     var offset: Int = 0
 
@@ -40,6 +43,9 @@ struct WhereCommand: AsyncParsableCommand {
         if let message = BlankTargetRefusal.message(tool: "where", targets: [symbol]) {
             throw ValidationError(message)
         }
+        if declarationsOnly, includeReferences || filesOnly {
+            throw ValidationError("--decl answers where \(symbol) is declared, and --refs and --files every place it is written: pass one.")
+        }
     }
 
     func run() async throws {
@@ -56,7 +62,7 @@ struct WhereCommand: AsyncParsableCommand {
     func served(registry: RootsRegistry = .standard()) async throws -> LoggedLookup.Served {
         let (engine, note) = try rootOptions.makeEngine(probing: symbol, registry: registry, storesNothing: syntacticOnly)
         let options = WhereOptions(
-            includeSemantic: !syntacticOnly, includeReferences: includeReferences || filesOnly, offset: offset, nameMatchedSiteCap: Self.nameMatchedSiteCap, filesOnly: filesOnly
+            includeSemantic: !syntacticOnly, includeReferences: includeReferences || filesOnly, offset: offset, nameMatchedSiteCap: Self.nameMatchedSiteCap, filesOnly: filesOnly, declarationsOnly: declarationsOnly
         )
         if let revision {
             let text = try await engine.lookup(symbol: symbol, at: revision, options: options)

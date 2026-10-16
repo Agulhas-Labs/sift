@@ -52,7 +52,8 @@ public struct RunReportRenderer: Sendable {
 
 extension RunReportRenderer {
     public func render(_ report: RunReport, exitCode: Int32, logURL: URL?) -> String {
-        var lines: [String] = [headline(report, exitCode: exitCode)]
+        let opening = headline(report, exitCode: exitCode)
+        var lines: [String] = [opening]
         // Only beside the headline that names the crash, which a run that exited 0 never carries.
         if exitCode != 0 {
             lines.append(contentsOf: report.compilerCrash?.lines() ?? [])
@@ -87,15 +88,15 @@ extension RunReportRenderer {
         let warnings = warningSection(report, nothingRan: nothingRan) + toolLogSection(report)
         // What the log has left after everything else this answer prints is what the two listings may
         // spend between them — see ``allowance(of:beside:)`` for why an answer owes the log that. The
-        // totals line is composed already, same as the summaries and warnings above it, so it is charged
-        // here rather than appended for free below — an answer that overspends its allowance by exactly
-        // the one line this closes on is the bug ``allowance(of:beside:)`` exists to prevent. The size
+        // closing line, `totals:` or `verdict:`, is charged here like the summaries and warnings above it
+        // rather than appended for free below — an answer that overspends its allowance by exactly the
+        // one line this closes on is the bug ``allowance(of:beside:)`` exists to prevent. The size
         // budget is shared on exactly the same terms: one answer, one budget, spent in the order the
         // sections print, because the receipt below them states one number for the whole of it.
         let devices = deviceNotes(of: report)
         let skipLines = totals == nil ? [] : skippedLines(report)
         let streamNote = report.eventStreamNote.map { ["  \($0)"] } ?? []
-        var allowance = allowance(of: report, beside: lines.count + warnings.count + (totals == nil ? 0 : 1) + skipLines.count + streamNote.count + inventory.count, notes: devices.lines.count)
+        var allowance = allowance(of: report, beside: lines.count + warnings.count + 1 + skipLines.count + streamNote.count + inventory.count, notes: devices.lines.count)
         var budget = RunFailureCensus.listingBudget
         let errors = errorSection(report, within: allowance, spending: &budget)
         allowance = max(0, allowance - errors.count)
@@ -109,6 +110,10 @@ extension RunReportRenderer {
         }
         lines.append(contentsOf: streamNote)
         lines.append(contentsOf: inventory)
+        // An answer with no totals line ends on its headline said again: a `| tail -3` of a build that printed warnings keeps the verdict. Under three lines the headline is already within the last three.
+        if totals == nil, lines.count >= 3 {
+            lines.append("verdict: \(opening)")
+        }
         // The receipt counts itself along with everything above it: the line being appended is the last. That is the whole of the arithmetic — the answer is the
         // only thing that knows its own size, and asking it here is what keeps the receipt from being a
         // second opinion about what was printed.
@@ -579,7 +584,8 @@ extension RunReportRenderer {
                     message: failure.message,
                     arguments: failure.arguments,
                     note: failure.note,
-                    closestLine: failure.closestLine
+                    closestLine: failure.closestLine,
+                    markedLines: failure.markedLines
                 )
             },
             changedFiles: changedFiles,

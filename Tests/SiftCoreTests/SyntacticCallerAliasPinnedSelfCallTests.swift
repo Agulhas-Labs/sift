@@ -54,7 +54,8 @@ struct SyntacticCallerAliasPinnedSelfCallTests {
 
         let lid = try await WhereInitializerCallsTests.lookup("Lid.init(size:)", in: root)
 
-        #expect(lid.contains("but Self(…) in an extension is called 2 times with those labels on a type the scan cannot tell, any of which may be Lid's"), "\(lid)")
+        #expect(lid.contains("\"Lid.init\" (1 call site by written name, 1 written as Sources.Cap, a typealias naming it, folded in here, in 1 file"), "\(lid)")
+        #expect(lid.contains("but Self(…) in an extension is called once with those labels on a type the scan cannot tell, any of which may be Lid's"), "\(lid)")
         let rows = WhereAnswerRepetitionTests.sitesOnePerLine(lid)
         #expect(rows.contains("  Sources/App/Maker.swift:2  in Maker.make()"), "\(lid)")
         #expect(rows.contains("  Sources/App/Maker.swift:6  in Maker.again()"), "\(lid)")

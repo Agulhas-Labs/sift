@@ -160,8 +160,8 @@ struct NestedPathResolutionTests {
             .render(query: "Missing.flag", semantic: .inactive(note: "test run")).body
 
         #expect(digest.contains("could not resolve the path Missing.flag"))
-        #expect(Self.diagnosis(in: digest).filter { $0.hasPrefix("  Alpha.") }.count == DigestRenderer.memberCap)
-        #expect(digest.contains("  truncated: \(Self.crowdedCount - DigestRenderer.memberCap) more declarations"))
+        #expect(Self.diagnosis(in: digest).filter { $0.hasPrefix("  Alpha.") }.count == DigestCaps.memberCap)
+        #expect(digest.contains("  truncated: \(Self.crowdedCount - DigestCaps.memberCap) more declarations"))
         #expect(Self.diagnosis(in: lookup).filter { $0.hasPrefix("  Alpha.") }.count == WhereRenderer.listCap)
         #expect(lookup.contains("  truncated: \(Self.crowdedCount - WhereRenderer.listCap) more declarations"))
     }
@@ -452,6 +452,6 @@ extension NestedPathResolutionTests {
         let answer = try Self.crowdedMemberDigest("Missing.read(_:)")
 
         #expect(answer.contains("read is declared, but not under Missing"))
-        #expect(answer.split(separator: "\n").filter { $0.hasPrefix("  Alpha.") }.count <= DigestRenderer.memberCap)
+        #expect(answer.split(separator: "\n").filter { $0.hasPrefix("  Alpha.") }.count <= DigestCaps.memberCap)
     }
 }

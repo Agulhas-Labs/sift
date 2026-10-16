@@ -53,9 +53,13 @@ public extension RunDominantFailureClass {
     ///
     /// **Every tally here is over each failure's *distinct* readings**, so a message comparing `""` against `""` counts once rather than twice, a value is never made dominant by one failure mentioning it repeatedly, and — the part that decides which expression gets named — one compound `#expect(a.labels.isEmpty && b.labels.isEmpty)` casts one vote for `labels` rather than two. Counting occurrences instead would let a handful of compound assertions outvote a majority of simple ones and name the wrong expression, which is the expression the accessibility test is then applied to. Ties are broken on the value's own text so the same run always renders the same way.
     ///
+    /// **A failure's readings are the ones its message carries inline and the ones its `↳` expansions print beneath it, in print order.** An older Swift Testing expands inside the message, `(labels → "").contains(bay.signage → "Sprockets")`; a newer one prints each expansion as a `↳` line of its own, `<expression> → <value>`, starting with the whole expression the message names. That first expansion's `true` or `false` is the failed expectation itself rather than a value it read, so it is not a reading — counted, it would make `false` the one value of any run of failed comparisons — while a whole expression reading anything else, `nil` from a `#require`, is the read. See ``expansions(beneath:in:)``.
+    ///
+    /// - Parameter markedLines: Each failure's `↳` lines, one array per message in the same order; empty where the failures carry none.
     /// - Parameter accessibility: What re-arming the preference found on each simulator this run put its tests on, in argv order — empty for a run that named no simulator at all. See ``DeviceFault`` for why the clause about a device is withheld without it.
     static func of(
         _ messages: [String],
+        markedLines: [[String]] = [],
         census: RunFailureCensus,
         accessibility: [SimulatorAccessibility.Restoration] = []
     ) -> RunDominantFailureClass? {
@@ -74,7 +78,8 @@ public extension RunDominantFailureClass {
         for (position, message) in messages.enumerated() {
             var countedValues: Set<String> = []
             var countedReadings: Set<Reading> = []
-            for (rank, reading) in readings(in: message).enumerated() {
+            let beneath = markedLines.indices.contains(position) ? expansions(beneath: message, in: markedLines[position]) : []
+            for (rank, reading) in (readings(in: message) + beneath).enumerated() {
                 if countedValues.insert(reading.value).inserted {
                     positions[reading.value, default: []].append(position)
                 }
@@ -261,23 +266,189 @@ private extension RunDominantFailureClass {
         return readings
     }
 
-    /// Everything after the closing quote of the literal opening at `index`, or the character after the quote itself where it never closes.
-    static func afterLiteral(in message: String, openingAt index: String.Index) -> String.Index {
-        var scan = message.index(after: index)
-        while scan < message.endIndex {
-            switch message[scan] {
-            case "\\":
-                scan = message.index(scan, offsetBy: 2, limitedBy: message.endIndex) ?? message.endIndex
+    /// The readings of the `↳` expansions Swift Testing printed beneath `message`, in print order, the failed expectation's own `true` or `false` left out.
+    ///
+    /// **The expansions start at the line that repeats the message's expression up to its marker**, the match ``RunFailureShape/merging(_:with:)`` makes, and run while each line still reads as `<expression> → <value>`. A comment is printed first, as a `↳` line of its own, so a line above that one is never read even where it carries a marker: `expected → really` is the author's sentence, not a value.
+    static func expansions(beneath message: String, in lines: [String]) -> [Reading] {
+        guard message.hasPrefix(failedExpectation) else {
+            return []
+        }
+        let expression = trimmed(message.dropFirst(failedExpectation.count))
+        guard let start = lines.firstIndex(where: { reading(of: $0)?.expression == expression }) else {
+            return []
+        }
+        var readings: [Reading] = []
+        for line in lines[start...] {
+            guard let reading = reading(of: line) else {
+                break
+            }
+            if reading.expression == expression, ["true", "false"].contains(reading.value) {
+                continue
+            }
+            if restatesAnOperand(reading.expression) {
+                continue
+            }
+            readings.append(reading)
+        }
+        return readings
+    }
+
+    /// What Swift Testing opens a failed `#expect` or `#require` on, ahead of the expression it failed on.
+    static var failedExpectation: String {
+        "Expectation failed: "
+    }
+
+    /// One `↳` line read as `<expression> → <value>`, split at its first marker outside a string literal, or `nil` where it carries none or either side is empty.
+    ///
+    /// The depth Swift Testing indents a nested expansion by is whitespace on either side of the text, so it is trimmed away with the rest.
+    static func reading(of line: String) -> Reading? {
+        var index = line.startIndex
+        while index < line.endIndex {
+            switch line[index] {
             case "\"":
-                return message.index(after: scan)
+                index = afterLiteral(in: line, openingAt: index)
+            case Self.expansion:
+                let expression = trimmed(line[..<index])
+                let value = trimmed(line[line.index(after: index)...])
+                return expression.isEmpty || value.isEmpty ? nil : Reading(expression: expression, value: value)
             default:
-                scan = message.index(after: scan)
+                index = line.index(after: index)
             }
         }
-        return message.index(after: index)
+        return nil
     }
 
     static func trimmed(_ text: Substring) -> String {
         text.trimmingCharacters(in: .whitespaces)
+    }
+}
+
+extension RunDominantFailureClass {
+    /// Whether an expansion only restates an operand the source wrote rather than a value the code under test returned: Swift Testing expands the expected side of a comparison too, as `some → "ok"`, `Optional("ok") → "ok"` or `.none → nil`, and counting any of them names the expected value as the one most failures read.
+    ///
+    /// **An expression restates when it names nothing but literal syntax**: once every string literal without an interpolation is skipped, what remains may hold only numeric literals in any Swift spelling, the words `true`, `false`, `nil`, `some`, `none` and `Optional`, implicit members with no receiver (`.blue`), and operators, parentheses, brackets, commas, colons and whitespace. Any other identifier is a read, and so is an interpolation, an explicit type member (`Color.blue`, a static read of real state) and an argument to an implicit member (`.some(x)` reads `x`). The known limit: a local named `some`, `none` or `Optional` is taken for the word and loses its read.
+    static func restatesAnOperand(_ expression: String) -> Bool {
+        var index = expression.startIndex
+        while index < expression.endIndex {
+            let character = expression[index]
+            if character == "\"" || character == "#" {
+                guard let literal = literal(in: expression, openingAt: index), !literal.interpolates else {
+                    return false
+                }
+                index = literal.end
+            } else if ("0" ... "9").contains(character) {
+                let end = numberEnd(in: expression, from: index)
+                guard isNumericLiteral(expression[index ..< end]) else {
+                    return false
+                }
+                index = end
+            } else if character.isLetter || character == "_" {
+                let end = expression[index...].firstIndex { !$0.isLetter && !$0.isNumber && $0 != "_" } ?? expression.endIndex
+                guard literalWords.contains(String(expression[index ..< end])) || isImplicitMember(at: index, in: expression) else {
+                    return false
+                }
+                index = end
+            } else if character.isWhitespace || "+-*/%=<>!&|^~?.()[],:".contains(character) {
+                index = expression.index(after: index)
+            } else {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Everything after the closing delimiter of the literal opening at `index`, or the character after the opening itself where it never closes.
+    static func afterLiteral(in message: String, openingAt index: String.Index) -> String.Index {
+        literal(in: message, openingAt: index)?.end ?? message.index(after: index)
+    }
+}
+
+private extension RunDominantFailureClass {
+    /// Where a string literal ends and whether it interpolates anything.
+    struct LiteralExtent {
+        let end: String.Index
+        let interpolates: Bool
+    }
+
+    /// The string literal opening at `index`, regular, raw (`#"…"#`, with any number of `#`) or multi-line, or `nil` where none opens there or it never closes.
+    ///
+    /// A literal's escape is a backslash followed by its own number of `#`, so `\(` interpolates in `"…"` and `\#(` in `#"…"#`, while a bare backslash in a raw literal is text.
+    static func literal(in text: String, openingAt index: String.Index) -> LiteralExtent? {
+        let hashes = String(text[index...].prefix { $0 == "#" })
+        let quote = text.index(index, offsetBy: hashes.count)
+        guard quote < text.endIndex, text[quote] == "\"" else {
+            return nil
+        }
+        let delimiter = text[quote...].hasPrefix("\"\"\"") ? "\"\"\"" : "\""
+        let closing = delimiter + hashes
+        let escape = "\\" + hashes
+        var interpolates = false
+        var scan = text.index(quote, offsetBy: delimiter.count)
+        while scan < text.endIndex {
+            let rest = text[scan...]
+            if rest.hasPrefix(closing) {
+                return LiteralExtent(end: text.index(scan, offsetBy: closing.count), interpolates: interpolates)
+            }
+            if rest.hasPrefix(escape) {
+                let escaped = text.index(scan, offsetBy: escape.count)
+                guard escaped < text.endIndex else {
+                    return nil
+                }
+                interpolates = interpolates || text[escaped] == "("
+                scan = text.index(after: escaped)
+            } else {
+                scan = text.index(after: scan)
+            }
+        }
+        return nil
+    }
+
+    /// The words that are literal syntax rather than a name the code under test resolves.
+    static var literalWords: Set<String> {
+        ["true", "false", "nil", "some", "none", "Optional"]
+    }
+
+    /// Whether the word at `index` is an implicit member, `.name` with no receiver ahead of its dot: whitespace, an operator, an opening bracket, a comma or a colon, or nothing at all.
+    static func isImplicitMember(at index: String.Index, in text: String) -> Bool {
+        guard index > text.startIndex else {
+            return false
+        }
+        let dot = text.index(before: index)
+        guard text[dot] == "." else {
+            return false
+        }
+        guard dot > text.startIndex else {
+            return true
+        }
+        let before = text[text.index(before: dot)]
+        return before.isWhitespace || "+-*/%=<&|^~([,:".contains(before)
+    }
+
+    /// Where the numeric literal starting at `index` ends: its digits, letters and `_`, a `.` only ahead of a digit, and a sign only after an exponent's `e`, or a hexadecimal one's `p`.
+    static func numberEnd(in text: String, from index: String.Index) -> String.Index {
+        let exponents: Set<Character> = text[index...].hasPrefix("0x") ? ["p", "P"] : ["e", "E"]
+        var scan = text.index(after: index)
+        while scan < text.endIndex {
+            let character = text[scan]
+            let next = text.index(after: scan)
+            if character.isLetter || character.isNumber || character == "_" {
+                scan = next
+            } else if character == ".", next < text.endIndex, text[next].isHexDigit {
+                scan = next
+            } else if "+-".contains(character), exponents.contains(text[text.index(before: scan)]) {
+                scan = next
+            } else {
+                break
+            }
+        }
+        return scan
+    }
+
+    /// Whether `token` is a whole Swift numeric literal: decimal with an optional fraction and exponent, hexadecimal with an optional fraction and `p` exponent, octal or binary, each with `_` separators.
+    static func isNumericLiteral(_ token: Substring) -> Bool {
+        token.wholeMatch(of: /[0-9][0-9_]*(\.[0-9][0-9_]*)?([eE][+-]?[0-9][0-9_]*)?/) != nil
+            || token.wholeMatch(of: /0x[0-9a-fA-F][0-9a-fA-F_]*(\.[0-9a-fA-F][0-9a-fA-F_]*)?([pP][+-]?[0-9][0-9_]*)?/) != nil
+            || token.wholeMatch(of: /0o[0-7][0-7_]*/) != nil
+            || token.wholeMatch(of: /0b[01][01_]*/) != nil
     }
 }

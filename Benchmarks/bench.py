@@ -21,6 +21,7 @@ import statistics
 import subprocess
 import sys
 import time
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -447,8 +448,8 @@ def memory_excludes() -> list:
     return patterns
 
 
-def mcp_config(sift_on: bool) -> dict:
-    if not sift_on:
+def mcp_config(sift_on: bool, mcp: bool = True) -> dict:
+    if not sift_on or not mcp:
         return {"mcpServers": {}}
     return {"mcpServers": {"sift": {"type": "stdio", "command": str(WRAPPER), "args": ["mcp"], "env": {}}}}
 
@@ -472,6 +473,7 @@ def read_stream(path: Path) -> list:
 COMMAND_PREFIXES = {"env", "exec", "command", "time", "nohup", "sudo", "xargs"}
 COMMAND_SEPARATORS = r"\|\||&&|[;|&\n(`]|\$\("
 GREP_COMMANDS = {"grep", "egrep", "fgrep", "rg", "ugrep", "ag", "ack"}
+READ_COMMANDS = {"cat", "sed", "head", "tail", "awk", "less", "more", "nl", "bat"}
 
 
 def invokes_sift(command: str) -> bool:
@@ -626,20 +628,43 @@ def call_shape_lines(directory: Path) -> list:
     return lines
 
 
+def shell_words(command: str) -> list:
+    """The simple commands of a Bash line as word lists, split at `;`, `&&`, `||`, `|`, `&`, parentheses and
+    newlines outside quotes, so a quoted `\\|` in a grep pattern splits nothing; split on whitespace alone where
+    the quoting does not close."""
+    lexer = shlex.shlex(command.replace("\n", ";"), posix=True, punctuation_chars=";&|()<>")
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    try:
+        tokens = list(lexer)
+    except Exception:  # unbalanced quotes
+        return [command.split()]
+    segments, current = [], []
+    for token in tokens:
+        if set(token) <= set(";&|()"):
+            segments.append(current)
+            current = []
+        else:
+            current.append(token)
+    return [words for words in segments + [current] if words]
+
+
 def native_swift_lookup(block: dict) -> bool:
     """A Swift lookup made with a built-in tool rather than sift: a Read of a .swift file, a Grep whose path,
-    glob or type names swift, or a grep-family command in Bash whose segment names swift. A search that
-    covers Swift files without naming swift is not counted, so this undercounts."""
+    glob or type names swift, a grep-family command in Bash with a word naming swift, or a file-reading command
+    in Bash (`cat`, `sed`, `head`, …) with a .swift operand. A search that covers Swift files without naming
+    swift is not counted, so this undercounts."""
     name, args = block.get("name"), block.get("input") or {}
     if name == "Read":
         return str(args.get("file_path", "")).endswith(".swift")
     if name == "Grep":
         return any("swift" in str(args.get(key, "")).lower() for key in ("path", "glob", "type"))
     if name == "Bash":
-        for segment in re.split(COMMAND_SEPARATORS, str(args.get("command", ""))):
-            words = segment.split()
-            grep = words[:1] and os.path.basename(words[0]) in GREP_COMMANDS or words[:2] == ["git", "grep"]
-            if grep and "swift" in segment.lower():
+        for words in shell_words(str(args.get("command", ""))):
+            head = os.path.basename(words[0])
+            if (head in GREP_COMMANDS or words[:2] == ["git", "grep"]) and any("swift" in w.lower() for w in words[1:]):
+                return True
+            if head in READ_COMMANDS and any(w.endswith(".swift") for w in words[1:]):
                 return True
     return False
 
@@ -677,7 +702,7 @@ def session_price(context_series: list, output_tokens: int):
     return price + WEIGHT_OUTPUT * (output_tokens or 0)
 
 
-def parse(stream: Path, arm: str, sift_on: bool = False, mod_name=None) -> dict:
+def parse(stream: Path, arm: str, sift_on: bool = False, mod_name=None, mcp_expected: bool = True) -> dict:
     """Tokens, turns, sift use and the arm's validity, from one run's stream-json. Re-runnable on a kept
     stream without another model call. Arm B, and arm A when `sift_on` (a rule-vs-rule or mod-vs-no-mod
     session), is held to the sift-on checks; arm A otherwise to the sift-off ones. With `mod_name` (a
@@ -758,10 +783,16 @@ def parse(stream: Path, arm: str, sift_on: bool = False, mod_name=None) -> dict:
         if mcp_calls or bash_sift:
             reasons.append("arm A invoked sift (%d MCP, %d Bash)" % (mcp_calls, bash_sift))
     else:
-        if not any(s.get("status") == "connected" for s in sift_servers):
-            reasons.append("arm %s's sift server is not connected: %s" % (arm, json.dumps(sift_servers)))
-        if not sift_tools:
-            reasons.append("arm %s lists no sift tools" % arm)
+        if mcp_expected:
+            if not any(s.get("status") == "connected" for s in sift_servers):
+                reasons.append("arm %s's sift server is not connected: %s" % (arm, json.dumps(sift_servers)))
+            if not sift_tools:
+                reasons.append("arm %s lists no sift tools" % arm)
+        else:
+            if servers:
+                reasons.append("arm %s lists MCP servers: %s" % (arm, ", ".join(str(s.get("name")) for s in servers)))
+            if sift_tools:
+                reasons.append("arm %s lists sift tools" % arm)
         if not any(name.startswith("SessionStart") for name in hook_counts):
             reasons.append("arm %s fired no SessionStart hook" % arm)
         if foreign_hooks:
@@ -781,9 +812,8 @@ def parse(stream: Path, arm: str, sift_on: bool = False, mod_name=None) -> dict:
         "mcp_calls": mcp_calls,
         "bash_invocations": bash_sift,
         "hook_events": hook_counts,
+        "native_swift_lookups": sum(1 for b in tool_uses.values() if native_swift_lookup(b)),
     }
-    if mod_name:
-        sift_use["native_swift_lookups"] = sum(1 for b in tool_uses.values() if native_swift_lookup(b))
     return {
         "valid": not reasons,
         "invalid_reasons": reasons,
@@ -961,7 +991,8 @@ def run_one(tasks: dict, task: dict, arm: str, repeat: int, position: int, optio
         settings = WORK / "settings.json"
         settings.write_text(json.dumps({"claudeMdExcludes": memory_excludes()}, indent=1))
         mcp = WORK / ("mcp-%s.json" % arm)
-        mcp.write_text(json.dumps(mcp_config(sift_on), indent=1))
+        mcp_expected = not (arm == "B" and options.no_mcp_b)
+        mcp.write_text(json.dumps(mcp_config(sift_on, mcp_expected), indent=1))
         prompt = WORK / "prompt.txt"
         prompt.write_text(prompt_text(tasks, task))
         command = [options.claude, "-p", "--model", MODEL, "--output-format", "stream-json", "--verbose",
@@ -979,7 +1010,7 @@ def run_one(tasks: dict, task: dict, arm: str, repeat: int, position: int, optio
         with open(prompt) as stdin, open(stream, "w") as stdout, open(errors, "w") as stderr:
             code, timed_out = limited(command, options.timeout, RUN, arm_env, stdin=stdin, stdout=stdout, stderr=stderr)
         wall = time.time() - started
-        parsed = parse(stream, arm, sift_on, options.mod["mod_name"] if options.mod_b else None)
+        parsed = parse(stream, arm, sift_on, options.mod["mod_name"] if options.mod_b else None, mcp_expected)
         if timed_out:
             parsed["valid"] = False
             parsed["invalid_reasons"].append("timed out after %ds" % options.timeout)
@@ -1115,6 +1146,8 @@ def probe_hook(base_path: str, sift_binary: str, rule: Path) -> dict:
 def command_run(options):
     if options.mod_b and options.rule_a:
         raise Halt("--mod-b and --rule-a each change arm A; give one, so the arms differ in one thing")
+    if options.no_mcp_b and options.mod_b:
+        raise Halt("--no-mcp-b and --mod-b each change arm B; give one, so the arms differ in one thing")
     options.mod_b = mod_dir(options.mod_b) if options.mod_b else None
     options.mod = mod_record(options.mod_b) if options.mod_b else {}
     if options.mod_env and not options.mod_b:
@@ -1171,7 +1204,7 @@ def command_run(options):
         "corpus_paths": source[2],
         "sift_version": options.sift_version, "sift_binary": sift_binary, "sift_binary_sha256": sha256(sift_binary),
         "sift_binary_mtime": datetime.fromtimestamp(os.path.getmtime(sift_binary), timezone.utc).isoformat(),
-        **rule_record(options.rule_a, options.rule_b), **options.mod,
+        **rule_record(options.rule_a, options.rule_b), **options.mod, "mcp_b": not options.no_mcp_b,
         "claude_code_version": claude_version, "timeout_seconds": options.timeout, "budget_usd": options.budget,
     }
 
@@ -1201,6 +1234,8 @@ def command_run(options):
         select_path(1)
         record["fixed_overhead_estimates"] = fixed_overhead(clean_env(str(WRAPPER_DIR) + os.pathsep + base_path),
                                                             options.rule_b)
+        if options.no_mcp_b:
+            record["fixed_overhead_estimates"].pop("mcp_tools", None)
         if options.rule_a:
             record["fixed_overhead_estimates"]["rule_a"] = estimate(options.rule_a.read_text())
         write_record()
@@ -1467,6 +1502,8 @@ def analyse(directory: Path) -> str:
         extra = (record.get("sift_mod_env") or {}).get("B_extra") or {}
         if extra:
             lines[-2] += " Arm B's environment also sets %s." % ", ".join("%s=%s" % pair for pair in sorted(extra.items()))
+    if record.get("mcp_b") is False:
+        lines += ["Arm B: sift without its MCP server (hooks, rule and primer; lookups through the CLI).", ""]
     header = "| task | pairs | success A | success B | invalid | " + " | ".join(label for _, label in DELTA_METRICS) + " |"
     lines += [header, "|" + " --- |" * (5 + len(DELTA_METRICS))]
     totals_by_repeat = {}
@@ -1516,7 +1553,7 @@ def analyse(directory: Path) -> str:
         lines.append("| %s | %d | %s |" % (arm, count, " | ".join(plain(arm_values[arm][key], key == "cost_usd") for key, _ in DELTA_METRICS)))
     if sift_on_a(record):
         lines += ["", "Voluntary use, summed over valid runs: sift calls against Swift lookups made with built-in tools "
-                  "(a Read of a .swift file, a Grep or Bash grep that names swift; a search that never names swift is "
+                  "(a Read of a .swift file, a Grep or Bash grep that names swift, a Bash cat/sed/head/… of a .swift file; a search that never names swift is "
                   "not counted):", "", "| arm | sift MCP | sift Bash | built-in Swift lookups | sift share |",
                   "| --- | --- | --- | --- | --- |"]
         for arm in ARMS:
@@ -1666,7 +1703,8 @@ def command_reparse(options):
         stream = path.with_name(path.stem + ".stream.jsonl")
         if not stream.exists():
             continue
-        parsed = parse(stream, summary["arm"], sift_on_a(record), record.get("mod_name"))
+        parsed = parse(stream, summary["arm"], sift_on_a(record), record.get("mod_name"),
+                       record.get("mcp_b", True) or summary["arm"] == "A")
         if summary.get("timed_out"):
             parsed["valid"] = False
             parsed["invalid_reasons"].append("timed out")
@@ -1677,8 +1715,15 @@ def command_reparse(options):
 
 
 def command_calls(options):
-    """Prints each matching run's tool calls, one per line, so a result can be read call by call."""
-    directory = Path(options.session) if Path(options.session).exists() else RESULTS / options.session
+    """Prints each matching run's tool calls, one per line, so a result can be read call by call; --split prints the price split."""
+    if options.split:
+        print_split([resolve_session(s) for s in options.session], options.task, options.runs)
+        return
+    if options.runs:
+        raise Halt("calls: --runs goes with --split")
+    if len(options.session) != 1 or not options.task:
+        raise Halt("calls without --split needs exactly one session and --task")
+    directory = resolve_session(options.session[0])
     shown = 0
     for path in sorted(directory.glob("*.json")):
         data = json.loads(path.read_text())
@@ -1697,6 +1742,140 @@ def command_calls(options):
             print("  %d. %s  in=%s  out=%d" % (i, record["label"], given[:100], record["result_chars"]))
     if not shown:
         raise Halt("no run of task %s matches in %s" % (options.task, directory))
+
+
+# ---- calls --split: the per-part price split of a session ----
+# A token that enters the context before request k (of n) is written once and re-read on every later request, so
+# it costs WEIGHT_WRITE_5M + WEIGHT_READ * (n - 1 - k). The first context is the start; each later growth is the
+# previous request's own blocks (its output, re-sent) plus the tool results that came back, split by characters;
+# growth beyond the results' estimated tokens is booked as "other growth". The parts sum to the session price.
+
+SPLIT_CHARS_PER_TOKEN = 3.0
+
+
+def split_kind(block, hook):
+    name, given = block.get("name") or "", block.get("input") or {}
+    if name.startswith("mcp__sift__"):
+        verb = name[len("mcp__sift__"):]
+        flags = sorted(k for k, v in given.items() if k not in ("symbol", "target", "targets", "query", "root", "offset") and v not in (False, None, ""))
+        target = str(given.get("target") or given.get("symbol") or "")
+        if verb == "digest" and (":" in target and target.split(":")[-1][:1].isdigit()):
+            flags.append("File:line")
+        elif verb == "digest" and target.endswith(".swift"):
+            flags.append("file")
+        elif verb == "digest" and "." in target:
+            flags.append("Type.member")
+        return "sift " + verb + "".join(" --" + f for f in flags)
+    if name == "Bash":
+        segments = sift_segments(given.get("command") or "")
+        if segments:
+            words = segments[0]
+            verb = words[0] if words else "?"
+            flags = sorted({w.split("=")[0] for w in words[1:] if w.startswith("--") and w not in ("--root",)})
+            return "sift " + verb + "".join(" " + f for f in flags) + " (CLI)"
+        return "Bash " + first_command_word(given.get("command") or "")
+    if name == "Read":
+        base = "Read(range)" if given.get("offset") or given.get("limit") else "Read"
+        return base + (" [hook]" if hook else "")
+    if name == "Grep":
+        return "Grep" + (" [hook]" if hook else "")
+    return name + (" [hook]" if hook else "")
+
+
+def split_session(stream):
+    messages = read_stream(stream)
+    requests = []  # [id, ctx, output, [tool_use ids]]
+    index = {}
+    results = {}  # tool_use_id -> (chars, block)
+    order_results = []  # (request index the result arrives before, tool_use_id)
+    blocks = {}
+    for message in messages:
+        body = message.get("message") or {}
+        if message.get("type") == "assistant":
+            ident = body.get("id")
+            usage = body.get("usage") or {}
+            if body.get("model") == MODEL and ident and ident not in index and usage:
+                index[ident] = len(requests)
+                requests.append([ident, (usage.get("input_tokens", 0) or 0) + (usage.get("cache_read_input_tokens", 0) or 0)
+                                 + (usage.get("cache_creation_input_tokens", 0) or 0), usage.get("output_tokens", 0) or 0, []])
+            k = index.get(ident)
+            for block in body.get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_use" and k is not None:
+                    requests[k][3].append(block.get("id"))
+                    blocks[block.get("id")] = block
+        elif message.get("type") == "user":
+            for block in body.get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    text = result_text(block.get("content"))
+                    hook = bool(block.get("is_error")) and "sift answered" in text
+                    results[block.get("tool_use_id")] = (len(text), hook)
+                    order_results.append((len(requests), block.get("tool_use_id")))
+    result = next((m for m in reversed(messages) if m.get("type") == "result"), {})
+    output = sum((u.get("outputTokens", 0) or 0) for u in (result.get("modelUsage") or {}).values())
+    n = len(requests)
+    if not n:
+        return None
+    parts = defaultdict(float)
+    weight = lambda k: WEIGHT_WRITE_5M + WEIGHT_READ * (n - 1 - k)
+    parts["start"] += requests[0][1] * weight(0)
+    calls = []
+    for k in range(1, n):
+        growth = max(requests[k][1] - requests[k - 1][1], 0)
+        own = min(requests[k - 1][2], growth)
+        parts["own blocks re-sent"] += own * weight(k)
+        rest = growth - own
+        arriving = [tid for (before, tid) in order_results if before == k]
+        est = {tid: results[tid][0] / SPLIT_CHARS_PER_TOKEN for tid in arriving}
+        total = sum(est.values())
+        attributable = min(rest, total)
+        for tid in arriving:
+            share = attributable * (est[tid] / total) if total else 0
+            label = split_kind(blocks.get(tid, {"name": "?"}), results[tid][1])
+            parts[label] += share * weight(k)
+            calls.append((label, results[tid][0], round(share * weight(k))))
+        if rest > total:
+            parts["other growth"] += (rest - total) * weight(k)
+    parts["output"] += WEIGHT_OUTPUT * output
+    price = session_price([r[1] for r in requests], output)
+    assert abs(sum(parts.values()) - price) < 1.0, (stream, sum(parts.values()), price)
+    return {"price": price, "parts": dict(parts), "calls": calls, "requests": n}
+
+
+def print_split(sessions, only, show_runs):
+    table = defaultdict(lambda: defaultdict(list))  # (session, task) -> arm -> [split]
+    for directory in sessions:
+        for path in sorted(directory.glob("*.json")):
+            if path.name == "session.json":
+                continue
+            data = json.loads(path.read_text())
+            if "task" not in data or data.get("warmup") or not data.get("valid"):
+                continue
+            if only and data["task"] != only:
+                continue
+            stream = path.with_name(path.stem + ".stream.jsonl")
+            parts = split_session(stream)
+            if parts:
+                parts["run"] = path.stem
+                table[(directory.name, data["task"])][data["arm"]].append(parts)
+    for (session, task), arms in table.items():
+        a, b = arms.get("A", []), arms.get("B", [])
+        if not a or not b:
+            continue
+        mean = lambda runs, key: sum(r["parts"].get(key, 0) for r in runs) / len(runs)
+        keys = sorted({k for r in a + b for k in r["parts"]}, key=lambda k: -abs(mean(b, k) - mean(a, k)))
+        pa, pb = sum(r["price"] for r in a) / len(a), sum(r["price"] for r in b) / len(b)
+        print("\n## %s / %s  (A %d runs, B %d runs)  price A %.0f  B %.0f  B-A %+.0f (%+.1f%%)" % (
+            session, task, len(a), len(b), pa, pb, pb - pa, 100 * (pb - pa) / pa))
+        print("| part | A mean | B mean | B-A | calls/run A | calls/run B |")
+        print("|---|---|---|---|---|---|")
+        for key in keys:
+            ca = sum(1 for r in a for c in r["calls"] if c[0] == key) / len(a)
+            cb = sum(1 for r in b for c in r["calls"] if c[0] == key) / len(b)
+            print("| %s | %.0f | %.0f | %+.0f | %.2f | %.2f |" % (key, mean(a, key), mean(b, key), mean(b, key) - mean(a, key), ca, cb))
+        if show_runs:
+            for arm, runs in (("A", a), ("B", b)):
+                for r in runs:
+                    print("  %s %s %.0f: %s" % (arm, r["run"], r["price"], " > ".join("%s(%dc,%d)" % c for c in r["calls"])))
 
 
 def resolve_session(name: str) -> Path:
@@ -1822,13 +2001,18 @@ def main(argv):
     run.add_argument("--mod-env", action="append", default=[], metavar="NAME=VALUE",
                      help="with --mod-b, a variable set in arm B's environment only, such as SIFT_MOD_BASH=on "
                           "(repeatable; recorded in session.json and the table's header)")
+    run.add_argument("--no-mcp-b", action="store_true",
+                     help="arm B runs sift without its MCP server: hooks, rule and primer, lookups through the CLI")
     analyse_parser = commands.add_parser("analyse", help="print the paired table for a results session")
     analyse_parser.add_argument("session", nargs="?", help="a session directory or name (default: the latest)")
     reparse = commands.add_parser("reparse", help="recompute a session's summaries from its kept streams")
     reparse.add_argument("session")
     calls = commands.add_parser("calls", help="list a session's tool calls, one per line, per run")
-    calls.add_argument("session")
-    calls.add_argument("--task", required=True)
+    calls.add_argument("session", nargs="+", help="one session; with --split, several are pooled")
+    calls.add_argument("--task", help="required without --split")
+    calls.add_argument("--split", action="store_true",
+                       help="print each part of the session price for A and B and their difference, per task")
+    calls.add_argument("--runs", action="store_true", help="with --split, also each run's calls with their result chars and price")
     calls.add_argument("--arm", choices=ARMS)
     calls.add_argument("--run", type=int, help="the repeat number")
     calls.add_argument("--path", type=int)

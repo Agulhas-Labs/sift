@@ -56,9 +56,9 @@ struct WhereExtensionSugarTests {
 
     /// An extension written through sugar is found by the type the outermost sugar stands for.
     @Test(arguments: [
-        ("Array", ["[Net.URL] — extension — extension [Net.URL] — Sources/Lib/Ext.swift:3"]),
-        ("Dictionary", ["[String: Net.URL] — extension — extension [String: Net.URL] — Sources/Lib/Ext.swift:7"]),
-        ("Optional", ["Net.URL? — extension — extension Net.URL? — Sources/Lib/Ext.swift:11", "[Net.URL]? — extension — extension [Net.URL]? — Sources/Lib/Ext.swift:15"]),
+        ("Array", ["[Net.URL] — extension — extension [Net.URL] — 1 members — Sources/Lib/Ext.swift:3"]),
+        ("Dictionary", ["[String: Net.URL] — extension — extension [String: Net.URL] — 1 members — Sources/Lib/Ext.swift:7"]),
+        ("Optional", ["Net.URL? — extension — extension Net.URL? — 1 members — Sources/Lib/Ext.swift:11", "[Net.URL]? — extension — extension [Net.URL]? — 1 members — Sources/Lib/Ext.swift:15"]),
     ])
     func aTypeExtendedThroughItsSugarIsFoundByItsName(query: String, rows: [String]) async throws {
         let output = try await Self.references(of: query, files: ["Package.swift": Self.manifest, "Sources/Lib/Ext.swift": Self.sugarFile])
@@ -87,7 +87,7 @@ struct WhereExtensionSugarTests {
         ])
 
         #expect(output.contains("declarations (2):\n"), "\(output)")
-        #expect(output.contains("  Lib.[Net.URL] — extension — extension [Net.URL] — Sources/Lib/Ext.swift:5"), "\(output)")
+        #expect(output.contains("  Lib.[Net.URL] — extension — extension [Net.URL] — 0 members — Sources/Lib/Ext.swift:5"), "\(output)")
     }
 
     /// A type named only inside the sugar is not what the extension extends, so it is still answered as a miss.

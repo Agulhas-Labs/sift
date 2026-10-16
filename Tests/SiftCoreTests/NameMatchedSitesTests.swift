@@ -28,11 +28,12 @@ struct NameMatchedSitesTests {
 
         let outside = NameMatchedSites.linesOutside(answer: answer).joined(separator: "\n")
 
-        #expect(answer.contains("\n  Sources/App/Depot.swift (1):\n    :2  | func stock() -> Gizmo { Gizmo() }\n"))
+        #expect(answer.contains("\n  Sources/App/Depot.swift (1):\n    :2  | func stock() -> Gizmo { Gizmo() }"))
         #expect(!outside.contains("Depot.swift"))
         #expect(!outside.contains("syntactic uses"))
         #expect(outside.contains("Sources/App/Gizmo.swift:1-3"))
-        #expect(outside.contains("extensions of Gizmo (1):"))
+        #expect(outside.contains("— extension — "), "the extension is a declarations row, printed once")
+        #expect(!outside.contains("extensions of Gizmo"))
         #expect(outside.contains("Sources/App/Catalogue.swift:1-3"))
     }
 

@@ -23,7 +23,7 @@ struct GuideMatchesTheHookTests {
 
     /// The `refusals` topic `Sift.md` points a reader at for this exact accounting, with line breaks folded the same way.
     ///
-    /// The size pass that split the rule moved this material behind `sift help refusals` rather than carrying it twice, so a claim this file checks lives in exactly one of the two — asserted against separately, never against the two joined into one string, which would let a claim missing from `Sift.md` hide behind the topic actually carrying it.
+    /// This material lives behind `sift help refusals` rather than carrying it twice, so a claim this file checks lives in exactly one of the two — asserted against separately, never against the two joined into one string, which would let a claim missing from `Sift.md` hide behind the topic actually carrying it.
     private static func topicText(named name: String = "refusals") -> String {
         (HelpTopics.topic(named: name)?.body ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
@@ -33,20 +33,18 @@ struct GuideMatchesTheHookTests {
         topicText(named: "queries")
     }
 
-    /// Every `sed -n` either source names carries the script that decides what it is — bare, it is both a search and a read.
+    /// Every `sed -n` the `refusals` topic names carries the script that decides what it is — bare, it is both a search and a read.
+    ///
+    /// The rule's one sentence names `sed -n` only as the guessed window a cited location must not go to, so it is held to the digest it points at (see the cited-location test).
     @Test
-    func theRuleNeverNamesSedWithoutItsScript() throws {
-        for text in try [Self.ruleText(), Self.topicText()] {
-            let mentions = text.ranges(of: "sed -n")
-
-            #expect(!mentions.isEmpty)
-            for mention in mentions {
-                #expect(text[mention.upperBound...].hasPrefix(" '"), "a bare `sed -n`: …\(text[mention.lowerBound...].prefix(60))")
-            }
-        }
-        // These two exact phrasings live in the `refusals` topic, not in `Sift.md`, which only points a reader
-        // there for the depth behind the one-line mention above.
+    func theRefusalsTopicNeverNamesSedWithoutItsScript() {
         let topic = Self.topicText()
+        let mentions = topic.ranges(of: "sed -n")
+
+        #expect(!mentions.isEmpty)
+        for mention in mentions {
+            #expect(topic[mention.upperBound...].hasPrefix(" '"), "a bare `sed -n`: …\(topic[mention.lowerBound...].prefix(60))")
+        }
 
         #expect(topic.contains("`sed -n '/pattern/p'` on a `.swift` file"))
         #expect(topic.contains("`sed -n '120,160p'`, `head`, `tail` on one file"))
@@ -68,8 +66,7 @@ struct GuideMatchesTheHookTests {
     func theRuleSendsACitedLocationToAnAnchoredDigest() throws {
         let rule = try Self.ruleText()
 
-        #expect(rule.contains("**A cited location is not already located**"))
-        #expect(rule.contains("`digest File.swift:120` (or `:95-135`)"))
+        #expect(rule.contains("A cited `File.swift:120` or `:95-135` goes to `digest File.swift:120`, not a guessed `sed -n` window"))
         // The same-line habit moved behind `sift help queries`.
         #expect(Self.queriesText().contains("`sift digest …` and `sift where …` go in the same line"))
     }
@@ -136,9 +133,8 @@ struct GuideMatchesTheHookTests {
     func theRuleStatesTheLookupRuleAndTheTopicNamesWhatALookupIs() throws {
         let rule = try Self.ruleText()
 
-        #expect(rule.contains("A lookup of Swift source is answered in place, or let through."))
-        #expect(rule.contains("a re-run is never held against you"))
-        #expect(rule.contains("A raw build or test is rewritten to `sift run --`, and the answer's first line says so"))
+        #expect(rule.contains("The hook answers a Swift lookup in place or lets it through."))
+        #expect(rule.contains("re-run the same lookup and it is allowed, and a re-run is never held against you"))
         #expect(Self.topicText().contains("a shell command, a Grep, a Glob, or a whole-file Read"))
     }
 

@@ -36,7 +36,7 @@ struct AmbiguousFileDigestTests {
     /// The list is the whole of what a caller can act on, so a cut one says how much it cut rather than reading as every file there is.
     @Test
     func aSuffixManyFilesEndInIsCutToTheCapAndSaysSo() async throws {
-        let count = DigestRenderer.memberCap + 3
+        let count = DigestCaps.memberCap + 3
         let files = (0 ..< count).map { "Sources/Part\($0)/Model.swift" }
         let engine = try await Self.engine(files: files)
 
@@ -44,7 +44,7 @@ struct AmbiguousFileDigestTests {
         let lines = answer.split(separator: "\n").map(String.init)
 
         #expect(lines.first == "Model.swift is ambiguous — \(count) indexed files end in it; digest one of these exact targets:")
-        #expect(lines.filter { $0.hasPrefix("  digest ") }.count == DigestRenderer.memberCap)
+        #expect(lines.filter { $0.hasPrefix("  digest ") }.count == DigestCaps.memberCap)
         #expect(lines.contains("  digest Sources/Part0/Model.swift"))
         #expect(lines.last == "  truncated: 3 more files")
     }
@@ -87,7 +87,7 @@ struct AmbiguousFileDigestTests {
     /// More basename matches than `memberCap` are cut to the cap, the same way a suffix ambiguity is — a list that stops without saying so reads as every match there is.
     @Test
     func manyBasenameMatchesAreCutToTheCapAndSaySo() async throws {
-        let count = DigestRenderer.memberCap + 3
+        let count = DigestCaps.memberCap + 3
         let files = (0 ..< count).map { "Sources/Part\($0)/Widget.swift" }
         let engine = try await Self.engine(files: files)
 
@@ -95,7 +95,7 @@ struct AmbiguousFileDigestTests {
         let lines = answer.split(separator: "\n").map(String.init)
 
         #expect(lines.first == "no indexed file matches Elsewhere/Widget.swift — \(count) indexed files share that basename; digest one of these exact targets:")
-        #expect(lines.filter { $0.hasPrefix("  digest ") }.count == DigestRenderer.memberCap)
+        #expect(lines.filter { $0.hasPrefix("  digest ") }.count == DigestCaps.memberCap)
         #expect(lines.last == "  truncated: 3 more files")
     }
 

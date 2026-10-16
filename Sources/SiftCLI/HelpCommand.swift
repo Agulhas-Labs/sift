@@ -7,7 +7,7 @@ import SiftCore
 
 /// `sift help [<topic>]` — the reference material `Sift.md` moved out of the always-loaded rule, or a subcommand's own usage when the name given is one.
 ///
-/// `Sift.md` names each topic in one line and says when to reach for it; this is where reaching for it lands. No `--root`, no freshness header: a topic is fixed reference text, not a claim about a repository, so the Answer Contract's header rule does not apply to it (`Docs/AnswerContract.md` §1 covers query answers specifically, and names that a command may open differently).
+/// `Sift.md` names `sift help`, which lists the topics; this is where reaching for one lands. No `--root`, no freshness header: a topic is fixed reference text, not a claim about a repository, so the Answer Contract's header rule does not apply to it (`Docs/AnswerContract.md` §1 covers query answers specifically, and names that a command may open differently).
 ///
 /// Registering this type as a subcommand named `help` takes over the name ArgumentParser reserves for its own built-in help subcommand, so `sift help digest` would otherwise refuse — the binary's own `--help` footer still promises `sift help <subcommand>` works, and a name that resolves to neither a topic nor a subcommand has to say so honestly rather than as a topic-only miss. `resolve(_:)` is what falls through: a topic name wins first, then a registered subcommand's own usage — the same text `sift <subcommand> --help` gives — and only then the refusal.
 struct HelpCommand: ParsableCommand {

@@ -8,7 +8,7 @@ import Testing
 
 /// Covers the agent guide's pointer to the `inventory:` line as the discovered-against-executed answer, and that the line it names is the one `sift run` prints.
 struct SiftGuideInventoryLineTests {
-    /// The `run-output` topic `Sift.md` points at for the `inventory:` line, with line breaks folded so a sentence reads the same wherever the wrap fell.
+    /// The `run-output` topic, which `sift help` lists, for the `inventory:` line, with line breaks folded so a sentence reads the same wherever the wrap fell.
     private static func guide() -> String {
         (HelpTopics.topic(named: "run-output")?.body ?? "")
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")

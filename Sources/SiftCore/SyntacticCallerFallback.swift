@@ -32,7 +32,8 @@ struct SyntacticCallerFallback {
         paging: SyntacticSweepPaging? = nil,
         memberwise: MemberwiseLabelSites? = nil,
         listsLabelCalls: Bool = false,
-        filesCollector: WhereFilesCollector? = nil
+        filesCollector: WhereFilesCollector? = nil,
+        initializerAliases: (([SymbolRow]) throws -> SyntacticTypeUsage.InitializerAliases)? = nil
     ) async throws -> [String] {
         guard let callSites, !rows.isEmpty else { return [] }
         // Each declaration's signature is printed once, in the list above this block, so the block names the ones it
@@ -96,6 +97,13 @@ struct SyntacticCallerFallback {
         for type in memberwise?.typeNames ?? [] {
             request[type] = CallSiteScanner.SiteShape.initializer.widened(by: request[type])
         }
+        // A call written through a typealias of an initializer's type builds the type as one spelling its name does, so the aliases the type's own answer follows are scanned for too.
+        var aliasesByBase = try initializerAliases.map { aliasesOf in
+            try Dictionary(uniqueKeysWithValues: scannedAs.keys.filter { shapes[$0] != nil }.map { try ($0, aliasesOf(rowsByBase[$0] ?? [])) })
+        } ?? [:]
+        for name in aliasesByBase.values.flatMap(\.names) {
+            request[name] = CallSiteScanner.SiteShape.initializer.widened(by: request[name])
+        }
         // The header disclaims a list matched on a name, so only a scan that had a name to match gets one: over a
         // subscript alone it would disclaim hits of a match that never ran.
         var lines: [String] = []
@@ -108,8 +116,10 @@ struct SyntacticCallerFallback {
         var qualifiedElsewhere: [String: Int] = [:]
         var ambiguity: [String: [(site: SyntacticCallSite, flag: String)]] = [:]
         var readings: [String: QualifierReadings] = [:]
+        // Per base, the sites written through a typealias of the initialized type, with the alias each writes.
+        var throughAlias: [String: [(site: SyntacticCallSite, alias: String)]] = [:]
         for base in shapes.keys {
-            guard let sites = sitesByName[scannedAs[base] ?? base] else { continue }
+            guard let sites = sitesByName[scannedAs[base] ?? base] ?? aliasesByBase[base]?.noOwnSites(in: sitesByName) else { continue }
             let paths = initializedPathsByBase[base] ?? []
             var candidates: [SameNamedTypes.Candidate] = []
             if let type = scannedAs[base], let sameNamed, !paths.isEmpty {
@@ -138,6 +148,11 @@ struct SyntacticCallerFallback {
                 return true
             }
             readings[base] = reading
+            // Joined after the reading of qualifiers, which judges a site by the type's own name.
+            if let joined = try aliasesByBase[base]?.joining(scanned[base] ?? [], from: sitesByName) {
+                scanned[base] = joined.sites
+                throughAlias[base] = joined.through
+            }
         }
         let found = scanned.reduce(into: [String: [SyntacticCallSite]]()) { found, entry in
             found[entry.key] = entry.value.filter { $0.isListed(ownedBy: functionOwnersByBase[entry.key] ?? []) }
@@ -165,15 +180,27 @@ struct SyntacticCallerFallback {
             else { return }
             kept[entry.key] = narrowed
         }
-        /// The count beside the list of the sites of `base` it does not list, narrowed by the labels of its declarations.
-        func unlistedLines(of base: String) -> [String] {
+        /// The count beside the list of the sites of `base` it does not list, narrowed by the labels of its declarations and, where `reach` is given, by the type a `T.f` is written on.
+        func unlistedLines(of base: String, judgedBy reach: ((SyntacticCallSite) throws -> ReceiverReach)?) throws -> [String] {
             let owners = functionOwnersByBase[base] ?? []
             let scope = fileScope(of: rowsByBase[base] ?? [])
             let unlisted = (scanned[base] ?? []).filter { !$0.isListed(ownedBy: owners) && scope?.paths.contains($0.path) != false }
             let reaching = LabelNarrowed.reaching(unlisted, by: rowsByBase[base] ?? [])
-            filesCollector?.recordSites(reaching)
+            // A `T.f` is judged by its `T` as a call on `T` is; a bare `f`, an `x.f` and anything else the scan gives no receiver are untyped and kept.
+            let judged = try reaching.map { site in try (site: site, reach: reach?(site) ?? .reaches) }
+            let kept = judged.filter(\.reach.isKept)
+            filesCollector?.recordSites(kept.map(\.site))
             // Indented so the block still runs through it: a line at the margin would end it for a reader.
-            return nameOnlyLines(reaching, cap: callSiteCap, initializerOf: scannedAs[base], narrowed: true, grouped: true, paging: paging).map { "  " + $0 }
+            return nameOnlyLines(
+                kept.map(\.site),
+                cap: callSiteCap,
+                initializerOf: scannedAs[base],
+                narrowed: true,
+                grouped: true,
+                paging: paging,
+                dropped: judged.filter { !$0.reach.isKept }.map(\.site),
+                keptClauses: ReceiverReach.keptClauses(ReceiverReach.onePerLine(kept))
+            ).map { "  " + $0 }
         }
         for base in askedByBase.keys.sorted() {
             let owners = names.owners(askedByBase[base] ?? [])
@@ -182,7 +209,8 @@ struct SyntacticCallerFallback {
             // A call written on another type, or implicitly inside types that are none of those, is that type's own.
             // So is a leading-dot `.m(x)` nothing follows, where every declaration of the name is an instance member.
             let instanceOnly = try isInstanceOnly(base)
-            let reaches = try reaching(base).map { reach in
+            let reach = try reaching(base)
+            let reaches = try reach.map { reach in
                 try labelled.map { try ($0, reach($0)) }.filter { $0.1.isKept && !(instanceOnly && $0.0.isUnchainedImplicitMemberCall) }
             }
             let received = reaches.map { $0.map(\.0) } ?? labelled
@@ -229,6 +257,8 @@ struct SyntacticCallerFallback {
             // a live call nowhere else.
             let credit = scannedAs[base] == nil ? nil : InitializerCredit(rowsByBase[base] ?? [], asked: askedByBase[base] ?? [], named: names.name(of:))
             let shown = credit.map { credit in unlisted.filter { !credit.isAnotherInitializers($0) } } ?? unlisted
+            // Beside the count by name, as many of those calls write a typealias of the type rather than its name.
+            counts.insert(contentsOf: aliasesByBase[base]?.clauses(for: byName, through: throughAlias[base] ?? [], filesCollector: filesCollector) ?? [], at: 0)
             // First, beside the count by name it qualifies: some of the calls just counted the index reads as another type's.
             counts.insert(contentsOf: readings[base]?.clauses(named: scannedAs[base] ?? base, listed: shown) ?? [], at: 0)
             let others = credit?.otherInitializersSites(among: unlisted) ?? []
@@ -282,7 +312,7 @@ struct SyntacticCallerFallback {
                     lines.append("no \(word.absent) spelled \"\(base)\" anywhere in the working tree\(forOwners)")
                 }
                 lines += reachingOthers
-                lines += unlistedLines(of: base)
+                lines += try unlistedLines(of: base, judgedBy: reach)
                 continue
             }
             let fileCount = Set(listing.map(\.path)).count
@@ -311,7 +341,7 @@ struct SyntacticCallerFallback {
             // Shown beside a list as beside none: a bare `f` or `x.f`, mostly a same-named read, may be the function
             // handed on unapplied, and an initializer's `.init call` of a type the scan cannot tell may be a call the
             // list misses, so no line writing the name is left out of the answer.
-            lines += unlistedLines(of: base)
+            lines += try unlistedLines(of: base, judgedBy: reach)
         }
         for owner in unnameable.map(names.name(of:)).sorted() {
             lines.append("")
@@ -324,6 +354,8 @@ struct SyntacticCallerFallback {
     ///
     /// Counted beside the list rather than in it: `f`, `x.f` and another type's `T.f` are spelled exactly as a same-named local, property or case is read, which over a common name would bury the calls in unrelated reads. One row per line, as the name written twice on one — `self.size = size` — is one place to look.
     ///
+    /// `dropped`, a qualified query's `T.f` sites written on another type the tree declares, are counted in the header and not listed, as the calls on other types are; `keptClauses` count those kept only because their type could not be shown to be another.
+    ///
     /// For the initializers of the type passed as `type`, they are its `.init call` calls and the `Self` calls in extensions whose type the scan cannot tell, which may be any type's; `narrowed` says they were narrowed by its initializers' labels, as `where` narrows them and `diff` does not. `grouped` lists each file's path once with its rows under it, as `where` lists every name-matched site; `diff` keeps a path on each row. `paging`, given with `grouped`, pages them by file in place of `cap`, as a no-store sweep pages every list.
     static func nameOnlyLines(
         _ written: [SyntacticCallSite],
@@ -332,18 +364,26 @@ struct SyntacticCallerFallback {
         initializerOf type: String? = nil,
         narrowed: Bool = false,
         grouped: Bool = false,
-        paging: SyntacticSweepPaging? = nil
+        paging: SyntacticSweepPaging? = nil,
+        dropped: [SyntacticCallSite] = [],
+        keptClauses: [String] = []
     ) -> [String] {
         var seen: Set<String> = []
         let sites = written.filter { seen.insert("\($0.path):\($0.line)").inserted }
-        guard !sites.isEmpty else { return [] }
-        let count = sites.count == 1 ? "once" : "\(sites.count) times"
+        // A line also writing a kept site is one place still listed, so it is not counted as dropped.
+        let droppedCount = dropped.filter { seen.insert("\($0.path):\($0.line)").inserted }.count
+        guard !sites.isEmpty || droppedCount > 0 else { return [] }
+        let places = sites.count + droppedCount
+        let count = places == 1 ? "once" : "\(places) times"
+        let narrowing = droppedCount == 0 ? [] : ["\(droppedCount) on other types dropped, \(sites.isEmpty ? "none" : String(sites.count)) kept"]
+        let counts = (narrowing + keptClauses).map { ", " + $0 }.joined()
+        guard !sites.isEmpty else { return ["but the name is written \(count) with no call\(counts)"] }
         let labels = narrowed ? " with those labels" : ""
         // A `Self(x)` in an extension of a type declared elsewhere is said apart from an implicit `.init call`: neither spells the type.
         let onSelf = sites.contains(where: \.callsUntoldSelf)
         let made = !onSelf ? "an implicit .init" : sites.allSatisfy(\.callsUntoldSelf) ? "Self(…) in an extension" : "an implicit .init or Self(…) in an extension"
         var lines = [type.map { "but \(made) is called \(count)\(labels) on a type the scan cannot tell, any of which may be \($0)'s; verify before deleting:" }
-            ?? "but the name is written \(count) with no call — a function handed on unapplied as f, x.f or T.f, or a same-named property, case or local; verify before deleting:"]
+            ?? "but the name is written \(count) with no call\(counts) — a function handed on unapplied as f, x.f or T.f, or a same-named property, case or local; verify before deleting:"]
         if grouped, let paging {
             return lines + paging.rows(of: sites) { "in \($0.enclosing)" }
         }
@@ -411,7 +451,7 @@ extension SyntacticCallerFallback {
         ///
         /// A site with no written arguments — a use rather than a call, or a reference by a bare name — is never dropped, and a reference by a compound name, `T.f(x:)`, is kept only where it spells one declaration's labels exactly, and neither is any site of a name one of whose declarations is something else: a property called through a closure it holds, or a type called as its initializer, takes labels no function signature states. A site matching none of an initializer's declared labels stays listed unless the query itself named labels: it can only be a call of an initializer the compiler wrote — a memberwise one, `init(rawValue:)`, a decoding `init(from:)` — or one inherited from a superclass, since a call matching no initializer at all would not compile; label narrowing only chooses between declared initializers otherwise. When the query does name labels, only sites matching those labels are kept, as a function's are.
         ///
-        /// A call `Self.run(x)` is kept whatever its labels wherever it is written inside a type declared as one of `owners`, the types declaring the name, generic arguments and sugar set aside: there `x` may be the instance an unapplied method runs on.
+        /// A call `Self.run(x)` is kept whatever its labels wherever it is written inside a type declared as one of `owners`, the types declaring the name, generic arguments and sugar set aside, but only where an instance method of the name is among the declarations: there `x` may be the instance an unapplied method runs on, and where every declaration is static, or an initializer, no instance can be handed over and its labels decide.
         init?(_ sites: [SyntacticCallSite], by rows: [SymbolRow], ownedBy owners: Set<String>, initializerLabelsWereNamed: Bool = false) {
             guard let declared = Self.declared(rows) else { return nil }
             let isInitializer = rows.allSatisfy { $0.kind == .initializer }
@@ -419,6 +459,7 @@ extension SyntacticCallerFallback {
             let kept = sites.filter { site in
                 guard let arguments = site.arguments else { return true }
                 if arguments.application == .mayBeUnappliedOnSelf,
+                   declared.contains(where: \.takesInstance),
                    site.enclosingTypes.contains(where: owners.contains)
                 {
                     keptWithoutMatch.append((site, Self.mayBeUnappliedOnSelf))
@@ -437,7 +478,7 @@ extension SyntacticCallerFallback {
             self.droppedAnySite = droppedAnySite
             self.keptWithoutMatch = keptWithoutMatch
             var seen: Set<String> = []
-            labels = declared.map(\.spelled).filter { seen.insert($0).inserted }.joined(separator: " or ")
+            labels = declared.map(\.labels.spelled).filter { seen.insert($0).inserted }.joined(separator: " or ")
         }
 
         /// The flag to print after a kept site's row, or `""` where nothing about it was flagged.
@@ -452,14 +493,27 @@ extension SyntacticCallerFallback {
         }
 
         /// The labels of every row, or `nil` unless all are functions, or all initializers, whose labels can be read.
-        private static func declared(_ rows: [SymbolRow]) -> [ParameterLabels]? {
+        private static func declared(_ rows: [SymbolRow]) -> [Declaration]? {
             guard !rows.isEmpty, rows.allSatisfy({ $0.kind == .function }) || rows.allSatisfy({ $0.kind == .initializer }) else { return nil }
-            var declared: [ParameterLabels] = []
+            var declared: [Declaration] = []
             for row in rows {
                 guard let labels = ParameterLabels(signature: row.signature, name: row.name) else { return nil }
-                declared.append(labels)
+                // A static or class member and a free function have no instance a call could hand them first.
+                declared.append(Declaration(labels: labels, takesInstance: row.kind == .function && !row.isStatic && row.parentID != nil))
             }
             return declared
+        }
+    }
+}
+
+private extension SyntacticCallerFallback.LabelNarrowed {
+    /// One declaration's labels, and whether a call may name it on its type and hand it the instance it runs on.
+    struct Declaration {
+        let labels: ParameterLabels
+        let takesInstance: Bool
+
+        func accepts(_ arguments: WrittenArguments) -> Bool {
+            labels.accepts(arguments, takesInstance: takesInstance)
         }
     }
 }

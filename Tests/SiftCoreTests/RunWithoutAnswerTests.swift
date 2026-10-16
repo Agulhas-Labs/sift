@@ -337,6 +337,7 @@ struct RunWithoutAnswerTests {
                 case .emptyBuildSettingsFile: "build settings file"
                 case .pathspecsRunTogether: "pathspecs run together"
                 case .sinceWithoutPathspec: "since without pathspec"
+                case .guardWithoutSetAside: "guard without set-aside"
                 case .unresolvedRevision: "unresolved revision"
                 case .notAnAncestor: "not an ancestor"
                 }
@@ -842,6 +843,46 @@ extension RunWithoutAnswerTests {
         #expect(judged.render().text.contains("  note: Tests/WidgetTests/WidgetTests.swift was also set aside, so this ran the committed test, not your edited one."))
     }
 
+    /// A display-named test is matched by its own text in an `@Test` attribute, never by its last word: a set-aside source declaring a function of that word holds no test, and a note saying the committed test ran would argue the caller out of a correct gate.
+    @Test
+    func aDisplayNamedTestDrawsNoNoteFromASourceDeclaringItsLastWord() throws {
+        let directory = try Self.directory(holding: [
+            "Sources/Widgets/Widget.swift": "public func heading() -> String { \"\" }\n",
+            "Tests/WidgetTests/WidgetTests.swift": "import Testing\n@Test(\"the widget keeps its heading\") func shoutingWorks() {}\n",
+        ])
+
+        let judged = Self.judged(
+            without: Self.run(["\"the widget keeps its heading\"": true]),
+            with: Self.run(["\"the widget keeps its heading\"": true]),
+            workingDirectory: directory,
+            alsoSetAside: ["Sources/Widgets/Widget.swift"]
+        )
+        let text = judged.render().text
+
+        #expect(text.contains("  ✘ \"the widget keeps its heading\" — passes without Sources/ too, so it pins nothing"), "\(text)")
+        #expect(!text.contains("ran the committed test"), "\(text)")
+    }
+
+    /// A display-named test whose own file was set aside still draws the note, matched by its text in the `@Test` attribute however the attribute is wrapped.
+    @Test(arguments: [
+        "@Test(\"the widget keeps its heading\") func shoutingWorks() {}\n",
+        "@Test(\n    \"the widget keeps its heading\",\n    arguments: [1, 2]\n)\nfunc shoutingWorks(count: Int) {}\n",
+    ])
+    func aDisplayNamedTestInASetAsideFileIsMatchedByItsText(declaration: String) throws {
+        let directory = try Self.directory(holding: [
+            "Tests/WidgetTests/WidgetTests.swift": "import Testing\n" + declaration,
+        ])
+
+        let judged = Self.judged(
+            without: Self.run(["\"the widget keeps its heading\"": true]),
+            with: Self.run(["\"the widget keeps its heading\"": true]),
+            workingDirectory: directory,
+            alsoSetAside: ["Tests/WidgetTests/WidgetTests.swift"]
+        )
+
+        #expect(judged.render().text.contains("  note: Tests/WidgetTests/WidgetTests.swift was also set aside, so this ran the committed test, not your edited one."), "\(declaration)")
+    }
+
     /// A test framework's import is recognised however it is spelled — behind attributes, an access level, or naming one declaration out of the module — and a module that merely begins with the framework's name is not one.
     @Test(arguments: [
         ("import Testing\n", true),
@@ -1024,7 +1065,8 @@ extension RunWithoutAnswerTests {
         alsoSetAside: [String] = [],
         newFiles: [String] = [],
         since: String? = nil,
-        selector: RunTestSelector? = nil
+        selector: RunTestSelector? = nil,
+        guards: [String] = []
     ) -> RunWithoutAnswer {
         let record = SetAsideRecord(
             id: "0123456789",
@@ -1063,7 +1105,8 @@ extension RunWithoutAnswerTests {
             buildDirectorySize: buildDirectorySize,
             buildDirectoryRemoved: buildDirectoryRemoved,
             changedTests: changedTests,
-            selector: selector
+            selector: selector,
+            guards: guards
         )
     }
 

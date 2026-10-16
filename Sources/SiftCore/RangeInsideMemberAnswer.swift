@@ -39,7 +39,7 @@ struct RangeInsideMemberAnswer {
             : range.spoken
         let header = "\(row.path) \(asked), in \(target) — \(row.kind.rawValue) — \(row.rangeDescription) (\(memberLines) lines; digest \(target) for all of it)"
         let all = Array(source[(window.lowerBound - 1) ..< window.upperBound])
-        let cap = DigestRenderer.bodyLineCap
+        let cap = DigestCaps.bodyLineCap
         if PastEndLine.applies(offset: options.offset, count: all.count) {
             let preamble = try renderer.parseErrorBanner(touching: [row.path]) + renderer.guessedModuleBanner(touching: [row.path])
             return (preamble + [header, "", PastEndLine.text(offset: options.offset, count: all.count, noun: "body lines")]).joined(separator: "\n")

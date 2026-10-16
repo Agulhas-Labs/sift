@@ -83,6 +83,18 @@ struct RunWithoutSinceAndLineTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.runLog.path), "nothing ran")
     }
 
+    /// A guard with no pathspec or line to prove against says which flag it needs, and runs nothing.
+    @Test
+    func aGuardWithNoSetAsideSaysWhichFlagItNeeds() throws {
+        let fixture = try Fixture()
+
+        let result = try fixture.sift(["run", "--guard", "theGridReflows", "--", "swift", "test", "--filter", "WidgetTests"])
+
+        #expect(result.status == 64)
+        #expect(result.stderr.contains("needs --without <pathspec> or --without-line <file:line>"), "\(result.stderr)")
+        #expect(!FileManager.default.fileExists(atPath: fixture.runLog.path), "nothing ran")
+    }
+
     /// A `--since` run interrupted mid-flight puts the committed change back, exactly as one set aside from the working tree is put back.
     @Test
     func aSinceRunInterruptedMidFlightPutsTheCommittedChangeBack() throws {

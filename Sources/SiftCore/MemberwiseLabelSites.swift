@@ -75,10 +75,10 @@ struct MemberwiseLabelSites {
         guard let arguments = site.arguments, arguments.labels.contains(label) else { return nil }
         // `Self` in an extension of a type the scan cannot tell writes no scope to resolve; one whose labels the memberwise init cannot take would not compile on the struct, so it is no call of it, but is counted where no struct asked takes it.
         if site.callsUntoldSelf {
-            return owner.labels?.accepts(arguments) == false ? .unfitOnSelf : .onUntoldSelf
+            return owner.labels?.accepts(arguments, takesInstance: false) == false ? .unfitOnSelf : .onUntoldSelf
         }
         guard let labels = owner.labels else { return .unread }
-        guard labels.accepts(arguments) else { return .unfit }
+        guard labels.accepts(arguments, takesInstance: false) else { return .unfit }
         let types = candidates[owner.type] ?? []
         guard let resolver, !site.isAttribute, !types.isEmpty else { return .passed }
         // One the index reads as another type's, or as no type's, is kept and flagged: reading a qualifier from the index alone is not sound.

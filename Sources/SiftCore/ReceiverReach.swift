@@ -39,6 +39,15 @@ enum ReceiverReach: Sendable, Equatable {
 }
 
 extension ReceiverReach {
+    /// The first entry for each line and reason, so clauses count lines as a name-only reference's kept count does.
+    static func onePerLine(_ reaches: [(site: SyntacticCallSite, reach: ReceiverReach)]) -> [(site: SyntacticCallSite, reach: ReceiverReach)] {
+        var seen: Set<String> = []
+        return reaches.filter { entry in
+            guard case let .unproven(reason) = entry.reach else { return true }
+            return seen.insert("\(entry.site.path):\(entry.site.line):\(reason)").inserted
+        }
+    }
+
     /// Why a site written on a type name is kept although the name may be another type's, each counted on the name's line in its own clause.
     enum Unproven: CaseIterable, Sendable {
         /// The tree declares no type of the receiver's name, or the site is inside a type it does not declare: a framework's type may hand on the member.

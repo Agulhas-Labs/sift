@@ -169,12 +169,14 @@ sh Benchmarks/run.sh --tasks <file> --corpus <repository>@<commit> --repeats 10
 sh Benchmarks/analyse.sh [session]               # the paired table, also written as table.md
 python3 Benchmarks/bench.py validate --tasks <file>
 python3 Benchmarks/bench.py calls <session> --task <id> --arm B   # each run's tool calls, one per line
+python3 Benchmarks/bench.py calls <session>... --split [--task <id>] [--runs]   # the session price split over its parts, per call kind
 python3 Benchmarks/bench.py compare <session>... -- <session>... --task <id> --arm B   # one arm across sessions, pooled
 python3 Benchmarks/run-compression.py report --out <out>   # see RESULTS-run-compression.md
 # ec096ea3 is a commit of the private history, absent from the public repository: save any earlier Sift.md
 cp <earlier Sift.md> .build/rule-ec096ea3.md
 sh Benchmarks/run.sh --rule-a .build/rule-ec096ea3.md --rule-b Sift.md --repeats 3   # rule vs rule
 sh Benchmarks/run.sh --mod-b Distribution/mod --repeats 3   # mod vs no mod
+sh Benchmarks/run.sh --no-mcp-b --repeats 3   # arm B: sift without its MCP server
 ```
 
 `--mod-b <dir>` turns the session into **mod vs no mod**: both arms run with sift under one rule (`--rule-b`'s),
@@ -193,3 +195,10 @@ turns the session into **rule vs rule**: arm A is installed exactly like arm B (
 index store) but with that rule, and is held to arm B's validity checks. `session.json` then records
 `rule_a_file`/`rule_a_sha256` and `rule_b_file`/`rule_b_sha256`, the table's header names both, and B minus A
 is rule B's effect against rule A's. Keep the rule file outside `.build/bench/`, which a run deletes.
+
+`--no-mcp-b` measures arm B without sift's MCP server: hooks, the `Sift.md` rule and the SessionStart primer
+stay, arm B's MCP config names no server, and lookups go through the `sift` CLI from Bash (the wrapper is first
+on arm B's PATH). Arm B is valid only if the init event lists no MCP server and no sift tool, plus the usual
+SessionStart and no-foreign-hook checks; arm A is unchanged (with `--rule-a` it keeps its server). `session.json`
+records `mcp_b: false`, `fixed_overhead_estimates` leaves out `mcp_tools`, and `reparse` reads the flag back.
+Refused with `--mod-b`.

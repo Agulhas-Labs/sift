@@ -79,12 +79,21 @@ struct WrittenArguments: Sendable, Equatable {
         return couldBeType(base) ? .mayBeUnapplied : .direct
     }
 
-    /// Whether an expression could name a type: a generic specialization, a `type(of:)` call, a `.self` member, a parenthesised expression, or a name or a member whose name starts with a capital letter.
+    /// Whether an expression could name a type: a generic specialization, a `type(of:)` call, a `.self` member, a parenthesised expression, a name or a member whose name starts with a capital letter, or an array `[T]`, dictionary `[K: V]` or optional `T?` spelling of such types.
     ///
     /// A metatype held in a lowercase name — a variable or a typealias — is spelled like any value and is not seen.
     private static func couldBeType(_ expression: ExprSyntax) -> Bool {
         if expression.is(GenericSpecializationExprSyntax.self) || expression.is(TupleExprSyntax.self) {
             return true
+        }
+        if let array = expression.as(ArrayExprSyntax.self) {
+            return array.elements.count == 1 && array.elements.allSatisfy { couldBeType($0.expression) }
+        }
+        if let pairs = expression.as(DictionaryExprSyntax.self)?.content.as(DictionaryElementListSyntax.self) {
+            return pairs.count == 1 && pairs.allSatisfy { couldBeType($0.key) && couldBeType($0.value) }
+        }
+        if let optional = expression.as(OptionalChainingExprSyntax.self) {
+            return couldBeType(optional.expression)
         }
         if let call = expression.as(FunctionCallExprSyntax.self), call.arguments.first?.label?.text == "of",
            CalleeName.base(of: call.calledExpression) == "type"

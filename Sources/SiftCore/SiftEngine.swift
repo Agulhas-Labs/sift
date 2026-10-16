@@ -342,13 +342,13 @@ public final class SiftEngine: @unchecked Sendable {
         }
         renderer.fileSource = { [repoRoot] path in try? String(contentsOf: repoRoot.appendingPathComponent(path), encoding: .utf8) }
         renderer.readsWorkingTree(under: repoRoot, enumerator: enumerator, bounds: textSearchBounds)
-        let input: SemanticInput = options.includeSemantic
-            ? whereSemanticInput()
-            : .inactive(note: "semantic disabled (--syntactic)")
+        // `--decl` never opens or asks the store, so its header is the syntactic one and carries no `semantic:` field.
+        let input: SemanticInput = options.includeSemantic && !options.declarationsOnly ? whereSemanticInput() : .inactive(note: "semantic disabled (--syntactic)")
         let output = try await renderer.render(query: symbol, semantic: input, options: options)
         var updated = freshness
         updated.semantic = output.axis
-        return Freshness.placing([memoryIndexNote], under: updated.headerLine + "\n" + output.body)
+        let header = options.declarationsOnly ? freshness.syntacticHeaderLine : updated.headerLine
+        return Freshness.placing([memoryIndexNote], under: header + "\n" + output.body)
     }
 
     /// Which tests reference the symbols a diff changed, with the arguments a runner selects them by — and never a decision about what to run.
@@ -436,7 +436,7 @@ public final class SiftEngine: @unchecked Sendable {
 
     // MARK: Semantic store (lazy — never opened for syntactic queries, Docs/Design.md §2)
 
-    private var probedStore: DiscoveredStore??
+    var probedStore: DiscoveredStore??
     private var openedSemanticStore: SemanticStore?
     /// The last open that failed, remembered so the next query does not pay for it again — for that store only, since another store is another open.
     private var semanticFailure: SemanticFailure?

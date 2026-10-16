@@ -70,6 +70,7 @@ public struct MCPToolCatalog {
                         "root": ["type": "string"],
                         "refs": ["type": "boolean", "description": "Every reference site, plus non-code mentions under not code."],
                         "files": ["type": "boolean", "description": "With refs: file paths only."],
+                        "decl": ["type": "boolean", "description": "Only where it is declared."],
                         "offset": ["type": "integer"],
                     ],
                     "required": ["symbol"],

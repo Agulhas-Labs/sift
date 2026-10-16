@@ -340,10 +340,14 @@ public actor MCPServer {
                 ))
             }
             let filesOnly = arguments["files"] as? Bool ?? false
+            if arguments["decl"] as? Bool ?? false, filesOnly || arguments["refs"] as? Bool ?? false {
+                throw MCPError(message: "where's decl: answers where \(symbol) is declared, and refs: and files: every place it is written: drop one.")
+            }
             let options = WhereOptions(
                 includeReferences: filesOnly || arguments["refs"] as? Bool ?? false,
                 offset: arguments["offset"] as? Int ?? 0,
-                filesOnly: filesOnly
+                filesOnly: filesOnly,
+                declarationsOnly: arguments["decl"] as? Bool ?? false
             )
             if let revision = try Self.atRevision(tool: "where", arguments: arguments) {
                 return try await MeasuredAnswer(text: engine.lookup(symbol: symbol, at: revision, options: options))

@@ -154,3 +154,10 @@ struct ParameterLabelsTests {
         #expect(try !labels.accepts(Self.written("gizmo.run(gizmo)")))
     }
 }
+
+private extension ParameterLabels {
+    /// Whether a call written with `arguments` can be a call of an instance method with these labels.
+    func accepts(_ arguments: WrittenArguments) -> Bool {
+        accepts(arguments, takesInstance: true)
+    }
+}

@@ -1,0 +1,358 @@
+Building for debugging...
+[Planning deferred tasks]
+[27 / 50]
+[32 / 55] Lib
+[40 / 55] Lib
+[45 / 56] LibTests-product
+[54 / 84]
+[57 / 84]
+[59 / 84]
+[61 / 84]
+[62 / 84]
+[73 / 84] LibTests-product
+[78 / 84] LibTests-product
+[80 / 84] LibTests-product
+Build complete! (2.98 secs)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.119.
+Test Suite 'All tests' passed at 2000-01-01 12:00:00.120.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite Sprocket6Tests started.
+◇ Suite Sprocket1Tests started.
+◇ Suite Sprocket4Tests started.
+◇ Suite Sprocket0Tests started.
+◇ Suite Sprocket7Tests started.
+◇ Suite Sprocket2Tests started.
+◇ Suite Sprocket3Tests started.
+◇ Suite WidgetTests started.
+◇ Test requiresOne1() started.
+◇ Test requiresWithMessage1() started.
+◇ Suite Sprocket5Tests started.
+◇ Test readsLabel1() started.
+◇ Test viaHelper1() started.
+◇ Test multiLine1() started.
+◇ Test readsLabel6() started.
+◇ Test multiLine6() started.
+◇ Test requiresWithMessage6() started.
+◇ Test requiresOne6() started.
+◇ Test viaHelper6() started.
+◇ Test requiresOne4() started.
+◇ Test multiLine4() started.
+◇ Test readsLabel4() started.
+◇ Test viaHelper4() started.
+◇ Test requiresOne0() started.
+◇ Test requiresWithMessage0() started.
+◇ Test readsLabel0() started.
+◇ Test requiresWithMessage4() started.
+◇ Test multiLine0() started.
+◇ Test requiresWithMessage2() started.
+◇ Test viaHelper0() started.
+◇ Test multiLine5() started.
+◇ Test viaHelper2() started.
+◇ Test requiresWithMessage5() started.
+◇ Test readsLabel2() started.
+◇ Test viaHelper5() started.
+◇ Test requiresOne2() started.
+◇ Test multiLine2() started.
+◇ Test requiresOne5() started.
+◇ Test readsLabel5() started.
+✘ Test requiresOne1() recorded an issue at Sprocket1Tests.swift:7:66: Expectation failed: Gizmo.soleElement(of: view, width: 393)
+↳ Gizmo.soleElement(of: view, width: 393) → nil
+↳   view → 1
+✘ Test requiresOne6() recorded an issue at Sprocket6Tests.swift:7:66: Expectation failed: Gizmo.soleElement(of: view, width: 393)
+↳ Gizmo.soleElement(of: view, width: 393) → nil
+↳   view → 6
+✘ Test requiresWithMessage1() recorded an issue at Sprocket1Tests.swift:18:69: Expectation failed: Gizmo.soleElement(of: row, width: 393)
+↳ the row exposes no single element
+↳ Gizmo.soleElement(of: row, width: 393) → nil
+↳   row → 1
+✘ Test multiLine6() recorded an issue at Sprocket6Tests.swift:11:9: Expectation failed: Gizmo.soleElement(
+                of: note,
+                width: 320
+            )?.label == "note 6"
+↳ Gizmo.soleElement(
+                  of: note,
+                  width: 320
+              )?.label == "note 6" → false
+↳   Gizmo.soleElement(
+                    of: note,
+                    width: 320
+                )?.label → nil
+↳     some → "note 6"
+✘ Test viaHelper4() recorded an issue at Sprocket4Tests.swift:19:31: Expectation failed: label(of: 4) == "x4"
+↳ label(of: 4) == "x4" → false
+↳   label(of: 4) → nil
+↳     some → "x4"
+✘ Test multiLine4() recorded an issue at Sprocket4Tests.swift:11:9: Expectation failed: Gizmo.soleElement(
+                of: note,
+                width: 320
+            )?.label == "note 4"
+↳ Gizmo.soleElement(
+                  of: note,
+                  width: 320
+              )?.label == "note 4" → false
+↳   Gizmo.soleElement(
+                    of: note,
+                    width: 320
+                )?.label → nil
+↳     some → "note 4"
+✘ Test readsLabel4() recorded an issue at Sprocket4Tests.swift:8:32: Expectation failed: Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 4"
+↳ Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 4" → false
+↳   Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label → nil
+↳     some → "Band 4"
+✘ Test multiLine1() recorded an issue at Sprocket1Tests.swift:11:9: Expectation failed: Gizmo.soleElement(
+                of: note,
+                width: 320
+            )?.label == "note 1"
+↳ Gizmo.soleElement(
+                  of: note,
+                  width: 320
+              )?.label == "note 1" → false
+↳   Gizmo.soleElement(
+                    of: note,
+                    width: 320
+                )?.label → nil
+↳     some → "note 1"
+✘ Test readsLabel0() recorded an issue at Sprocket0Tests.swift:8:32: Expectation failed: Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 0"
+↳ Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 0" → false
+↳   Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label → nil
+↳     some → "Band 0"
+✘ Test requiresOne4() recorded an issue at Sprocket4Tests.swift:7:66: Expectation failed: Gizmo.soleElement(of: view, width: 393)
+↳ Gizmo.soleElement(of: view, width: 393) → nil
+↳   view → 4
+✘ Test viaHelper1() recorded an issue at Sprocket1Tests.swift:19:31: Expectation failed: label(of: 1) == "x1"
+↳ label(of: 1) == "x1" → false
+↳   label(of: 1) → nil
+↳     some → "x1"
+✘ Test readsLabel6() recorded an issue at Sprocket6Tests.swift:8:32: Expectation failed: Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 6"
+↳ Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 6" → false
+↳   Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label → nil
+↳     some → "Band 6"
+✘ Test readsLabel1() recorded an issue at Sprocket1Tests.swift:8:32: Expectation failed: Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 1"
+↳ Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 1" → false
+↳   Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label → nil
+↳     some → "Band 1"
+✘ Test requiresOne0() recorded an issue at Sprocket0Tests.swift:7:66: Expectation failed: Gizmo.soleElement(of: view, width: 393)
+↳ Gizmo.soleElement(of: view, width: 393) → nil
+↳   view → 0
+✘ Test viaHelper6() recorded an issue at Sprocket6Tests.swift:19:31: Expectation failed: label(of: 6) == "x6"
+↳ label(of: 6) == "x6" → false
+↳   label(of: 6) → nil
+↳     some → "x6"
+✘ Test requiresWithMessage6() recorded an issue at Sprocket6Tests.swift:18:69: Expectation failed: Gizmo.soleElement(of: row, width: 393)
+↳ the row exposes no single element
+↳ Gizmo.soleElement(of: row, width: 393) → nil
+↳   row → 6
+✘ Test requiresWithMessage4() recorded an issue at Sprocket4Tests.swift:18:69: Expectation failed: Gizmo.soleElement(of: row, width: 393)
+↳ the row exposes no single element
+↳ Gizmo.soleElement(of: row, width: 393) → nil
+↳   row → 4
+✘ Test viaHelper0() recorded an issue at Sprocket0Tests.swift:19:31: Expectation failed: label(of: 0) == "x0"
+↳ label(of: 0) == "x0" → false
+↳   label(of: 0) → nil
+↳     some → "x0"
+✘ Test requiresWithMessage0() recorded an issue at Sprocket0Tests.swift:18:69: Expectation failed: Gizmo.soleElement(of: row, width: 393)
+↳ the row exposes no single element
+↳ Gizmo.soleElement(of: row, width: 393) → nil
+↳   row → 0
+◇ Test arithmetic() started.
+✘ Test requiresWithMessage2() recorded an issue at Sprocket2Tests.swift:18:69: Expectation failed: Gizmo.soleElement(of: row, width: 393)
+↳ the row exposes no single element
+↳ Gizmo.soleElement(of: row, width: 393) → nil
+↳   row → 2
+✘ Test requiresWithMessage5() recorded an issue at Sprocket5Tests.swift:18:69: Expectation failed: Gizmo.soleElement(of: row, width: 393)
+↳ the row exposes no single element
+↳ Gizmo.soleElement(of: row, width: 393) → nil
+↳   row → 5
+◇ Test passes() started.
+✘ Test viaHelper5() recorded an issue at Sprocket5Tests.swift:19:31: Expectation failed: label(of: 5) == "x5"
+↳ label(of: 5) == "x5" → false
+↳   label(of: 5) → nil
+↳     some → "x5"
+◇ Test viaHelper7() started.
+◇ Test strings() started.
+✘ Test multiLine5() recorded an issue at Sprocket5Tests.swift:11:9: Expectation failed: Gizmo.soleElement(
+                of: note,
+                width: 320
+            )?.label == "note 5"
+↳ Gizmo.soleElement(
+                  of: note,
+                  width: 320
+              )?.label == "note 5" → false
+↳   Gizmo.soleElement(
+                    of: note,
+                    width: 320
+                )?.label → nil
+↳     some → "note 5"
+◇ Test requiresWithMessage7() started.
+◇ Test multiLine7() started.
+◇ Test requiresOne7() started.
+◇ Test readsLabel7() started.
+✘ Test requiresOne5() recorded an issue at Sprocket5Tests.swift:7:66: Expectation failed: Gizmo.soleElement(of: view, width: 393)
+↳ Gizmo.soleElement(of: view, width: 393) → nil
+↳   view → 5
+✘ Test multiLine2() recorded an issue at Sprocket2Tests.swift:11:9: Expectation failed: Gizmo.soleElement(
+                of: note,
+                width: 320
+            )?.label == "note 2"
+↳ Gizmo.soleElement(
+                  of: note,
+                  width: 320
+              )?.label == "note 2" → false
+↳   Gizmo.soleElement(
+                    of: note,
+                    width: 320
+                )?.label → nil
+↳     some → "note 2"
+✘ Test requiresOne6() failed after 0.001 seconds with 1 issue.
+✘ Test requiresOne0() failed after 0.001 seconds with 1 issue.
+✘ Test multiLine1() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel0() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel1() failed after 0.001 seconds with 1 issue.
+✘ Test multiLine4() failed after 0.001 seconds with 1 issue.
+✘ Test requiresWithMessage1() failed after 0.001 seconds with 1 issue.
+✘ Test viaHelper6() failed after 0.001 seconds with 1 issue.
+✘ Test requiresWithMessage6() failed after 0.001 seconds with 1 issue.
+✘ Test viaHelper0() failed after 0.001 seconds with 1 issue.
+✘ Test requiresWithMessage4() failed after 0.001 seconds with 1 issue.
+✘ Test multiLine0() recorded an issue at Sprocket0Tests.swift:11:9: Expectation failed: Gizmo.soleElement(
+                of: note,
+                width: 320
+            )?.label == "note 0"
+↳ Gizmo.soleElement(
+                  of: note,
+                  width: 320
+              )?.label == "note 0" → false
+↳   Gizmo.soleElement(
+                    of: note,
+                    width: 320
+                )?.label → nil
+↳     some → "note 0"
+✘ Test requiresOne4() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel2() recorded an issue at Sprocket2Tests.swift:8:32: Expectation failed: Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 2"
+↳ Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 2" → false
+↳   Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label → nil
+↳     some → "Band 2"
+✘ Test viaHelper4() failed after 0.001 seconds with 1 issue.
+✘ Test requiresWithMessage5() failed after 0.001 seconds with 1 issue.
+✘ Test arithmetic() recorded an issue at WidgetTests.swift:3:31: Expectation failed: 1 + 1 == 3
+↳ 1 + 1 == 3 → false
+↳   1 + 1 → 2
+✘ Test multiLine6() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel5() recorded an issue at Sprocket5Tests.swift:8:32: Expectation failed: Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 5"
+↳ Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 5" → false
+↳   Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label → nil
+↳     some → "Band 5"
+◇ Test viaHelper3() started.
+✘ Test viaHelper1() failed after 0.001 seconds with 1 issue.
+◇ Test readsLabel3() started.
+◇ Test requiresOne3() started.
+◇ Test multiLine3() started.
+✘ Test requiresOne7() recorded an issue at Sprocket7Tests.swift:7:66: Expectation failed: Gizmo.soleElement(of: view, width: 393)
+↳ Gizmo.soleElement(of: view, width: 393) → nil
+↳   view → 7
+✘ Test multiLine7() recorded an issue at Sprocket7Tests.swift:11:9: Expectation failed: Gizmo.soleElement(
+                of: note,
+                width: 320
+            )?.label == "note 7"
+↳ Gizmo.soleElement(
+                  of: note,
+                  width: 320
+              )?.label == "note 7" → false
+↳   Gizmo.soleElement(
+                    of: note,
+                    width: 320
+                )?.label → nil
+↳     some → "note 7"
+✘ Test requiresWithMessage0() failed after 0.001 seconds with 1 issue.
+◇ Test requiresWithMessage3() started.
+✘ Test requiresOne2() recorded an issue at Sprocket2Tests.swift:7:66: Expectation failed: Gizmo.soleElement(of: view, width: 393)
+↳ Gizmo.soleElement(of: view, width: 393) → nil
+↳   view → 2
+✘ Test multiLine5() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel6() failed after 0.001 seconds with 1 issue.
+✘ Test viaHelper7() recorded an issue at Sprocket7Tests.swift:19:31: Expectation failed: label(of: 7) == "x7"
+↳ label(of: 7) == "x7" → false
+↳   label(of: 7) → nil
+↳     some → "x7"
+✘ Test readsLabel4() failed after 0.001 seconds with 1 issue.
+✘ Test requiresWithMessage2() failed after 0.001 seconds with 1 issue.
+✔ Test passes() passed after 0.001 seconds.
+✘ Test multiLine0() failed after 0.001 seconds with 1 issue.
+✘ Test strings() recorded an issue at WidgetTests.swift:4:28: Expectation failed: "a" + "b" == "abc"
+↳ "a" + "b" == "abc" → false
+↳   "a" + "b" → "ab"
+✘ Test arithmetic() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel5() failed after 0.001 seconds with 1 issue.
+✘ Test requiresOne1() failed after 0.001 seconds with 1 issue.
+✘ Test viaHelper3() recorded an issue at Sprocket3Tests.swift:19:31: Expectation failed: label(of: 3) == "x3"
+↳ label(of: 3) == "x3" → false
+↳   label(of: 3) → nil
+↳     some → "x3"
+✘ Test requiresWithMessage7() recorded an issue at Sprocket7Tests.swift:18:69: Expectation failed: Gizmo.soleElement(of: row, width: 393)
+↳ the row exposes no single element
+↳ Gizmo.soleElement(of: row, width: 393) → nil
+↳   row → 7
+✘ Test multiLine7() failed after 0.001 seconds with 1 issue.
+✘ Test requiresOne3() recorded an issue at Sprocket3Tests.swift:7:66: Expectation failed: Gizmo.soleElement(of: view, width: 393)
+↳ Gizmo.soleElement(of: view, width: 393) → nil
+↳   view → 3
+✘ Test viaHelper5() failed after 0.001 seconds with 1 issue.
+✘ Test viaHelper2() recorded an issue at Sprocket2Tests.swift:19:31: Expectation failed: label(of: 2) == "x2"
+↳ label(of: 2) == "x2" → false
+↳   label(of: 2) → nil
+↳     some → "x2"
+✘ Test requiresWithMessage3() recorded an issue at Sprocket3Tests.swift:18:69: Expectation failed: Gizmo.soleElement(of: row, width: 393)
+↳ the row exposes no single element
+↳ Gizmo.soleElement(of: row, width: 393) → nil
+↳   row → 3
+✘ Suite Sprocket0Tests failed after 0.002 seconds with 5 issues.
+✘ Suite Sprocket6Tests failed after 0.002 seconds with 5 issues.
+✘ Test requiresOne5() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel3() recorded an issue at Sprocket3Tests.swift:8:32: Expectation failed: Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 3"
+↳ Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 3" → false
+↳   Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label → nil
+↳     some → "Band 3"
+✘ Suite Sprocket4Tests failed after 0.002 seconds with 5 issues.
+✘ Suite Sprocket1Tests failed after 0.002 seconds with 5 issues.
+✘ Test viaHelper7() failed after 0.001 seconds with 1 issue.
+✘ Test multiLine3() recorded an issue at Sprocket3Tests.swift:11:9: Expectation failed: Gizmo.soleElement(
+                of: note,
+                width: 320
+            )?.label == "note 3"
+↳ Gizmo.soleElement(
+                  of: note,
+                  width: 320
+              )?.label == "note 3" → false
+↳   Gizmo.soleElement(
+                    of: note,
+                    width: 320
+                )?.label → nil
+↳     some → "note 3"
+✘ Test requiresOne7() failed after 0.001 seconds with 1 issue.
+✘ Suite Sprocket5Tests failed after 0.002 seconds with 5 issues.
+✘ Test requiresOne2() failed after 0.001 seconds with 1 issue.
+✘ Test viaHelper3() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel7() recorded an issue at Sprocket7Tests.swift:8:32: Expectation failed: Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 7"
+↳ Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label == "Band 7" → false
+↳   Gizmo.soleElement(of: Self.band(), width: Self.bodyWidth)?.label → nil
+↳     some → "Band 7"
+✘ Test requiresOne3() failed after 0.001 seconds with 1 issue.
+✘ Test viaHelper2() failed after 0.001 seconds with 1 issue.
+✘ Test strings() failed after 0.001 seconds with 1 issue.
+✘ Suite WidgetTests failed after 0.002 seconds with 2 issues.
+✘ Test multiLine2() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel2() failed after 0.001 seconds with 1 issue.
+✘ Suite Sprocket2Tests failed after 0.002 seconds with 5 issues.
+✘ Test multiLine3() failed after 0.001 seconds with 1 issue.
+✘ Test requiresWithMessage7() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel3() failed after 0.001 seconds with 1 issue.
+✘ Test requiresWithMessage3() failed after 0.001 seconds with 1 issue.
+✘ Test readsLabel7() failed after 0.001 seconds with 1 issue.
+✘ Suite Sprocket3Tests failed after 0.002 seconds with 5 issues.
+✘ Suite Sprocket7Tests failed after 0.002 seconds with 5 issues.
+✘ Test run with 43 tests in 9 suites failed after 0.002 seconds with 42 issues.
+Note: Some test targets reported failures:
+  - LibTests (Swift Testing)

@@ -71,6 +71,6 @@ struct SessionPrimerBudgetTests {
             .deletingLastPathComponent() // the repository root
         let rule = try String(contentsOf: root.appendingPathComponent("Sift.md"), encoding: .utf8)
 
-        #expect(rule.utf8.count <= 2600, "\(rule.utf8.count) bytes")
+        #expect(rule.utf8.count <= 1500, "\(rule.utf8.count) bytes")
     }
 }

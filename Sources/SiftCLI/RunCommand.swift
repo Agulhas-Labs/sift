@@ -13,7 +13,7 @@ struct RunCommand: ParsableCommand {
             commandName: "run",
             abstract: "Run a Swift toolchain command and print only what failed.",
             // Written out because the generated line draws every array option as repeatable (`<file:line> ...`), and `--without-line` is one value, refused when given twice.
-            usage: "sift run [<command> ...] [--without <without> ...] [--without-line <file:line>] [--since <since>] [--keep-without-build] [--restore] [--proved] [--coverage] [--from <from>]",
+            usage: "sift run [<command> ...] [--without <without> ...] [--without-line <file:line>] [--since <since>] [--guard <test> ...] [--keep-without-build] [--restore] [--proved] [--coverage] [--from <from>]",
             discussion: """
             Wraps `swift build`, `swift test` and `xcodebuild`, printing their errors, test failures, \
             warnings grouped by message and own summary line instead of the thousands of progress lines a \
@@ -50,7 +50,9 @@ struct RunCommand: ParsableCommand {
             pathspec set aside, then with the changes back. With --since <rev> beside it, what is set \
             aside is instead what the commits since that revision changed under the pathspec — the fix \
             is already committed — and a working tree with anything uncommitted under the pathspec is \
-            refused, since the two are never mixed in one run. The answer says, test by test, whether each \
+            refused, since the two are never mixed in one run. With --guard <test> beside it, a test the \
+            run should pass both ways, a guard against the change reaching too far, is listed as held \
+            instead of as pinning nothing, and the run exits 0 only when every guard also passed both ways. The answer says, test by test, whether each \
             fails without the change and passes with it. The changes are put back on every exit path — \
             a separate watcher process restores them if this one is killed — and checked by content hash; \
             while they are out of the tree, every `sift run` refuses, and `sift run --restore` puts back \
@@ -96,6 +98,9 @@ struct RunCommand: ParsableCommand {
 
     @Option(name: .customLong("since"), help: "Set aside what the commits since this revision changed under --without, rather than what is uncommitted: the fix is already committed. Refused when anything under the pathspec is uncommitted.")
     var since: String?
+
+    @Option(name: .customLong("guard"), help: ArgumentHelp("With --without or --without-line: name a test that is expected to pass both ways, a guard against the change reaching too far. It is listed as held, rather than as pinning nothing, and the run exits 0 only when every guard ran and passed with and without the change. A bare identifier (`name` or `name()`) matches a test by identifier, except a quoted display name; anything else matches only the name as the run printed it, with or without its quotes, and a guard matching two tests holds for neither. A test declared with a display name (`@Test(\"…\")`) is named by that text, not by its function name. Repeatable.", valueName: "test"))
+    var guards: [String] = []
 
     @Flag(name: .customLong("keep-without-build"), help: "With --without or --without-line: keep the build directory the run without the change built in, under .sift/without-build/, so the next proof of the same package or scheme builds on it rather than from nothing. Without it, that directory is removed when the run ends.")
     var keepWithoutBuild = false
@@ -188,6 +193,9 @@ struct RunCommand: ParsableCommand {
         guard since == nil || !without.isEmpty else {
             throw ValidationError(RunWithoutError.sinceWithoutPathspec.description)
         }
+        guard guards.isEmpty || !without.isEmpty || line != nil else {
+            throw ValidationError(RunWithoutError.guardWithoutSetAside.description)
+        }
         if restore {
             guard arguments.isEmpty, without.isEmpty else {
                 throw ValidationError("sift run --restore takes no command and no --without: it only puts back an earlier set-aside.")
@@ -244,6 +252,7 @@ struct RunCommand: ParsableCommand {
                 line: line,
                 since: since,
                 keepsBuild: keepWithoutBuild,
+                guards: guards,
                 runKey: { runKey(in: $0, from: workingDirectory) },
                 file: { outcome, lines, milliseconds, startedOn in
                     record(outcome, answerLines: lines, milliseconds: milliseconds, startedOn: startedOn)
@@ -667,6 +676,7 @@ extension RunCommand {
         case without
         case withoutLine
         case since
+        case guards
         case keepWithoutBuild
         case restore
         case proved

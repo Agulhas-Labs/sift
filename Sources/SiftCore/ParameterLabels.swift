@@ -55,8 +55,10 @@ struct ParameterLabels: Sendable, Equatable {
     }
 
     /// Whether a call written with these arguments can be a call of this declaration.
-    func accepts(_ arguments: WrittenArguments) -> Bool {
-        if arguments.application == .mayBeUnapplied {
+    ///
+    /// Only a declaration that `takesInstance` — an instance method — can be named on its type and handed its instance, `T.f(x)`; any other takes that `x` as its own argument, so its labels decide.
+    func accepts(_ arguments: WrittenArguments, takesInstance: Bool) -> Bool {
+        if takesInstance, arguments.application == .mayBeUnapplied {
             return true
         }
         if let callee = arguments.calleeLabels {

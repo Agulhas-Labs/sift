@@ -552,8 +552,8 @@ extension DigestRenderTests {
     func aRangeSpanningTwoSiblingsServesBoth() throws {
         let output = try Self.render("Sources/Alpha/Engine.swift:4-8")
 
-        #expect(output.contains("Alpha.Engine.start(mode:) — func — Sources/Alpha/Engine.swift:2-5"))
-        #expect(output.contains("Alpha.Engine.start() — func — Sources/Alpha/Engine.swift:7-9"))
+        #expect(output.hasPrefix("Sources/Alpha/Engine.swift lines 2-9, in Alpha.Engine — struct — :1-10 (2 declarations)\n\n    func start(mode: String) -> Bool {"))
+        #expect(output.hasSuffix("    func start() -> Bool {\n        start(mode: \"default\")\n    }"))
     }
 
     /// The verdict leads (Docs/AnswerContract.md §2): a reader who stops after the first line already knows nothing here spans the lines asked for, before ever reaching the file digest served beneath it.

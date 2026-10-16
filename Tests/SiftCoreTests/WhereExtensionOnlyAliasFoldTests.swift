@@ -133,7 +133,7 @@ struct WhereExtensionOnlyAliasFoldTests {
         ])
 
         #expect(!output.contains("nearest symbols"), "\(output)")
-        #expect(output.contains("Lib.Foundation.JSONDecoder — extension — extension Foundation.JSONDecoder — Sources/Lib/Ext.swift:3-5"), "\(output)")
+        #expect(output.contains("Lib.Foundation.JSONDecoder — extension — extension Foundation.JSONDecoder — 1 members — Sources/Lib/Ext.swift:3-5"), "\(output)")
         #expect(output.contains(":10  | _ = Dec()"), "\(output)")
         #expect(output.contains("_ = Bare()"), "\(output)")
         #expect(output.contains("1 written as Lib.Dec, a typealias naming it, folded in here"), "\(output)")

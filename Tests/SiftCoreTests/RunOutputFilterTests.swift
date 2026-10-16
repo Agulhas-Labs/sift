@@ -128,7 +128,7 @@ struct RunOutputFilterTests {
     }
 
     @Test
-    func aPassingXcodebuildRunIsTwelveLinesOutOfEightHundred() throws {
+    func aPassingXcodebuildRunIsThirteenLinesOutOfEightHundred() throws {
         let report = try TestSources.runReport("xcodebuild-test-success")
 
         #expect(report.totalLines > 800)
@@ -142,11 +142,12 @@ struct RunOutputFilterTests {
         #expect(report.warnings.count == 3)
         #expect(report.toolLog.count == 1)
         // And the answer they make is those six plus a headline, a warnings heading and a tool-log heading, a blank
-        // line above each and the receipt — twelve lines over eight hundred, which the receipt states about itself.
+        // line above each, the closing verdict line and the receipt — thirteen lines over eight hundred, which the
+        // receipt states about itself.
         let answer = RunReportRenderer(kind: .xcodebuild, workingDirectory: URL(fileURLWithPath: "/Users/dev/Gizmo"))
             .render(report, exitCode: 0, logURL: nil)
-        #expect(answer.split(separator: "\n", omittingEmptySubsequences: false).count == 12)
-        #expect(answer.contains("(\(report.totalLines) lines in, 12 out)"))
+        #expect(answer.split(separator: "\n", omittingEmptySubsequences: false).count == 13)
+        #expect(answer.contains("(\(report.totalLines) lines in, 13 out)"))
     }
 
     @Test
@@ -311,8 +312,8 @@ struct RunOutputFilterTests {
         #expect(!answer.contains("unused value 20"))
         // The five it withheld cost the answer nothing, and its receipt counts only what it printed:
         // 25 lines in, and the twenty it listed plus a headline, a heading, the withheld count, a
-        // blank line, the summary note and the receipt itself.
-        #expect(answer.contains("(25 lines in, 26 out)"))
+        // blank line, the summary note, the closing verdict line and the receipt itself.
+        #expect(answer.contains("(25 lines in, 27 out)"))
     }
 
     @Test

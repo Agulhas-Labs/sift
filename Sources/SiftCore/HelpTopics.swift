@@ -4,7 +4,7 @@
 
 /// Reference material for rare moments, served by `sift help <topic>` rather than carried in the always-loaded rule.
 ///
-/// `Sift.md` is a path-scoped rule that reloads on every `.swift` file an agent opens, so a paragraph that only ever matters once a build has already gone red — reading a failure block, `flakes`'s counts, the two parse-error banners, root resolution — was being re-sent on every reload whether or not this turn needed it. Moving it behind a command a caller reaches for only when the moment actually arises is what this type is for; `Sift.md` keeps one line per topic naming when to pull it.
+/// `Sift.md` is a path-scoped rule that reloads on every `.swift` file an agent opens, so a paragraph that only ever matters once a build has already gone red — reading a failure block, `flakes`'s counts, the two parse-error banners, root resolution — was being re-sent on every reload whether or not this turn needed it. Moving it behind a command a caller reaches for only when the moment actually arises is what this type is for; `Sift.md` names `sift help`, which lists the topics.
 ///
 /// Carried the same way ``SessionPrimer``'s banner is: literal Swift string content, compiled straight into the binary rather than read from a file on disk. The binary reaches every machine that installs the rule; a checkout of this repository does not, so a topic stored as a file beside the source would answer on the machine that built it and nowhere the rule was actually installed.
 public struct HelpTopics {
@@ -68,6 +68,8 @@ public struct HelpTopics {
         must never be given for, so the fallback fires and the output can be *thousands* of lines longer than \
         a filtered one — the one direction this command otherwise never goes. Read that as the tool saying it \
         could not name what went wrong, not as a filter that failed.
+
+        **An answer with no `totals:` line closes on `verdict: ` and its headline** once its content runs to three lines, just above `raw:`, so a `| tail -3` keeps the verdict.
 
         **A plain `swift test` is checked against the tests the index declares** — an unfiltered, serial \
         `swift test` of a package, at the repository's root or nested in it (`--package-path` or its own directory), carries one more line under `totals:`, \
@@ -367,7 +369,9 @@ private extension HelpTopics {
         one line per file, not just the calls (a protocol's conformances: counted, listed as conformers). The store records code occurrences only, so the doc \
         comments, strings, Markdown lines and file names naming the symbol come after the code sites, \
         under `not code`. For only which files, `where --files` (`files: true` on the MCP tool) lists \
-        the files the sweep names, one row each, with counts.
+        the files the sweep names, one row each, with counts. For only where it is declared, \
+        `where --decl` (`decl: true` on the MCP tool) prints the declarations and nothing else, \
+        without asking the index store.
 
         **`where` on a property lists its reads and writes, not its callers.** A `var`, a `let` or a \
         subscript is read and written through its accessors, never called, so the store has no call to \

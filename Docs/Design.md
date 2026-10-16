@@ -212,7 +212,7 @@ notice — worded for one, it would tell a literal reader the others are *not* f
 the repository holds a parse error at all, even at a count of zero, which is the worst case rather than
 the exempt one.
 
-A `where` that finds no declaration for a name that is the basename of an indexed Swift file adds one line after `no declarations found`, `no declaration named <Name>; a file has that name: digest <path>`, so the file is one call away; with no such file it adds nothing.
+An answer that finds no declaration for a name that is the basename of an indexed Swift file names that file in one line, `no declaration named <Name>; a file has that name: digest <path>`, so the file is one call away (under `--at` the files are the revision's indexable Swift paths as git lists them, since the snapshot parses only the files that spell the name and so lacks a file of extensions, and the command carries the revision as the query wrote it, `digest <path> --at <rev>`, because the working tree's file may differ or be gone); with no such file it adds nothing. The class is every answer whose headline is that the name is declared nowhere, not a site list: `where`'s `no declarations found` and its `no exact match; nearest symbols:`, and `digest`'s `no symbol named <Name> in the index` and its `no type named <Name>; nearest symbols:`. The name matched is the query's base name, after any module or type qualifier, and a name the index declares as anything at all (a typealias, a function, a variable, an enum case) is not declared nowhere, so its answer carries no line. After a bare absence the line follows it. Before a nearest-symbols list it leads, since a fuzzy candidate is not the declaration asked for and a file named exactly the query is the likelier target: a `GizmoTests` suite listed alone would send the reader to the tests and leave `Gizmo.swift` to another call. The line points; it serves nothing, so a digest that carries it still resolved nothing (`DigestMiss`).
 
 **List or count, by one rule:** the notice lists the affected files where it stands alone, and counts
 them, pointing at `sift status`, where a scoped banner is already present and a list would nest inside it.
@@ -1003,7 +1003,7 @@ it counts failed to parse.
 
 ```
 tree: Orchard  head: a1b2c3d  clean  semantic: fresh            where (and status, affected)
-tree: Orchard  head: a1b2c3d  clean                             digest
+tree: Orchard  head: a1b2c3d  clean                             digest, where --decl
 tree: Orchard  source: live                                     search, strings
 tree: Orchard  at: HEAD~1 = c7933296 (syntactic, from git)      any --at answer (unchanged)
 ```
@@ -1404,7 +1404,15 @@ cited, so a following ranged Read of the same lines is not needed. One line is t
 question — which function is this in — and serving a 43-line function whole answered it with ~3,800
 characters where the name and a few lines were wanted (#485). A range of two or more lines keeps the rule
 before this one, since the asker named the extent, and so does `Type.member`. A doc-comment line
-belongs to the declaration beneath it, and rows sharing one range (cases packed on a line) are served once. Lines inside a
+belongs to the declaration beneath it and is served with it where the range covers it: a block starts at the
+first of its doc-comment lines the range reaches. Rows sharing one range (cases packed on a line) are served
+once. **Lines resolving to two or more declarations are served as one stretch of the file as written** where
+that stretch — from the range's first line, or the first declaration's where it starts above it, to the
+range's last, or the last declaration's end where it runs past it — is within the 60-line source floor: doc
+comments, blank lines and the comments between declarations included, under one header naming the lines, the
+type they are in where they share one, and how many declarations they hold. A block per declaration spent
+more on headers than on six one-line properties cited as an 11-line range, and left out their doc comments,
+which were what was asked (#846). Lines inside a
 container that none of its members reaches name the nearest members before and after with their ranges,
 and serve the container itself only when it is within the 60-line source floor. When no declaration
 reaches the lines at all, the file's own digest carries one line saying so. An offset pages one
@@ -1429,6 +1437,28 @@ to the containers before the page is cut, so ranking can never disown a member r
 found: an extension stored under its whole dotted path answers to that path or any suffix of it, a type
 nested inside such an extension answers through it, and `Module.Type` names the same type `Type` does.
 `digest` ranks by the same rule.
+
+**A type's extensions are listed once.** `where <Type>` prints an extension the name lookup found as a row
+under `declarations`, so the `extensions of <Type>` block that follows does not print it again (#818). Row
+identity decides, not spelling: the block lists exactly the extensions whose rows the declarations section
+did not print. In practice those are rows past that list's cap and extensions found by another spelling
+(`extension Gizmo<Int>`, `extension App.Gizmo`), which name lookup does not return. Every `extension` row
+under a single-owner `declarations` heading carries its member count after its kind, whether or not a block
+follows: `App.Gizmo — extension — 8 members — Sources/Gizmo.swift:66-257` (in the full form, after the
+signature). The compact form prints no signature, so a compact extension row keeps after its kind what the
+block printed after the name: its access, the conformances it adds and its `where` clause (`App.Gizmo —
+extension (public) (: Equatable) where T: Equatable — 1 members — …`). Under `--refs` a name several owners
+declare is listed without collapsing, and its extension rows carry their counts and marks the same way. A row the block would have marked `may extend another module's Gizmo` carries that mark on its
+declarations row instead, and one `ExtensionPlacement` places on another type is marked `— extends another
+module's Gizmo` there, so leaving the block never drops the only sign that a row may not be this type's. The
+block's heading counts every extension and says how many are under declarations when any are (`extensions of
+Gizmo (12, 10 under declarations):`); with nothing left to list there is no block, and the `declarations (N)`
+heading counts them. The block keeps its 40-row cap and ends with `truncated: K more extensions` past it, and
+a declarations list cut by its cap says how many of the cut rows the block lists (`truncated: 60 more
+declarations, 40 of them under extensions of Gizmo`). The answer for a name several owners declare is
+unchanged: it prints no block. The floor notice keeps its wording: it covers the extension count wherever
+the heading prints one. In the 0.1.5 benchmark 24 of 43 `where` answers repeated every row this way, 22% of
+the 6,291-character answer one chained task opened with.
 
 **`--at <rev>` (on `digest` and `where`, and `at` on both tools) answers about a past commit, and its
 freshness reading is different in kind: syntactic, against a revision.** Review asks structural questions
@@ -1570,6 +1600,8 @@ protocol requirement's hits are headed "implementations", since the relation cov
 class overrides; emptiness is one summary line.
 
 `--files` is the files-only form of that sweep (`where X --files`, `files: true` on the MCP tool; it implies `--refs`), for the question "which files contain X", where the per-site rows are most of the answer's size and none of what is asked. **The invariant:** no file the full `--refs` answer names, on any of its pages, is missing from its files: declaration and extension files, every reference row's file, every name-matched row's file (a type's uses by written name, a member's or caller's name-matched sites and the ones written with no call, a property wrapper's `@T` attribute sites, an undeclared initializer's sites), every `not code` row's file, the `file names:` entries, and the files a `not in the build` or `new since last build, not in the store, mention the name:` line names. One render of the sweep's first page carries a `WhereFilesCollector`, and each section records its whole list into it before any cap or page cuts the list; no answer text is read back. Where `--refs` truncates a list without paging it (a type's uses by written name past 40 files, `truncated: N more files — grep for the name to list them`, or past 30 lines in a file, `+N more`; a name-matched block past its call-site cap), `--files` lists more files than `--refs` shows, so `--refs`'s files are a subset of `--files`'s, and the extra ones reconcile against the section totals `--refs` prints. One row per file, sorted by path: `  <path> (<code lines>, declares, not code <N>)`, where the code count is the distinct lines the `--refs` block counts, `declares` marks a file holding a declaration or extension of the symbol, a file listed only under `file names:` reads `(file name)`, and a file changed since the last build keeps its `(file changed since last build)` mark. The heading `files naming <qualified> (<N> files: <a> with code sites, <b> with not-code mentions[, …]):` keeps what the `--refs` heading says of drift and incompleteness (changed since last build, macro-generated lines not listed, `$flag` siblings, `by written name` where a name-matched section listed a file, and `N more files holding the name not scanned` where a mentions scan counted files it did not read), so the view never reads as complete where the sweep would not. Dropped: the declarations section (only where the query resolves to one owner; several owners keep it, it is their narrowing), the `used by` line, the per-site rows and the `not code` rows. Kept: the tree header and every line that says the answer is degraded or incomplete (`UNAVAILABLE`, the mode line, `references:`, the `new since last build` line). Paging: one row per file, `WhereFilesCollector.filesListCap` (100) per page, with the sweep's `truncated: N more files — pass offset K to continue` marker and the same offset. Where the `--refs` answer names no file or is no sweep (a bare name answered with its owners' declarations, `--syntactic`, `--at`, no store and no stand-in, UNAVAILABLE), `--files` returns exactly what `--refs` returns. The hook's in-place answers (`standsInForSearch`) are untouched. (#791)
+
+`--decl` is the declarations-only form of `where` (`where X --decl`, `decl: true` on the MCP tool), for the question "where is X declared", where everything after the declarations block is most of the answer's size and none of what is asked. A protocol's plain answer on the benchmark corpus ran 4,878 characters (its declarations, every use, its extension, 18 conformers and the file accounting) where a grep for `protocol X` answers in about 50 tokens, and the lookup cost 34% more than grep at medium effort, 36% at high. A throwaway build of this view took it from about 2,700 tokens to about 270 (−2,141 and −2,243 per run, paired from one checkout), and agents passed the flag in 12 of 12 runs from the primer's bullet alone (#823). **It never opens or asks the index store**: every line it prints comes from the syntactic index, so its header is the one `digest` prints, with no `semantic:` field (a field that cannot vary measures nothing), and no line about the store follows it (no degraded note, stores note, project hint or store pointer); a store that is warming, failing or missing changes nothing in it, and the CLI pays no store open. An `--at` answer keeps its own header. **The view**, in order: that header; the lines under it that qualify the syntactic index (`index: in memory`, an `--at` answer's parsed-files line, and the parse-error banner and floor note, since a file the parser could not finish can hide a declaration); the declarations block as a plain `where` prints it (the heading, the rows with an extension's member count and marks, the compact form's `signatures:` line); for a `T.init` query, the `declared with no init of their own (K):` block, its heading, rows and provenance lines without its call sites; and one line naming what it left out, `` `where <query>` without --decl covers its uses, extensions, conformers, callers and overrides. `` The renderer stops there; no answer text is read back or cut. **A block cut by its cap** keeps its `truncated: N more declarations` line and points on from it, since `--offset` does not page it: where the plain answer's tail would name rows its extensions block lists, the line ends `— where <query> lists` and that tail's clauses (`truncated: 60 more declarations — where Gizmo lists 40 of them under extensions of Gizmo`). **A bare name several unrelated owners declare** prints the same plain block, not the per-owner form: the per-owner form stands in for the use listings, `--decl` lists none, and each row's module-qualified name resolves as a query of its own. **An initializer the type does not declare** keeps its declarations and its provenance sentence and leaves out its call sites; the sentence drops its clause about them (`which the calls below reach`, `the calls below reach …`), and the pointer line follows. **Answers that never reach the declarations block** (a miss, `could not resolve the path`, the nearest symbols, a `deinit`'s answer) keep their bodies under the view's header, with no store pointer and no pointer line: each already is the declaration answer, or its absence. **Beside other flags:** `--at <rev>` answers the same view of that revision, since "was X declared at base?" is a declaration question. `--refs` and `--files` are refused beside it, on the CLI as `--decl answers where <query> is declared, and --refs and --files every place it is written: pass one.`, and on the MCP tool, only where either is `true`, as `where's decl: answers where <query> is declared, and refs: and files: every place it is written: drop one.` An `--offset` has nothing to page and is named unused after the pointer line, as in any answer with no store and no paged list; `--syntactic` still answers from the source in memory. **Left as they are:** the hook's in-place answers (`standsInForSearch`) never take the view; the hook's suggestion for a declaration-shaped search still names a plain `where X`, and a CLI call carrying a flag still does not count as following one (`IndexSuggestion.callsMade`), a follow-up of its own (#825); `LoggedLookup` and the usage log record no flags, so adoption is read from transcripts, where `audit --verbs` gives `where --decl` its own row (#824). **Where it is named:** the MCP parameter's description is `Only where it is declared.`, and the tool's description is unchanged; the primer's `where` bullet reads `definition (--decl for only that), callers, conformers, overrides`, the wording measured; the agent rule's `where` row adds, beside its `--files` clause, `` `where --decl` when the question is only where it is declared ``, unmeasured.
 
 **`--refs` lists, after the code sites, the places a rename must change that are not code** (#719). The same
 trial renamed `Gizmo`: `--refs` gave 90 code lines in 29 files and said it skipped comments and
@@ -1792,6 +1824,15 @@ import, never the path`:
   past it. Under `--refs` the sweep stays the rename view, so the folded lines are not in it and the
   verdict names the alias's own sweep instead. A `typealias Pair = (Gizmo, Widget)` names the type without
   aliasing it, and its uses fold in too, worded "a typealias naming it".
+  With no index store, an alias's name is folded in only where it means that alias: a type or function
+  around the site that declares its own of the name is what the name means there, so the line is counted
+  apart with the rule said, as a bare use of the type's own name is. Where the scope cannot tell (a
+  qualifier, a supertype outside the index, a body's own declaration, two declarations at one level, a
+  capped chain), the line is kept, worded as not proven to name the type. The chain follows a typealias
+  declared in a type that writes a bare name only where that name, looked up from the alias's own scope,
+  reaches the path it folds against: `typealias Bin = Crate` inside a type that declares its own `Crate`
+  names that one, so it is no alias of the type; where the scope cannot tell, the alias is kept, worded as
+  not proven to name it.
 - **A typealias declaration of the type is not a use of it**, and its line is excluded like an `extension`
   header: the alias is dead exactly when the type is unless something uses the alias, which the fold has
   counted. How many lines went out on that ground is said. A type whose every reference is its own
@@ -2241,6 +2282,23 @@ callee is spelled with compound labels equal to one of theirs. Overloads keep wh
   `Box.init call` handed on unapplied is a site; the type written with no call is not, nor is an `@Box`
   that is no property wrapper (a result builder, a macro such as `@Entry`) or a qualifier naming another
   module. The enumerated forms and the wrapper machinery live in the scanner's doc comments and tests.
+- **A call written through a typealias of the type is the type's initializer's** (#837): with no store,
+  `where Box.init` also lists `Crate(x)`, `Crate.init(x)` and `.init(x)` where the declared type is
+  `Crate`, for each `typealias Crate = Box` the index holds, followed through aliases of aliases as the
+  type's own answer follows them and narrowed by labels as a direct call is; the count line says how
+  many, in the words of that answer's fold (`2 written as App.Crate, a typealias naming it, folded in
+  here`). A generic alias (`typealias Crate<T> = Box`, called `Crate<Int>(x)`) or one handing the type
+  generic arguments (`typealias Crate = Box<Int>`) still names it and is followed. An alias that builds a
+  type from it (`[Box]`, `Box?`) builds that type instead and is not followed; one the index cannot see (in
+  a function body, or another module) stays unseen, as for the type. The same holds where `Box` declares no
+  init of its own (`declared with no init of their own`): `Crate(v: 1)` reaches the memberwise init the
+  compiler writes, and a call through an alias is kept whatever its labels, as a direct call is, since the
+  type may take an initializer the index cannot see (an `OptionSet` takes its array-literal initializer from
+  `SetAlgebra`). A call through an alias's name is read by the scope it is written in,
+  as the type's own answer reads a use: one inside a type or function that declares its own of the name is
+  that declaration's, so it is dropped and counted (`1 written as "Crate" bare inside a type that declares
+  its own "Crate", which is what the name means there, dropped`), and one whose scope cannot tell is kept,
+  worded unproven.
 - **`Self(x)` and `Self.init(x)` are calls of the innermost type around them** (#496): inside `Box`, a
   closure in it or an extension of it, `Box.init`'s; inside `Box.Inner`, `Inner.init`'s, never `Box`'s. In
   an extension of a type its file declares as no struct, class, enum or actor (a protocol's, or one
@@ -2311,8 +2369,13 @@ callee is spelled with compound labels equal to one of theirs. Overloads keep wh
   initializer on its type's name the same way, unnarrowed.
 - **The receiver is judged only to keep a site.** A call that may be a method named on its type and given
   only its instance (the callee of another call, as in a curried `T.m(x)(…)`, or one unlabeled argument on
-  a member of something that may be a type) is kept whatever its labels; `Self.m(x)` is kept only inside a
-  type declaring the method. Otherwise the receiver drops nothing, since a written type in front of the
+  a member of something that may be a type, which includes an array, dictionary or optional type spelled
+  `[T]`, `[K: V]` or `T?` whose parts may be types, as in `[Int].chunked([1])` (#836), though not a literal
+  of values such as `[1]`) is kept whatever its labels; `Self.m(x)` is kept only inside a type declaring the
+  method. Only an instance method can be given its instance that way (#831): a static or
+  class member, a free function or an initializer takes `T.m(x)`'s `x` as its own argument, so where no
+  declaration of the name is an instance method such a call is judged by its labels, and one leaving out a
+  parameter with no default that is not variadic (`Other.of(x)` for `of(_:census:)`) is dropped. Otherwise the receiver drops nothing, since a written type in front of the
   call can be a subclass, a typealias or a protocol that reaches the member, and only the store resolves
   which; a label is a fact of the declaration. **Access control is the one exception, and it rests on the
   language rather than on the receiver**: a `private` or `fileprivate` member can be used only in the file
@@ -2399,7 +2462,13 @@ callee is spelled with compound labels equal to one of theirs. Overloads keep wh
   same-named local or property and is not listed; `where` counts and shows them, one row per line, after
   the list of calls or, where nothing is listed, after the "no call spelled" line, so no line writing the
   name leaves the answer and a function reached only that way never reads as unused, in `sift diff` as
-  in `where`. With a store, a function's callers are its `ref` occurrences, not
+  in `where`. Under a qualified query `where` judges a `T.f` or `T.f(x:)` handed on by its `T` exactly as
+  it judges a call on `T` (#834): one on another type the tree declares is that type's own, so it is
+  dropped and counted on the line opening those uses (`but the name is written 20 times with no call, 2 on
+  other types dropped, 18 kept, 17 on tree types out of the site's sight (Widget ×17)`), and one whose `T`
+  the check cannot show to be another (a typealias, a subtype, a type the tree does not declare or does
+  not declare in the site's sight) is kept and counted by its reason. A bare `f`, an `x.f`, `self.f` and
+  `Self.f` are written on no type and are never dropped this way. With a store, a function's callers are its `ref` occurrences, not
   only `ref|call`; one with no call is marked `referenced, not called`, and a caller folded to one row
   carries that mark only when none of its sites calls (`called and referenced` when some do).
 - The name's line says what ran and what it dropped (`"run" (477 call sites by name, 16 with the labels
@@ -2623,7 +2692,12 @@ query** — the whole answer in a CLI or tool repo with no catalog — each name
 it (from a fresh parse, never the index's stored ranges) and its `file:line`, capped at 20 sites.
 Production sites are listed and test sites (a file importing a test framework, the split `where` makes)
 are counted per file on one `in tests:` line, so fixtures never spend the cap; a query matching only test
-sites lists them. Only text inside a literal counts, comments excluded, and an interpolated expression's
+sites lists them, unless the interpolation section below lists a production site matched on two or more of
+the query's words: that site is the code that prints the text, and the test literals spelling it whole are
+copies of its output, so the plain section counts them on its `in tests:` line and lists none (#803, where
+the producer of `the conformance\(…) listed below` came after 20 test literals). A production site matched
+on one word does not count here: it is a guess at the producer, and the whole-query test literals are the
+better evidence of where the text is printed. Only text inside a literal counts, comments excluded, and an interpolated expression's
 source is never read as wording — though a query may cover the place an interpolation stands, below.
 Wording a `+` builds — `"the build did " +` on one line, `"not complete"` on the next — is held by no
 literal, so a **run of plain literals joined by `+`** (closed, with no interpolation, across lines, any
@@ -2686,7 +2760,7 @@ shown from its start, truncated at the display cap. **When the section would lis
 it has no heading** (an empty heading is not an answer): the count alone is one line saying the matches
 were around interpolations, `36 lines match it around interpolations on only one word of literal text,
 …`. An answer the plain section already gets right gains no line at all: a plain literal spells the query
-whole, so the one-word matches are counted only when no plain literal answered (a plain section listing only test
+whole, so the one-word matches are counted only when no plain literal answered (a plain section holding only test
 sites counts as an answer: rare words are still listed there, and only the count of common ones goes) (#800, where five calls'
 literal rows answered and the count, on words like "from" 76, never was). `no Swift string literal
 contains it either` still precedes the count whenever no catalog entry, plain literal or listed match
@@ -2886,6 +2960,13 @@ vestigial` (openings match closings). Only the process-died shape can appear bes
 which prints solely where a closing is owed and missing. A `swift build` or `xcodebuild` answer carries no
 `totals:` line at all.
 
+**An answer with no `totals:` line closes on its verdict said again, once its content runs to three lines.**
+A build, a linter, an `xcodebuild` run whose log held no test tally and a selector that matched nothing end
+their content, directly above the receipt, on `verdict: ` and the headline exactly as line 1 prints it, with no
+counts added. A shorter answer already has its headline within its last three lines, so it carries no such
+line. The reason is a gate's `| tail -3`: a build with warnings listed two of them and the receipt, and the
+verdict, which is only the first line, was gone; learning whether it passed took a second build (#794).
+
 **Its word is the verdict's, and both frameworks are counted under their own names.** The word after the
 glyph is the run verdict's — never a tally's own `passed`, which speaks only for Swift Testing's half of
 one process: a package whose `XCTestCase` failed while its `@Test` passed closes on `Test run with 1 test
@@ -2966,9 +3047,11 @@ executed no test exits 4 for its zero, not for this line). That run, its every c
 reconciled as zero reported, `inventory: 3 declared, 0 reported — 3 never reported: …`, rather than refused
 as a log carrying no test line; only `--against` handed a file with no test line refuses it. A run of any
 other set prints nothing (filtered, skipped, `--parallel`, a nested package, `xcodebuild`). A run in scope
-that could not be checked prints `inventory: not checked — …` with the reason: no index (a run never builds
-one), an unreadable inventory, every declared test lifted out of the counts, or more than 20 s to bring the
-index up to date and reconcile. That budget is a guard, not the expected cost.
+that could not be checked prints `inventory: not checked — …` with the reason: an unreadable inventory,
+every declared test lifted out of the counts, or more than 20 s to bring the index up to date and reconcile.
+A checkout with no index yet has one built inside the same budget: a cold build of about 2,000 files takes
+under a second, while leaving it unbuilt made every gate in a fresh worktree run its suite twice (#752). That
+budget is a guard, not the expected cost.
 
 **A `swift test` is read with its event stream beside its console.** SwiftPM relays
 `swiftpm-testing-helper`'s output, and under load whole `✔ Test … passed` and `✘ Test …` lines go missing
@@ -2983,6 +3066,21 @@ stream, and nor does it for a repeated run (`--maximum-repetitions`, `--repeat-u
 one ending per test however many iterations the stream ended it in. Nothing is asked for where the stream cannot be had: `swift test list`, a caller who named a stream
 of their own, a toolchain that offers no option; and an XCTest-only run's stream declares no test, so its
 answer is the console's alone.
+
+**An `#expect` written over several lines is read as one expression** (#829). Swift Testing prints it as
+written, in the issue line and again in each `↳` expansion beneath it, so a failure's message read one line
+at a time stopped at `Expectation failed: Gizmo.soleElement(` and the rest of the expression became its note.
+A Swift Testing issue line whose message's brackets do not balance (`(`, `[`, `{` against `)`, `]`, `}`,
+outside string literals, escaped quotes included) carries on across the indented lines directly beneath it
+until they do; a `↳` line that does not balance carries on the same way, its depth spaces kept as the note
+keeps them. Each continuation is joined trimmed, a space between pieces but none after an opening bracket
+or before a closing one, so the message reads as the one-line spelling, `Expectation failed:
+Gizmo.soleElement(of: note, width: 320)?.label == "note 0"`, and the `↳ … → false` beneath it merges into it.
+Joining stops at a line that is not indented, at a line the filter reads as its own (a `↳`, an event,
+XCTest's counter), and at the note's twelve-line cap; what was joined is kept, balanced or not, and that line
+is read as before. A balanced message is read exactly as before, a colon-opened list beneath it included.
+The message comes from the console under `swift test` as well, so the live answer and a console-fed fixture
+read alike.
 
 **A test whose own result line was lost is not called unreported.** One green run of this repository's
 suite printed a `started.` line and no result line for 90 tests, while each of their suites printed its
@@ -3033,7 +3131,22 @@ MCP tool or `tools/list` entry changes.
 **A run that failed for one reason leads with that reason, and states it as a consistency rather than
 as a cause.** Where more than half a run's failures read one and the same expanded value (an empty string,
 an empty array, the same timeout sentence) the answer names that value and its count above the signatures,
-which a census of signatures structurally cannot see, since a signature elides every literal. If five
+which a census of signatures structurally cannot see, since a signature elides every literal. **The values
+are read where the framework printed them** (#768): inside the message's parentheses in the older inline
+format, and on Swift 6.4 from the `↳` lines beneath the issue, one expansion per line, starting at the line
+that repeats the message's own expression up to its arrow, the first one outside a string literal (#832). A
+`↳` line above that one is the author's comment and is never read, an arrow in it included. That first
+expansion's `true` or `false` is the failed expectation itself rather than a value it read, so it is not
+counted (counted, `false` would lead every run of failed comparisons); a whole expression reading anything
+else, a `#require`'s `nil`, is the read. An expansion that only restates an operand the source wrote is not a
+value read either, since Swift Testing expands the expected side of a comparison too (`some → "ok"`,
+`Optional("ok") → "ok"`, `.none → nil`); counted, it named the expected value over the `nil` every failure
+read. **An expression restates when it names nothing but literal syntax**: past its string literals without
+an interpolation (regular, raw and multi-line), it may hold only numeric literals in any Swift spelling, the
+words `true`, `false`, `nil`, `some`, `none` and `Optional`, implicit members with no receiver (`.blue`), and
+operators, brackets, commas and colons. Any other identifier is a read, and so are an interpolation and an
+explicit type member (`Color.blue` reads real state). The known limit: a local named `some` is taken for the
+word and loses its read. If five
 further markers all hold — the value empty, read as the *subject* of most failures sharing it, by an
 expression naming an accessibility read, on a simulator this run's own restore found the preference
 switched off on, spread over more files than the block illustrates, and landing in nothing the working tree
@@ -3472,7 +3585,7 @@ number. It takes no range and no `--member`.
 this tree), and beside `--without`, `--without-line`, `--restore` or `--proved`; `--from` is refused without
 `--coverage`, and a `--from` that names no commit is refused too.
 
-### `run --without <pathspec>… [--since <rev>] -- <tests>`
+### `run --without <pathspec>… [--since <rev>] [--guard <test>]… -- <tests>`
 
 The proof a fix owes — a test that fails without it — in one call. The named tests run with every
 uncommitted change under the pathspec set aside; the changes are put back and checked; the tests run
@@ -3535,6 +3648,33 @@ the run without the change)`, or `set aside as \`_ = <name>\`` for the rewritten
 a path outside the repository, a missing or non-regular file, a line number out of range, a blank line, and
 a line that already opens with `//` or `/*` are refused with exit `2`; a malformed value or the flag beside
 `--without`, `--since`, `--restore` or `--proved` is a usage error, exit `64`.
+
+**`--guard <test>` names a test the proof expects to pass both ways.** A negative gate often keeps a test
+beside the pinning ones on purpose, to show the fix does not reach too far; without the flag it reads as
+"passes without the change too, so it pins nothing", the headline turns `✘`, and the run exits `1` though every
+test did what the gate wanted. The flag repeats, and without `--without` or `--without-line` it is a usage
+error (exit `64`), like `--since` without `--without`. A guard written as a bare identifier (letters, digits and `_`, then optionally `()`) matches a printed test by its
+identifier (`name()`, `Suite.name` and `-[Suite name]` all reduce to `name`), and only where the printed name is not
+a quoted display name; any other guard matches only a printed name equal to it as written, or once surrounding double
+quotes are added or removed. A test declared with a display name (`@Test("…")`) is named by that text, not by its
+function name. A guard that matches two or more distinct printed names is ambiguous: it holds for none, those tests
+are judged as if no guard named them, and its own line reads `⚠ <guard> — named by --guard, but it matches <n> tests
+(<up to three names>); name the one meant as the run printed it`. A pattern that also caught a test meant to pin
+would hide the one failure this gate exists to show. Where the run without the change
+compiled, a matched guard that passed both ways is listed `✔ <name> — a named guard: passes without <paths> and
+with it`; one that reached both runs and did not pass both is `✘ <name> — named as a guard, but <before>
+without <paths> and <after> with it`, with the failure detail of the run with the change where there is one; one
+absent from a run is undecided, its sentence prefixed `named as a guard; `. Where the tests did not compile
+without the change every test keeps today's judgement. A guard that matched no test either run printed gets its
+own line after the tests', `⚠ <guard> — named by --guard, but no test of that name ran`, and the answer is not
+proven (an ambiguous guard counts in the headline's total and not as holding, as an unmatched one does). A matched guard is never folded into the untouched count, whether or not the change wrote it. The
+headline's first clause counts only the tests that are not guards and ends with a clause for the guards (`; 1
+named guard passes both ways`, or `; 1 of 2 named guards passes both ways` when not all hold; one that named no
+test counts in the total only); its glyph is `✔` only when every other test pins and every guard matched and
+held, `✘` when any listed test is `✘`, `⚠` otherwise. Where every test left is a guard, the headline reads `⚠ no
+test but the named guards ran — <k> of <g> named guards pass both ways; nothing was proven`. The exit is `0`
+only when at least one test that is not a guard exists and all of those pin, and every guard matched and held.
+The `+N more` tail counts held guards apart from the tests that do not pin.
 
 **Never check, then write.** Every step that could replace or remove something at a user's path — setting
 aside and restoring alike — goes through an operation that cannot do it silently: an exclusive rename
@@ -3709,8 +3849,8 @@ as tests failing one run in two.
 
 | Code | Means |
 | ---- | ----- |
-| `0` | Proven: every named test failed without the change and passed with it, both runs on one commit, counted over the tests left after the fold. |
-| `1` | Not proven: a test pins nothing, fails both ways or breaks with the change; no test was reported; every test folded as untouched; the tests did not compile; the command failed before its tests; HEAD moved. |
+| `0` | Proven: every named test failed without the change and passed with it, both runs on one commit, counted over the tests left after the fold, and every test named by `--guard` ran and passed both ways. |
+| `1` | Not proven: a test pins nothing, fails both ways or breaks with the change; no test was reported; every test folded as untouched; the tests did not compile; the command failed before its tests; HEAD moved; a test named by `--guard` failed either way or did not run. |
 | `2` | Refused or stopped before any test ran, with nothing out of the tree: nothing uncommitted, another run holds the tree, the tree changed while it was being set aside and is back. |
 | `3` | Somebody's changes are NOT back in the working tree — a restore that could not finish, or bytes that could not be kept beside their path; the record and every copy are kept, and `sift run --restore` puts them back. |
 | `64` | A usage error, said before anything moves: the command cannot prove anything run twice (below), a `--since` revision git cannot resolve or HEAD does not descend from, a command that builds a checkout other than the one set aside from, or flags that do not go together. |
@@ -6805,6 +6945,43 @@ expect without comparing rounded percentages (`share: unchanged` where the two f
 `share: moved +0.3` in points of the exact difference) and a line naming the command that prints the audit
 body. Each request is a process of its own, so the run costs about 3.7 times a plain replay (measured over
 one day's sessions: 60 ms a call against 15).
+
+**`audit --verbs` prices sift's own answers by kind, and says what the agent did next** (#824). The views
+above count the lookups sift missed or was refused; none says what the answers it gave cost, so asking which
+sift calls still cost more than what they replace took a 200-line script over a week of transcripts (1,103
+files, 7,829 sift calls). `--verbs` prints, in place of the audit, one aligned table over the audit's window and
+scope (`--since`, default 7 days, `--until`, `--all`, `--transcript`, `--projects`, `--root`, scratch roots left
+out unless `--include-scratch`), one row per kind of answer, the costliest first. The columns: the kind; its
+calls; the median and 90th-percentile answer, in characters; its price and its share of the window's; and what
+the context did next, as shares of the row's calls: `read` a file the answer names (a `Read`, or a `cat`, `sed`,
+`head`, `tail`, `awk` or `nl` of it), `grep` its target (a `Grep`, or a shell `grep`, `rg` or `ugrep` writing
+it), `sift` again on its target (by any face), `other`, or `none` (the context made no later call). A header line
+above it counts the answers and their contexts in the audit's terms (`N sessions (+M subagents)`) and names the
+window and the price rule. **A kind** is the verb and the arguments that change the answer's shape, spelled as
+the CLI spells them (`where --refs`, `where --decl`, `digest --signatures-only`), and a `digest` adds its
+target's shape (a type, a `Type.member`, a file, a cited line or range, a module or `.`, several targets). An MCP
+call and a CLI call of one kind share a row. An answer the hook gave in place of a `Read`, `Grep` or Bash line is
+rowed under the first call its opening line names (`InPlaceAnswer.calls`), marked `(hook)`, and only a refused call
+(an `is_error` result) of one of those tools counts as such an answer.
+Every verb counts, not only the four lookups: `sift run`'s answers were a tenth of the price in the week that
+prompted this. An answer that errored counts in its row, since its text sat in the context all the same. **The
+price** is the benchmark's for one result (`bench.py calls --split`), so a real-session row reads like a
+benchmark row: the answer's characters ÷ 3 in tokens, each costing 1.25 + 0.1·(n−1−j), where j is the first of
+the context's n requests to read it (a request is an assistant message carrying usage, counted once per message
+id). A result no request read costs nothing. The figure is a cost, never a saving: what the agent would have
+done without the answer is not in the transcript. **Next** is the first call of a later request in the same
+context, since a call beside it in one message was written before the answer arrived. A lookup's target is its
+words of 3 characters or more, a path or a cited `File.swift:12-40` giving only its file stem; a later call writes
+it where its input holds one of them, and it is `sift` again only as another lookup. A `run`, `test` or `build` is
+`sift` again only as the identical command (the wrapped command after `--`, else its own arguments), and no `grep`
+follows one; any other verb has no target. A shell call is read up to its first redirection, so `2>&1` is never an
+argument, and a `sift` call with no verb in any segment of the line is rowed `(no verb)`. **The view names nothing in the tree**, so
+`--unredact` changes nothing in it. It is refused beside the views it would replace (`--replay`, `--scan-diff`,
+`--share`, `--summary`, `--by`), in one line naming the flag to drop. It reads the snapshot the audit takes, a
+line at a time, through the readers the scan already has: `IndexToolName.tool(named:)` for MCP calls,
+`ShellSyntax.executedSegments(of:)` and `ShellQuery` for CLI calls, `TranscriptScan.answerText(of:)` for a
+result's text. A per-section split of `where` answers, which the issue also asked for, is not built: it answered
+one question, and `where --decl` (#823) gives that split a row of its own.
 
 ### Delivering through a Claude Code mod — removed
 

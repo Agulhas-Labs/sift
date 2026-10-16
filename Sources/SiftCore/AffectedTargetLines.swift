@@ -96,7 +96,9 @@ struct AffectedTargetLines {
         var xcodebuildReplaced = false
         var printed = 0
         let targetSample = target.map { TestSymbol(target: $0.target, suite: nil, function: nil, style: .swiftTesting) }
-        if runners.swiftPM, !sorted.isEmpty {
+        // Both notes about the swift test line print only where that line does.
+        let swiftLinePrinted = runners.swiftPM && !sorted.isEmpty
+        if swiftLinePrinted {
             let line = "    to run just these \(swiftNoun): " + DiscoveredStore.swiftPMTestCommand(package: package) + " " + sorted.map { "--filter '\($0.anchoredSwiftTestFilter)'" }.joined(separator: " ")
             printed += 1
             if let target, !listSuites, line.count > suiteLineLimit {
@@ -132,11 +134,17 @@ struct AffectedTargetLines {
         if outsideAnySuite > 0, !namesTarget {
             lines.append("      left out\(leftOutOf): \(outsideAnySuite) test\(outsideAnySuite == 1 ? "" : "s") declared outside any suite, which only the whole target's filter selects")
         }
-        if nestedNamed > 0, runners.swiftPM {
+        if xcodebuildReplaced {
+            // The target's own xcodebuild filter runs every nested test, so only the swift test line leaves them out.
+            let nested = nestedNamed + nestedUnnamed
+            if nested > 0, swiftLinePrinted {
+                lines.append("      left out of the swift test line: \(nested) test\(nested == 1 ? "" : "s") in a nested XCTest case, which no swift test filter selects (the xcodebuild line runs the whole target)")
+            }
+        } else if nestedNamed > 0, swiftLinePrinted {
             let named = runners.xcodebuild ? " (the xcodebuild line names it by its runtime name; see the limits above)" : " (see the limits above)"
             lines.append("      left out of the swift test line: \(nestedNamed) test\(nestedNamed == 1 ? "" : "s") in a nested XCTest case, which no swift test filter selects" + named)
         }
-        if nestedUnnamed > 0 {
+        if nestedUnnamed > 0, !xcodebuildReplaced {
             lines.append("      left out: \(nestedUnnamed) test\(nestedUnnamed == 1 ? "" : "s") in a nested XCTest case, which no filter selects (see the limits above)")
         }
         let runs = if namesTarget {

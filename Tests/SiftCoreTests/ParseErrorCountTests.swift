@@ -288,7 +288,7 @@ struct ParseErrorCountTests {
     func theWhereNoteCoversItsExtensionAndConformerCountsToo() async throws {
         let store = try TestSources.makeStore()
         let declared = try TestSources.parsed("protocol Target {}\nstruct Adopter: Target {}", path: "Sources/Alpha/A.swift")
-        let extended = try TestSources.parsed("extension Target {\n    func helper() {}\n}", path: "Sources/Alpha/A+Extras.swift")
+        let extended = try TestSources.parsed("extension Target<Int> {\n    func helper() {}\n}", path: "Sources/Alpha/A+Extras.swift")
         let losing = try TestSources.parsed(Self.losing("Spare"), path: "Sources/Alpha/Losing.swift")
         try store.replaceFiles([declared, extended, losing]) { _ in ("Alpha", false) }
         let renderer = WhereRenderer(store: store)

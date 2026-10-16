@@ -41,6 +41,8 @@ public struct RunWithoutAnswer {
     ///
     /// Read by ``runLines(_:named:)`` so each run's own line calls a build failure what a plain `sift run` would: without it, a run without the change that failed to build reads as an ordinary `✘`, indistinguishable from a test that ran and failed — which is the false proof `--without` exists to rule out.
     public let selector: RunTestSelector?
+    /// The tests `--guard` named, as the caller wrote them: expected to pass both ways, and judged apart from the tests that are meant to pin the change.
+    let guards: [String]
 
     /// The line an answer carries when the watcher had stopped while the changes were out of the tree.
     public static var watcherLostLine: String {
@@ -95,7 +97,8 @@ public struct RunWithoutAnswer {
         buildDirectorySize: Int64? = nil,
         buildDirectoryRemoved: Bool = false,
         changedTests: Set<String>? = nil,
-        selector: RunTestSelector? = nil
+        selector: RunTestSelector? = nil,
+        guards: [String] = []
     ) {
         self.pathspecs = pathspecs
         self.without = without
@@ -112,6 +115,7 @@ public struct RunWithoutAnswer {
         self.buildDirectoryRemoved = buildDirectoryRemoved
         self.changedTests = changedTests
         self.selector = selector
+        self.guards = guards
     }
 }
 
@@ -130,6 +134,7 @@ public extension RunWithoutAnswer {
             }
         }
         lines.append(contentsOf: listing(tests))
+        lines.append(contentsOf: guardSet.unmatchedLines(tests))
         if let note = oldTestNote(tests) {
             lines.append(note)
         }
@@ -161,14 +166,17 @@ public extension RunWithoutAnswer {
     /// Whether every named test failed without the change and passed with it, both runs on one commit — the one answer that exits `0`.
     ///
     /// Judged over the tests left once those the change never touched are folded away, as the headline is: a test the change never wrote, passing both ways, is the expected case and proves nothing either way. Where every test folds, none the change wrote ran, and nothing is proven.
+    ///
+    /// The tests named by `--guard` are judged apart: at least one other test must pin, and every guard must have run and passed both ways.
     var proven: Bool {
-        let survivors = survivors(testLines())
-        guard headNow == nil, stopWithout == nil, stopWith == nil, !survivors.isEmpty,
+        let tests = testLines()
+        let pinning = survivors(tests).filter { !$0.isGuard }
+        guard headNow == nil, stopWithout == nil, stopWith == nil, !pinning.isEmpty,
               !(without.report?.testOutcomes ?? RunTestOutcomes()).isEmpty
         else {
             return false
         }
-        return survivors.allSatisfy { $0.standing == .pins }
+        return pinning.allSatisfy { $0.standing == .pins } && guardSet.allHold(in: tests)
     }
 }
 
@@ -218,11 +226,15 @@ extension RunWithoutAnswer {
         case pinsNothing
         case failsBothWays
         case breaksWithIt
+        /// Named by `--guard`, and it did not pass both ways although both runs reached it.
+        case guardFails
         case indistinct
         case undecided
         /// It passes with the change, and without it the tests did not compile: the change is needed for the test to build, which is weaker than the test failing an assertion without it — a test that merely names the new API stands here beside one that pins its behaviour.
         case needsIt
         case pins
+        /// Named by `--guard`, and it passed both ways, as the caller expected.
+        case guardHolds
 
         static func < (lhs: Standing, rhs: Standing) -> Bool {
             lhs.rawValue < rhs.rawValue
@@ -230,8 +242,8 @@ extension RunWithoutAnswer {
 
         var glyph: String {
             switch self {
-            case .pins: "✔"
-            case .pinsNothing, .failsBothWays, .breaksWithIt, .indistinct: "✘"
+            case .pins, .guardHolds: "✔"
+            case .pinsNothing, .failsBothWays, .breaksWithIt, .guardFails, .indistinct: "✘"
             case .undecided: "⚠"
             case .needsIt: "◇"
             }
@@ -246,6 +258,8 @@ extension RunWithoutAnswer {
         ///
         /// A pass that took a retry keeps its line, since its retry note is the one thing a count would lose.
         var neverBuilt = false
+        /// Named by `--guard`, in a run whose tests compiled without the change: judged as a guard, never counted among the tests that pin.
+        var isGuard = false
     }
 
     /// One line of the listing: a test named on its own, or the tests the change never touched, counted into one.
@@ -314,13 +328,17 @@ extension RunWithoutAnswer {
                 Outcome(before[name], last: before.lastEndings[name], retries: retriesFailures),
                 Outcome(after[name], last: after.lastEndings[name], retries: retriesFailures)
             )
-            let (standing, sentence) = judge(outcomes.0, outcomes.1, name: name, compiledWithout: withoutCompiled)
+            let isGuard = withoutCompiled && guardSet.isNamed(name, among: names)
+            let (standing, sentence) = isGuard
+                ? judgeGuard(outcomes.0, outcomes.1, name: name)
+                : judge(outcomes.0, outcomes.1, name: name, compiledWithout: withoutCompiled)
             let note = retryNote(name, before: before, after: after)
             return TestLine(
                 name: name,
                 standing: standing,
                 sentence: sentence + note,
-                neverBuilt: buildBroke && note.isEmpty && outcomes.0 == .absent && outcomes.1 == .passed
+                neverBuilt: !isGuard && buildBroke && note.isEmpty && outcomes.0 == .absent && outcomes.1 == .passed,
+                isGuard: isGuard
             )
         }
         .sorted { ($0.standing, $0.name) < ($1.standing, $1.name) }
@@ -372,7 +390,7 @@ extension RunWithoutAnswer {
         }
     }
 
-    private func describe(_ outcome: Outcome) -> String {
+    func describe(_ outcome: Outcome) -> String {
         switch outcome {
         case .passed: "passed"
         case .failed: "failed"
@@ -384,7 +402,7 @@ extension RunWithoutAnswer {
     }
 
     /// The first failure the run with the change recorded against `name`, as `location: message`, shortened to one line.
-    private func failureDetail(of name: String) -> String? {
+    func failureDetail(of name: String) -> String? {
         guard let failure = with.report?.testFailures.first(where: { $0.name == name }) else {
             return nil
         }
@@ -570,16 +588,20 @@ extension RunWithoutAnswer {
             let note = ChangedTests.noBranchRangeNote(since: restored.record.since, in: workingDirectory).map { " — \($0)" } ?? ""
             return "⚠ no test the change wrote ran under this filter — \(folded) both ways; nothing was proven\(note)"
         }
-        let pinning = survivors.count { $0.standing == .pins }
-        let glyph = if pinning == survivors.count {
+        let pinned = survivors.filter { !$0.isGuard }
+        let pinning = pinned.count { $0.standing == .pins }
+        let glyph = if pinning == pinned.count, guardSet.allHold(in: tests) {
             "✔"
         } else if survivors.contains(where: { $0.standing.glyph == "✘" }) {
             "✘"
         } else {
             "⚠"
         }
+        guard !pinned.isEmpty else {
+            return "\(glyph == "✔" ? "⚠" : glyph) no test but the named guards ran — \(guardSet.tally(tests)) pass both ways; nothing was proven"
+        }
         let verbs = pinning == 1 ? "fails without \(pathspecs) and passes with it" : "fail without \(pathspecs) and pass with it"
-        return "\(glyph) \(pinning) of \(survivors.count) \(verbs)"
+        return "\(glyph) \(pinning) of \(pinned.count) \(verbs)\(guardSet.clause(tests))"
     }
 
     /// The tests left once those the change never touched are folded away: the ones the listing names, and the ones the headline and ``proven`` count.
@@ -666,11 +688,13 @@ extension RunWithoutAnswer {
         let remaining = rest.reduce(0) { $0 + $1.tests }
         let pinning = rest.count { $0.standing == .pins }
         let needing = rest.count { $0.standing == .needsIt }
+        let held = rest.count { $0.standing == .guardHolds }
         // Counted apart, because a test that only failed to compile without the change did not fail an
         // assertion either way, and folding it into "do not" reads as a test that went the wrong way.
         let needed = needing > 0 ? ["\(needing) pass with it and did not compile without it"] : []
-        let others = remaining - pinning - needing
-        let parts = ["\(pinning) fail without \(pathspecs) and pass with it"] + needed + ["\(others) do not"]
+        let guarded = held > 0 ? ["\(held) named \(held == 1 ? "guard passes" : "guards pass") both ways"] : []
+        let others = remaining - pinning - needing - held
+        let parts = ["\(pinning) fail without \(pathspecs) and pass with it"] + needed + guarded + ["\(others) do not"]
         lines.append("  +\(remaining) more: \(parts.joined(separator: ", ")) — see the raw logs")
         return lines
     }
@@ -682,7 +706,7 @@ extension RunWithoutAnswer {
     /// What it names is a technique rather than a flag, because there is no flag: a test left in the tree has to compile against the old sources to run against them at all, which means asserting a consequence rather than naming something only the change declares — and where the change is the declaration, there is no such assertion to write.
     private func oldTestNote(_ tests: [TestLine]) -> String? {
         // A test folded away as untouched draws no note: the run compared a committed test the change never wrote, which is the expected case rather than a verdict anybody could be talked out of.
-        let unpinned = tests.filter { $0.standing == .pinsNothing && !isUntouched($0) }.map { Self.identifier(of: $0.name) }.filter { !$0.isEmpty }
+        let unpinned = tests.filter { $0.standing == .pinsNothing && !isUntouched($0) }.map(\.name)
         guard !unpinned.isEmpty else {
             return nil
         }
@@ -713,11 +737,25 @@ extension RunWithoutAnswer {
         return String(tail.filter { $0.isLetter || $0.isNumber || $0 == "_" })
     }
 
-    /// Whether `text` declares a test function named `name`, rather than merely mentioning it — a comment, a doc line, or as part of a longer identifier (`run` inside `running`) all pass a bare substring match but declare nothing.
+    /// Whether `text` declares the test a run printed as `name`, rather than merely mentioning it — a comment, a doc line, or as part of a longer identifier (`run` inside `running`) all pass a bare substring match but declare nothing.
     ///
-    /// Matched as `func ` immediately followed by `name` and `(`, which is what a function declaration of that name looks like regardless of what precedes it on the line (attributes, indentation, `private`, `static`). Cheap and syntactic on purpose: this is an attribution note, not a claim the index backs.
+    /// A name printed as an identifier is matched as `func ` immediately followed by its ``identifier(of:)`` and `(`, which is what a function declaration of that name looks like regardless of what precedes it on the line (attributes, indentation, `private`, `static`). A quoted display name is matched by its own text as the first argument of an `@Test` attribute, however the attribute is wrapped: its last word is prose, and a source declaring a function of that word declares no test. Cheap and syntactic on purpose: this is an attribution note, not a claim the index backs.
     private static func declares(test name: String, in text: String) -> Bool {
-        text.contains("func \(name)(")
+        guard namesADeclaration(name) else {
+            let display = displayText(of: name)
+            let attribute = #"@Test\(\s*"# + NSRegularExpression.escapedPattern(for: "\"\(display)\"")
+            return !display.isEmpty && text.range(of: attribute, options: .regularExpression) != nil
+        }
+        let bare = Self.identifier(of: name)
+        return !bare.isEmpty && text.contains("func \(bare)(")
+    }
+
+    /// The text a quoted display name holds between its quotes: `"the widget keeps its heading"` reads `the widget keeps its heading`.
+    private static func displayText(of name: String) -> String {
+        guard let open = name.firstIndex(of: "\""), let close = name.lastIndex(of: "\""), open < close else {
+            return ""
+        }
+        return String(name[name.index(after: open) ..< close])
     }
 
     /// What a run that stopped before its tests printed: the compiler errors in test files where that is why, and otherwise the first error it gave.

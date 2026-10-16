@@ -67,6 +67,7 @@ struct RevisionQuery {
         var renderer = DigestRenderer(store: snapshot.store, moduleNames: moduleNames, repoRoot: snapshot.root)
         renderer.config = config
         renderer.isUnreadablyRenamed = { [resolver] in resolver.isUnreadablyRenamed($0) }
+        renderer.revision = WhereBasenamePointer.Revision(name: revision, paths: files.paths)
         let rendered: String
         if notices.isEmpty {
             rendered = try renderer.render(targets: written, options: options)
@@ -127,6 +128,7 @@ struct RevisionQuery {
         let scanner = CallSiteScanner(repoRoot: snapshot.root, enumerator: listing)
         var renderer = WhereRenderer(store: snapshot.store, callSites: { await scanner.callSites(named: $0) })
         renderer.revision = revision
+        renderer.revisionPaths = files.paths
         renderer.isUnreadablyRenamed = { [resolver] in resolver.isUnreadablyRenamed($0) }
         var syntactic = options
         syntactic.includeSemantic = false

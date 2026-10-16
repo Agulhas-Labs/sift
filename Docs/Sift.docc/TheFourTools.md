@@ -131,6 +131,9 @@ source literals:
   of that name was found", never as "nothing uses this".
 - **A type has no calls.** The syntactic fallback answers for methods and properties by their written
   calls. For "who uses this type" or a rename sweep, build first and ask `where --refs`.
+- **`where --decl` is declarations only.** It prints where the symbol is declared, from the syntactic
+  index and under `digest`'s header, never asking the index store, and ends with the query that covers
+  uses, conformers and callers.
 - **`semantic: stale` refuses.** If your edits are newer than the last build, `where` refuses the affected
   symbols until you build again. Re-running the query does not help.
 - **Matches are names, not resolved symbols.** `calls:` and `uses:` in `search` match what is written, so

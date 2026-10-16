@@ -23,7 +23,7 @@ struct ToolDefinitionBudgetTests {
     func everyToolListsTheParametersCallersUse() {
         let expected: [String: Set<String>] = [
             "digest": ["target", "targets", "root", "all", "signaturesOnly", "offset"],
-            "where": ["symbol", "root", "refs", "files", "offset"],
+            "where": ["symbol", "root", "refs", "files", "decl", "offset"],
             "search": ["query", "root", "offset"],
             "strings": ["query", "root"],
         ]

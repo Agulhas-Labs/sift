@@ -70,6 +70,18 @@ sweep leaves those rows out only where the clause is on the first line of the co
 prints it (a clause on a later line, after an attribute or wrapped, keeps its row and is not counted); a file holding only
 such lines has no file heading.
 
+`where --decl` (`decl: true`) asks no index store, so its header is `digest`'s, with no `semantic:` field (an `--at`
+answer keeps its own), and no line about the store follows it. Under the header it keeps the lines that qualify the
+syntactic index (`index: in memory`, an `--at` answer's parsed-files line, the parse-error banner and floor note), then
+the declarations block a plain `where` prints, then for a `T.init` query the `declared with no init of their own`
+block without its call sites, then one line: `` `where <query>` without --decl covers its uses, extensions,
+conformers, callers and overrides. `` A block cut by its cap ends `truncated: <k> more declarations`, and where a plain
+answer's tail would name extensions, `— where <query> lists <j> of them under extensions of <Type>` in its place. A
+bare name several owners declare prints the plain block, not the per-owner form. An undeclared initializer's
+provenance sentence drops its clause about the calls below. An answer that never reaches the declarations block keeps
+its body under that header, with no store pointer and no pointer line. An unused offset is named after the pointer
+line, and `--refs` or `--files` beside it is refused in one line (Design.md: `--decl`).
+
 A plain `where <Type>` whose uses, beyond a protocol's conformance lines, number 8 or fewer lists them as rows
 under its `used by` verdict line, which then ends without a pointer; above 8 it lists no rows and ends `— where
 --refs <Type> lists them` (the qualified name where the bare query has several owners). The rows above and below
@@ -213,7 +225,7 @@ path` and `which is not use`, keeping the tally and the count; a name-matched se
 
 **§3, `where`'s `callers of` heading:** a store-backed heading whose base name other types also declare adds `resolved to this declaration — <name> is declared <N> time(s) on other types, not counted here; where <name> lists them` inside its parenthesis, after the count and any hedge, joined by `; `. A bare-name query (`where f`) leaves off `; where <name> lists them`, since that answer is the list. The no-store answer and an initializer's never say it.
 
-**§3, `where`'s no-declaration answer:** where the queried name equals the basename (without `.swift`) of one or more indexed Swift files, `no declarations found` is followed by one line, `no declaration named <Name>; a file has that name: digest <path>` (`<k> files have that name: digest <path1>, digest <path2>`, three paths at most, then `, and <m> more`); nothing is added where no file matches.
+**§3, the no-declaration answers:** where the queried name equals the basename (without `.swift`) of one or more indexed Swift files, an answer that finds no declaration of it carries one line, `no declaration named <Name>; a file has that name: digest <path>` (`<k> files have that name: digest <path1>, digest <path2>`, three paths at most, then `, and <m> more`); nothing is added where no file matches. It follows `where`'s `no declarations found` and `digest`'s `no symbol named <Name> in the index`, and comes just before `where`'s `no exact match; nearest symbols:` and `digest`'s `no type named <Name>; nearest symbols:`. A `digest` answer carrying it still resolved nothing. <Name> is the query's base name, after any module or type qualifier; a name declared as any kind of symbol gets no line.
 
 **§3, `where`'s `references to`:** a function's `--refs` answer lists under `references to` only the sites not
 already shown under `callers of`, headed "N in M files, K of them the call sites above". A site is shown once,

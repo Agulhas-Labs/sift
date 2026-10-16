@@ -145,7 +145,7 @@ extension SameNamedTypes {
 
         /// Whether a call written with `arguments` reaches one of its initializers, or `nil` where it may reach one the scan cannot read.
         func fits(_ arguments: WrittenArguments) -> Bool? {
-            if initializers.contains(where: { $0?.accepts(arguments) == true }) || unwritten?.contains(where: { $0.accepts(arguments) }) == true {
+            if initializers.contains(where: { $0?.accepts(arguments, takesInstance: false) == true }) || unwritten?.contains(where: { $0.accepts(arguments, takesInstance: false) }) == true {
                 return true
             }
             return unwritten == nil || initializers.contains { $0 == nil } ? nil : false

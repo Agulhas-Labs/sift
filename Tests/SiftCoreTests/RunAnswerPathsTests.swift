@@ -98,11 +98,11 @@ private extension RunAnswerPathsTests {
     /// And the same fitting size for them.
     static let fewRuns = 24
 
-    /// Everything a build's answer prints that is not an entry: the headline, the missing-summary note, the blank line before the errors block, the measurement line, and the receipt that closes it.
-    static let overhead = 5
+    /// Everything a build's answer prints that is not an entry: the headline, the missing-summary note, the blank line before the errors block, the measurement line, the closing verdict line and the receipt that closes it.
+    static let overhead = 6
 
     /// The same of a test run's answer, one fewer: the test-failure block opens with no blank line above it.
-    static let runOverhead = 4
+    static let runOverhead = 5
 
     static var unasked: RunChangedFiles {
         .unavailable("the working tree was not consulted")

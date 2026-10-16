@@ -6,7 +6,7 @@ import Foundation
 @testable import SiftCore
 import Testing
 
-/// `Sift.md` sends a reader to `sift help <topic>` for the material it moved out of the always-loaded rule; this is what keeps that pointer honest.
+/// `Sift.md` sends a reader to `sift help`, which lists the topics holding the material moved out of the always-loaded rule; this is what keeps that pointer honest.
 struct HelpTopicsTests {
     private static var repository: URL {
         URL(filePath: #filePath)
@@ -30,18 +30,15 @@ struct HelpTopicsTests {
         }
     }
 
-    /// The reverse direction: every topic `HelpTopics` carries is one `Sift.md` actually names, so the short rule cannot silently drift out of naming reference material that still ships.
+    /// The rule does not name every topic: it names `sift help`, which lists them, so a topic added to `HelpTopics` is reached without a rule edit.
     ///
-    /// This is what a topic added straight to `HelpTopics` and never wired into the rule would otherwise miss — reachable by a caller who already knows its name, invisible to one reading the rule that is supposed to name it. Matched with the same exact-name regex as the forward direction, not `contains`: a bare substring check would let a topic named `run` pass on text that only ever names `run-output`.
+    /// What this pins is the pointer the rule relies on: it says `sift help` lists the topics, and there are topics to list.
     @Test
-    func everyTopicIsNamedInSiftMD() throws {
+    func theRuleNamesSiftHelpAsTheListOfTopics() throws {
         let text = try String(contentsOf: Self.repository.appendingPathComponent("Sift.md"), encoding: .utf8)
-        let pattern = try Regex(#"`sift help ([a-z][a-z0-9-]*)`"#)
-        let named = Set(text.matches(of: pattern).compactMap { $0.output[1].substring.map(String.init) })
 
-        for topic in HelpTopics.all {
-            #expect(named.contains(topic.name), "HelpTopics carries '\(topic.name)', which Sift.md never names")
-        }
+        #expect(text.contains("`sift help` lists the topics"))
+        #expect(!HelpTopics.all.isEmpty)
     }
 
     /// Guidance the rule carried before it was split is still carried — in the rule or in a topic — rather than lost between the two.
@@ -58,7 +55,7 @@ struct HelpTopicsTests {
             "plus when and why the last one stopped",
             "and the shell is where they are most often skipped",
             "or a name no index declares",
-            "A lookup of Swift source is answered in place, or let through",
+            "is answered in place, or let through",
             "a shell command, a Grep, a Glob, or a whole-file Read",
             "not a wall and not a permission problem",
             "Take the suggestion when it fits — usually it is the shorter path anyway",

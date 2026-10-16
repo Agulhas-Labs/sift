@@ -398,30 +398,46 @@ extension WhereRenderer {
         return ConformersOnce(lines: lines, citedPaths: cited, clauseLines: clauseLines, startLines: startLines, clauseSites: clauseSites, conformerPaths: conformerPaths)
     }
 
+    /// The extensions listed under each type the declarations hold, by the type's name: those the declarations section prints and those the block under the type goes on to list.
+    func extensionListings(of declarations: [SymbolRow]) throws -> DeclaredExtensions.Listings {
+        var listings: DeclaredExtensions.Listings = [:]
+        for typeName in Set(declarations.filter(\.kind.isTypeDeclaration).map(\.name)) {
+            let owners = declarations.filter { $0.kind.isTypeDeclaration && $0.name == typeName }
+            listings[typeName] = try ExtensionPaths.listed(under: owners, named: typeName, in: store)
+        }
+        return listings
+    }
+
     /// Appends each declared type's extensions and conformers, a protocol's one merged block standing in for the scan's where the store answered it.
     func appendTypeRelations(
         of declarations: [SymbolRow],
         conformerBlocks: [String: ConformersOnce],
         writtenNameChecks: [String: WrittenNameCheck] = [:],
+        extensions listed: (listings: [String: [(row: SymbolRow, mayExtendAnother: Bool)]], printed: Set<Int64>),
         citing citedPaths: inout [String],
         into lines: inout [String],
         qualifiedName: (SymbolRow) throws -> String
     ) throws {
         let typeNames = Set(declarations.filter(\.kind.isTypeDeclaration).map(\.name))
         for typeName in typeNames.sorted() {
-            let owners = declarations.filter { $0.kind.isTypeDeclaration && $0.name == typeName }
-            let extensions = try ExtensionPaths.listed(under: owners, named: typeName, in: store)
+            let extensions = listed.listings[typeName] ?? []
             for (row, _) in extensions {
                 filesCollector?.recordDeclaration(path: row.path, owner: nil, isExtension: true)
             }
-            if !extensions.isEmpty {
+            // The declarations section printed some of these rows; this block lists the rest.
+            let remaining = extensions.filter { !listed.printed.contains($0.row.id) }
+            if !remaining.isEmpty {
+                let under = extensions.count - remaining.count
                 lines.append("")
-                lines.append("extensions of \(typeName) (\(extensions.count)):")
-                for (row, mayExtendAnother) in extensions.prefix(Self.listCap) {
+                lines.append("extensions of \(typeName) (\(extensions.count)\(under > 0 ? ", \(under) under declarations" : "")):")
+                for (row, mayExtendAnother) in remaining.prefix(Self.listCap) {
                     citedPaths.append(row.path)
                     let memberCount = try store.childCount(of: row.id)
                     let mark = mayExtendAnother ? " — may extend another module's \(typeName)" : ""
                     lines.append("  extension \(row.name)\(extensionContext(row)) — \(memberCount) members — \(row.path)\(row.rangeDescription)\(mark)")
+                }
+                if remaining.count > Self.listCap {
+                    lines.append("  truncated: \(remaining.count - Self.listCap) more extensions")
                 }
             }
             if let block = conformerBlocks[typeName] {

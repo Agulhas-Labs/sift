@@ -194,9 +194,9 @@ struct RunInventoryNoteTests {
         #expect(recorded.printed.contains("inventory: not checked — the inventory could not be read"))
     }
 
-    /// With no index to read, the note says the check was skipped and why, and a failing run still exits what it was handed.
+    /// With no index yet, the run builds one and reconciles, and a failing run still exits what it was handed.
     @Test
-    func aCheckoutWithNoIndexSaysTheCheckWasSkippedAndKeepsTheExitCode() async throws {
+    func aCheckoutWithNoIndexIsReconciledAndKeepsTheExitCode() async throws {
         let repository = try Self.package()
         let failing = [
             "Test Case '-[GizmoTests.PalletTests testOne]' started.",
@@ -207,7 +207,7 @@ struct RunInventoryNoteTests {
         let (recorded, thrown) = try await Self.run(in: repository, printing: failing, exiting: 1)
 
         #expect(thrown == ExitCode(1))
-        #expect(recorded.printed.contains("inventory: not checked — this checkout has no sift index yet"))
+        #expect(recorded.printed.contains("inventory: 3 declared, 1 reported"))
     }
 }
 

@@ -13,7 +13,7 @@ public enum RunInventoryCheck: Sendable {
     /// The run was in scope and could not be reconciled, for the reason given.
     case skipped(String)
 
-    /// How long bringing the index up to date and reconciling may take before the check is skipped rather than waited on.
+    /// How long building or bringing the index up to date and reconciling may take before the check is skipped rather than waited on.
     public static let freshenBudget: TimeInterval = 20
 
     /// How many names a line lists before it counts the rest.
@@ -99,7 +99,7 @@ public extension RunInventoryCheck {
         return .skipped("an xcodebuild scheme runs the test targets it names, which no package manifest bounds")
     }
 
-    /// Reconciles `outcomes` against the index at `repositoryRoot`, inside the manifest of `package` (the repository's root where it is `nil`), brought up to date first as `--against` does, and never builds an index that is not there.
+    /// Reconciles `outcomes` against the index at `repositoryRoot`, inside the manifest of `package` (the repository's root where it is `nil`), brought up to date first as `--against` does; a checkout with no index yet has one built inside the same budget.
     ///
     /// - Parameter executedNothing: Whether the run executed no test, as ``testedPackage(by:report:workingDirectory:executedNothing:)`` takes it: its empty outcomes reconcile as zero reported, so the line names every declared test that never reported.
     static func check(_ outcomes: RunTestOutcomes, loggedAt logURL: URL?, repositoryRoot: URL, package: URL? = nil, budget: TimeInterval = freshenBudget, executedNothing: Bool = false) -> RunInventoryCheck {
@@ -109,10 +109,6 @@ public extension RunInventoryCheck {
             return .skipped("the package at \(packagePath) lies outside the repository at \(root), whose index this reads")
         }
         let packageDirectory = String(packagePath.dropFirst(min(packagePath.count, root.count + 1)))
-        let database = SiftPaths.cache(in: repositoryRoot).appendingPathComponent(SiftPaths.indexFileName)
-        guard FileManager.default.fileExists(atPath: database.path) else {
-            return .skipped("this checkout has no sift index yet, and building one is not this run's to pay for (`sift index` builds it)")
-        }
         let box = CheckBox()
         let finished = DispatchSemaphore(value: 0)
         Task.detached {

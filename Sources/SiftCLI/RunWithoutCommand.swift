@@ -22,6 +22,8 @@ struct RunWithoutCommand {
     let since: String?
     /// Whether `--keep-without-build` was given: the build directory the run without the change used is then kept, marked for the next proof to build on, rather than removed when the run ends.
     var keepsBuild = false
+    /// What `--guard` named, as the caller wrote it: tests the proof expects to pass both ways.
+    var guards: [String] = []
     /// The tree and command a run starts on, taken the way `RunCommand` takes them, so the run with the change is keyed as a plain run would be.
     let runKey: (URL) -> TreeContentHash.RunKey?
     /// Files the run with the change in the per-user run log: `RunCommand`'s own filing, handed in so a run is filed one way whichever path ran it.
@@ -283,7 +285,8 @@ struct RunWithoutCommand {
             buildDirectorySize: buildSize,
             buildDirectoryRemoved: built && build.isRemoved,
             changedTests: changedTests,
-            selector: selector
+            selector: selector,
+            guards: guards
         )
         let rendered = answer.render()
         StandardStreams.emit(rendered.text)

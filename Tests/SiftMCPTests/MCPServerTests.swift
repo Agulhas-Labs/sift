@@ -378,6 +378,25 @@ struct MCPServerTests {
         #expect(!refs.text.contains("files naming "), "\(refs.text)")
     }
 
+    /// `decl: true` beside `refs: true` or `files: true` is refused in one line; with `refs: false` it answers the declarations-only view.
+    @Test
+    func declIsRefusedBesideRefsOrFilesAndAnswersTheViewOtherwise() async throws {
+        let root = try MCPTestRepo.make()
+        let line = "where's decl: answers where Alpha is declared, and refs: and files: every place it is written: drop one."
+
+        for other in ["refs", "files"] {
+            let refused = try await Self.call("where", ["symbol": "Alpha", other: true, "decl": true], in: root)
+            #expect(refused.isError)
+            #expect(refused.text == line, "\(refused.text)")
+        }
+        let served = try await Self.call("where", ["symbol": "Alpha", "decl": true, "refs": false], in: root)
+
+        #expect(!served.isError)
+        #expect(!served.text.contains("semantic:"), "\(served.text)")
+        #expect(served.text.contains("declarations (1):"), "\(served.text)")
+        #expect(served.text.hasSuffix("`where Alpha` without --decl covers its uses, extensions, conformers, callers and overrides."), "\(served.text)")
+    }
+
     /// A `root:` term inside a search query is the root argument, misplaced — `search uses:colorScheme root:/path/to/app` would otherwise be refused as "unknown field root".
     @Test
     func anInlineRootTermInASearchQueryIsLiftedToTheRootArgument() async throws {

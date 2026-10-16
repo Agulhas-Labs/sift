@@ -53,6 +53,6 @@ struct WrappedParameter: Sendable, Equatable {
             labels: arguments.labels.map { $0.map { $0.hasPrefix("$") ? String($0.dropFirst()) : $0 } },
             hasTrailingClosure: arguments.hasTrailingClosure,
             trailingLabels: arguments.trailingLabels
-        ))
+        ), takesInstance: false)
     }
 }

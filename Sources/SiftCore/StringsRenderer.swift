@@ -23,7 +23,9 @@ struct StringsRenderer {
         let plain = answer.sourceLiterals.filter { !$0.isAroundInterpolation }
         if !plain.isEmpty {
             lines.append("")
-            lines += sourceLiteralLines(plain, heading: "source literals:", query: query)
+            // A production site matched around its interpolations on two or more words is the producer: the tests spelling the text whole are counted, not listed ahead of it.
+            let producerFollows = answer.sourceLiterals.contains { $0.isAroundInterpolation && $0.isListable && !$0.isTest && $0.around?.word == nil }
+            lines += sourceLiteralLines(plain, heading: "source literals:", query: query, listsTestsAlone: !producerFollows)
         }
         let around = answer.sourceLiterals.filter(\.isAroundInterpolation)
         if plain.isEmpty, answer.hits.isEmpty, !around.contains(where: \.isListable) {
@@ -34,14 +36,14 @@ struct StringsRenderer {
         return lines.joined(separator: "\n")
     }
 
-    /// A source-literal section: one line per production site, `<declaration> — <path>:<line>: "<literal>"`, capped with a count of the rest, then test sites counted per file; a section matching only test sites lists them instead.
+    /// A source-literal section: one line per production site, `<declaration> — <path>:<line>: "<literal>"`, capped with a count of the rest, then test sites counted per file; a section matching only test sites lists them instead, unless the caller says a production site follows, when it counts them alone.
     ///
     /// A literal matched around its interpolations is windowed on where its written text spells the literal text it matched, since the query itself is not in its text, and shown from its start when that is nowhere; a run of literals a `+` joins is windowed on the range the search found, since `" + "` stands between the pieces of the query.
-    static func sourceLiteralLines(_ sites: [SourceLiteralSearch.Site], heading: String, query: String) -> [String] {
+    static func sourceLiteralLines(_ sites: [SourceLiteralSearch.Site], heading: String, query: String, listsTestsAlone: Bool = true) -> [String] {
         var lines = [heading]
         let production = sites.filter { !$0.isTest }
         let tests = sites.filter(\.isTest)
-        let listed = production.isEmpty ? tests : production
+        let listed = production.isEmpty ? (listsTestsAlone ? tests : []) : production
         for site in listed.prefix(SourceLiteralSearch.siteCap) {
             let shown = site.around.map { around in around.window.map { windowed(site.literal, on: $0) } ?? truncated(site.literal) } ?? site.window.map { windowed(site.literal, on: $0) } ?? windowed(site.literal, around: query)
             let location = "\(site.path):\(site.line): \"\(shown)\""
@@ -50,7 +52,7 @@ struct StringsRenderer {
         if listed.count > SourceLiteralSearch.siteCap {
             lines.append("  +\(listed.count - SourceLiteralSearch.siteCap) more — narrow the query")
         }
-        if !production.isEmpty, !tests.isEmpty {
+        if listed.count < sites.count, !tests.isEmpty {
             lines.append("  " + testSitesLine(tests))
         }
         return lines

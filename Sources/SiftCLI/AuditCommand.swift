@@ -76,6 +76,9 @@ struct AuditCommand: ParsableCommand {
     @Flag(name: .customLong("progress"), help: "Print the transcript scan's advance (a count every 50 sessions) and, with --replay, each session replayed and the time taken so far, on stderr as on a terminal, even when stderr is not one.")
     var progress = false
 
+    @Flag(name: .customLong("verbs"), help: "Print, in place of the audit, what sift's own answers cost: one row per kind of answer (where, where --refs, digest (file), run…), the costliest first, with its calls, median and 90th-percentile size in characters, its price in tokens and share of the window's, and the share of its calls each kind of next call followed: read, grep, sift, other, none. Names nothing in the tree, so --unredact changes nothing.")
+    var verbs = false
+
     @Flag(name: .customLong("include-scratch"), help: "Count sessions recorded in scratch roots too: temporary directories, ~/Library/Caches and any .build directory. Left out by default, with one line saying how many sessions.")
     var includeScratch = false
 
@@ -83,6 +86,7 @@ struct AuditCommand: ParsableCommand {
 
     func validate() throws {
         try validateTrend()
+        try validateVerbs()
         if sample != nil, !replay {
             throw ValidationError("--sample bounds the contexts --replay replays: add --replay.")
         }
@@ -110,15 +114,7 @@ struct AuditCommand: ParsableCommand {
         if root != nil, replay || shapes != nil {
             throw ValidationError("--root doesn't reach --replay yet, which puts every call in the window to the hook regardless of root: drop --replay (and --shapes, which depends on it) or --root.")
         }
-        if let shapes {
-            let directory = URL(fileURLWithPath: shapes).deletingLastPathComponent()
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue,
-                  FileManager.default.isWritableFile(atPath: directory.path)
-            else {
-                throw ValidationError("--shapes \(shapes) needs a writable directory: \(directory.path) doesn't exist or isn't writable.")
-            }
-        }
+        try validateShapesFile()
     }
 
     func run() throws {
@@ -200,6 +196,10 @@ struct AuditCommand: ParsableCommand {
         // writing, and read afresh it would count lookups the audit never saw.
         let snapshot = TranscriptSnapshot.take(projectsDirectory: directory, since: start, transcript: transcript)
         defer { snapshot.indexes.close() }
+        if verbs {
+            StandardStreams.emit(verbsReport(snapshot: snapshot, scopedRoot: scopedRoot, since: start, until: end))
+            return
+        }
         let bounds = Self.replayBounds(
             sample: sample,
             progressAsked: progress,
@@ -495,6 +495,36 @@ extension AuditCommand {
 }
 
 extension AuditCommand {
+    /// Refuses a `--shapes` file whose directory is missing or not writable.
+    func validateShapesFile() throws {
+        if let shapes {
+            let directory = URL(fileURLWithPath: shapes).deletingLastPathComponent()
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue,
+                  FileManager.default.isWritableFile(atPath: directory.path)
+            else {
+                throw ValidationError("--shapes \(shapes) needs a writable directory: \(directory.path) doesn't exist or isn't writable.")
+            }
+        }
+    }
+
+    /// Refuses `--verbs` beside the views it would replace, in one line naming the flag to drop.
+    func validateVerbs() throws {
+        for (flag, given) in [("--replay", replay), ("--scan-diff", scanDiff), ("--share", share), ("--summary", summary), ("--by", trendLength != nil)] where verbs && given {
+            throw ValidationError("--verbs prints the cost of sift's answers in place of the audit, and has no \(flag) form: drop \(flag).")
+        }
+    }
+
+    /// The `--verbs` report over `snapshot` narrowed to the audit's root and scratch scope.
+    func verbsReport(snapshot: TranscriptSnapshot, scopedRoot: String?, since: Date?, until: Date?) -> String {
+        var narrowed = scopedRoot.map { snapshot.scoped(to: $0) } ?? snapshot
+        if Self.excludesScratch(includeScratch: includeScratch, transcript: transcript) {
+            narrowed = narrowed.withoutScratch()
+        }
+        let window = Self.windowArguments(sinceValue: self.since ?? "7d", until: self.until, all: all, transcript: transcript)
+        return AuditVerbs.report(snapshot: narrowed, since: since, until: until, window: window)
+    }
+
     /// Refuses `--by` with a window length that is not a day or a week, or with a flag the trend has no form for.
     func validateTrend() throws {
         guard let length = trendLength else { return }
@@ -539,6 +569,7 @@ extension AuditCommand {
         case sample
         case progress
         case includeScratch
+        case verbs
     }
 
     /// Prints how `against`'s scan and this build's class the windows of one snapshot differently, refusing in one line, with nothing else printed, a binary without the scan-dump entry point or whose dump fails.

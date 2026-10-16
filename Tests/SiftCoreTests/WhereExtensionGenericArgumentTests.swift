@@ -59,7 +59,7 @@ struct WhereExtensionGenericArgumentTests {
         let output = try await Self.references(of: query, files: ["Package.swift": Self.manifest, "Sources/Lib/Ext.swift": Self.extensionFile])
 
         #expect(!output.contains("no exact match"), "\(output)")
-        #expect(output.contains("declarations (1):\n  Lib.\(written) — extension — extension \(written) — Sources/Lib/Ext.swift\(line)-"), "\(output)")
+        #expect(output.contains("declarations (1):\n  Lib.\(written) — extension — extension \(written) — 1 members — Sources/Lib/Ext.swift\(line)-"), "\(output)")
         #expect(output.contains("\"\(query)\" (1 use by written name in 1 file)"), "\(output)")
         #expect(output.contains("\(line)  | extension \(written) {"), "\(output)")
     }
@@ -72,7 +72,7 @@ struct WhereExtensionGenericArgumentTests {
             "Sources/Lib/Ext.swift": "import Depot\n\nextension Depot.Gizmo<Net.URL> {}\n",
         ])
 
-        #expect(output.contains("declarations (1):\n  Lib.Depot.Gizmo<Net.URL> — extension — extension Depot.Gizmo<Net.URL> — Sources/Lib/Ext.swift:3"), "\(output)")
+        #expect(output.contains("declarations (1):\n  Lib.Depot.Gizmo<Net.URL> — extension — extension Depot.Gizmo<Net.URL> — 0 members — Sources/Lib/Ext.swift:3"), "\(output)")
     }
 
     /// A type named only inside the generic arguments is not what the extension extends, so it is still answered as a miss, with the extensions writing it still among the nearest symbols.

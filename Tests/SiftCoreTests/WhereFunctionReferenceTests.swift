@@ -239,7 +239,7 @@ struct WhereFunctionReferenceTests {
         #expect(output.contains("    :7  moves(_:) — referenced, not called  | commands.map(restock(from:))"), "\(output)")
     }
 
-    /// A bare `T.f` handed to a call is the function's only on a type declaring it: on another type it is spelled as that type's case or static property is, and is counted by name rather than listed.
+    /// A bare `T.f` handed to a call is the function's only on a type declaring it: on another type the tree declares it is that type's case or static property, and is dropped and counted rather than listed.
     @Test
     func aMemberOfAnotherTypeHandedToACallIsNotCredited() async throws {
         let root = try TestSources.makeTempRepo()
@@ -269,7 +269,8 @@ struct WhereFunctionReferenceTests {
         #expect(WhereAnswerRepetitionTests.sitesOnePerLine(output).contains("Sources/App/Engine.swift:11  in start()"), "\(output)")
         let (listed, written) = SyntacticWhereUnappliedRefsTests.listedAndWrittenWithNoCall(output)
         #expect(!listed.contains("Sources/App/Engine.swift:9  in start()"), "\(output)")
-        #expect(written.contains("Sources/App/Engine.swift:9  in start()"), "\(output)")
+        #expect(!written.contains("Sources/App/Engine.swift:9  in start()"), "\(output)")
+        #expect(output.contains("but the name is written 2 times with no call, 2 on other types dropped, none kept"), "\(output)")
     }
 
     /// A name written twice on one line with no call — `self.size = size` — is one place to look, listed and counted once.

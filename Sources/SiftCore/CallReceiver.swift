@@ -33,6 +33,12 @@ enum CallReceiver: Sendable, Equatable {
         return written.map { CallReceiver.type($0.name, mayBeUnseen: $0.isQualified, isQualified: $0.isQualified) }
     }
 
+    /// The type a function's name handed on unapplied is written on — `T` in `T.f` or `T.f(x:)` — read as a call's receiver is, so a qualified query judges it as it judges a call on `T`; `nil` for a bare name, `Self`, `self` or a value, which are kept.
+    static func ofHandedOn(_ name: DeclReferenceExprSyntax) -> CallReceiver? {
+        guard let receiver = ofUse(name), case .type = receiver else { return nil }
+        return receiver
+    }
+
     /// The receiver of a name written as a use rather than called: the types the site is written in for a bare name, what the member is written on for one behind a dot, or `nil` for a key-path component and a leading-dot member, whose type the scan cannot tell.
     static func ofUse(_ name: DeclReferenceExprSyntax) -> CallReceiver? {
         if let member = name.parent?.as(MemberAccessExprSyntax.self), member.declName.id == name.id {

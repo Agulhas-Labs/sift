@@ -95,7 +95,7 @@ struct DigestMissAnswer {
             let scopeNote = moduleNote + widenedNote
             var lines = ["\(name) — declared outside this repo (or not indexed); \(scoped.count) local extension\(scoped.count == 1 ? "" : "s")\(scopeNote):"]
             var budgeted: [DigestRenderer.BudgetedLine] = []
-            var outlineBudget = DigestRenderer.outlineCap
+            var outlineBudget = DigestCaps.outlineCap
             for extensionRow in scoped {
                 budgeted.append(DigestRenderer.BudgetedLine(text: "", counted: false))
                 budgeted.append(DigestRenderer.BudgetedLine(
@@ -140,13 +140,14 @@ struct DigestMissAnswer {
             // The most absolute absence claim the tool makes: a file the parser could not finish is *exactly*
             // how "no symbol named X" comes to be said about a symbol written in plain sight, and without this
             // the reader has nothing in the answer to suspect it with.
-            let text = try (renderer.absenceBanner() + ["\(DigestMiss.noSymbolPrefix)\(name)\(DigestMiss.noSymbolSuffix)"] + siblingPointerLines(for: written)).joined(separator: "\n")
+            let text = try (renderer.absenceBanner() + ["\(DigestMiss.noSymbolPrefix)\(name)\(DigestMiss.noSymbolSuffix)"] + WhereBasenamePointer.lines(for: QualifiedPath.baseName(of: name), in: renderer.store, at: renderer.revision) + siblingPointerLines(for: written)).joined(separator: "\n")
             return MeasuredAnswer(text: text, missed: true)
         }
         // In the class too: "no type named X, here are some near ones" leads with an absence, and a fuzzy
         // candidate is not the declaration asked for. Leaving it out would make the rule something a reader has
         // to know rather than something the answer states.
         var lines = try renderer.absenceBanner()
+        try lines.append(contentsOf: WhereBasenamePointer.lines(for: QualifiedPath.baseName(of: name), in: renderer.store, at: renderer.revision))
         lines.append("no \(wasMemberTarget ? "type or member" : "type") named \(name)\(DigestMiss.nearestSymbolsSuffix)")
         for row in candidates {
             lines.append("  \(row.name) — \(row.kind.rawValue) — \(row.module) — \(row.path):\(row.line)")
@@ -174,14 +175,14 @@ struct DigestMissAnswer {
         // the cited paths would name every file except the one that mattered.
         var lines = try renderer.absenceBanner()
         lines.append("\(DigestMiss.unresolvedPathPrefix)\(written) — \(baseName) is declared, but not under \(under.joined(separator: ".")):")
-        for row in elsewhere.prefix(DigestRenderer.memberCap) {
+        for row in elsewhere.prefix(DigestCaps.memberCap) {
             try lines.append("  \(renderer.qualifiedTarget(of: row)) — \(row.kind.rawValue) — \(row.path)\(row.rangeDescription)")
         }
         // The list *is* the evidence in this answer — a reader who does not find their member in it
         // concludes it does not exist — so a cut list that does not say it was cut is the same silent
         // under-report the answer is warning about.
-        if elsewhere.count > DigestRenderer.memberCap {
-            lines.append("  truncated: \(elsewhere.count - DigestRenderer.memberCap) more declarations")
+        if elsewhere.count > DigestCaps.memberCap {
+            lines.append("  truncated: \(elsewhere.count - DigestCaps.memberCap) more declarations")
         }
         lines.append(contentsOf: siblingPointerLines(for: written))
         return lines.joined(separator: "\n")

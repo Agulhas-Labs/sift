@@ -76,3 +76,20 @@ private extension LocalTypealias {
         return "\(location.line):\(location.column)"
     }
 }
+
+extension SyntacticCallSite {
+    /// This initializer call, with the local declarations around it that the name it writes may mean, as a type use is marked, or as it is where `type` is `nil` because the call writes no name.
+    func scoped(writing type: String?, at node: some SyntaxProtocol, converter: SourceLocationConverter, inFunction: Bool, atTopLevel: Bool) -> SyntacticCallSite {
+        guard let type else { return self }
+        return LocalTypealias.tagging(LocalTypeShadow.marking(self, writing: type, at: node), writing: type, at: node, converter: converter, inFunction: inFunction, atTopLevel: atTopLevel)
+    }
+
+    /// This implied initializer call, written with a leading dot under the type annotation `annotation` that names `type`, with the local declarations around that annotation, since they decide what its name means.
+    ///
+    /// A call with no annotation to read stays untagged. A return type sits outside its function's body, so it is read one level out of the enclosing declarations.
+    func scoped(impliedBy annotation: TypeSyntax?, writing type: String, converter: SourceLocationConverter, enclosing: Int, types: Int) -> SyntacticCallSite {
+        guard let annotation else { return self }
+        let outsideBody = annotation.ancestorOrSelf(mapping: { $0.as(ReturnClauseSyntax.self) }) != nil
+        return scoped(writing: type, at: annotation, converter: converter, inFunction: enclosing - (outsideBody ? 1 : 0) > types, atTopLevel: types == 0)
+    }
+}

@@ -47,14 +47,17 @@ public extension RunFailureShape {
         public let note: String?
         /// The haystack line a failed `.contains`/`.hasPrefix`/`.hasSuffix` is printed with, already worded — see ``RunTestFailure/closestLine``.
         public let closestLine: String?
+        /// Each `↳` line of ``note`` on its own — see ``RunTestFailure/markedLines``.
+        public let markedLines: [String]
 
-        public init(name: String, location: String?, message: String, arguments: String? = nil, note: String? = nil, closestLine: String? = nil) {
+        public init(name: String, location: String?, message: String, arguments: String? = nil, note: String? = nil, closestLine: String? = nil, markedLines: [String] = []) {
             self.name = name
             self.location = location
             self.message = message
             self.arguments = arguments
             self.note = note
             self.closestLine = closestLine
+            self.markedLines = markedLines
         }
     }
 }
@@ -82,7 +85,7 @@ public extension RunFailureShape {
 
     /// The one value most of these failures read, where they read one — see ``RunDominantFailureClass``.
     var dominantClass: RunDominantFailureClass? {
-        RunDominantFailureClass.of(failures.map(\.message), census: census, accessibility: accessibility)
+        RunDominantFailureClass.of(failures.map(\.message), markedLines: failures.map(\.markedLines), census: census, accessibility: accessibility)
     }
 
     /// The signature the most failures reduced to, or `nil` when there were no failures at all.
@@ -280,20 +283,6 @@ private extension RunFailureShape {
         )
     }
 
-    /// `message` with the `↳` note's evaluation appended, where the message is exactly `Expectation failed: ` followed by the note's text up to its first ` → `, and `nil` otherwise.
-    ///
-    /// Swift Testing prints `Expectation failed: <expression>` and then `↳ <expression> → <value>`, so the second line repeats the first up to its arrow. Where it does, the note is attributed by its content as well as by its position, which is why the merged line carries no adjacency marker: that marker discloses that position was the whole of the evidence. The match is the whole expression, never a suffix of the message: a user's comment is printed first, as a `↳` line of its own, and a comment such as `expected → really` under `Expectation failed: value == expected` ends on the same word the message does, so a suffix match would print the comment as the expression's value.
-    static func merging(_ message: String, with note: String) -> String? {
-        guard let arrow = note.range(of: " → ") else {
-            return nil
-        }
-        let expression = note[..<arrow.lowerBound]
-        guard !expression.isEmpty, message == "Expectation failed: \(expression)" else {
-            return nil
-        }
-        return message + note[arrow.lowerBound...]
-    }
-
     /// `<path>:<line> (body :<start>-<end>)`, the path stated as the rest of the answer states paths, where the failure resolved to the failing test's own declaration, and `nil` otherwise.
     ///
     /// Only a line standing for one failure gets this form, since a line standing for a signature makes the claim ``sited(_:everywhere:)`` words. A body that belongs to the test named beside it — a declaration written `@Test`, never a helper that merely shares the name — cannot be read as more than containment, so it carries no mode marker; any other declaration keeps the `in … (syntactic)` line.
@@ -473,5 +462,36 @@ private extension RunFailureShape {
     /// The declaration the failure at `position` happened in.
     func declaration(of position: Int) -> RunFailureSites.Declaration? {
         failures[position].location.flatMap(sites.declaration(at:))
+    }
+}
+
+extension RunFailureShape {
+    /// `message` with the `↳` note's evaluation appended, where the message is exactly `Expectation failed: ` followed by the note's text up to its first ` → ` outside a string literal, and `nil` otherwise.
+    ///
+    /// Swift Testing prints `Expectation failed: <expression>` and then `↳ <expression> → <value>`, so the second line repeats the first up to its arrow. Where it does, the note is attributed by its content as well as by its position, which is why the merged line carries no adjacency marker: that marker discloses that position was the whole of the evidence. The match is the whole expression, never a suffix of the message: a user's comment is printed first, as a `↳` line of its own, and a comment such as `expected → really` under `Expectation failed: value == expected` ends on the same word the message does, so a suffix match would print the comment as the expression's value.
+    static func merging(_ message: String, with note: String) -> String? {
+        guard let arrow = firstArrow(in: note) else {
+            return nil
+        }
+        let expression = note[..<arrow.lowerBound]
+        guard !expression.isEmpty, message == "Expectation failed: \(expression)" else {
+            return nil
+        }
+        return message + note[arrow.lowerBound...]
+    }
+
+    /// The first ` → ` of `note` that no string literal holds, or `nil` where it has none.
+    private static func firstArrow(in note: String) -> Range<String.Index>? {
+        var index = note.startIndex
+        while index < note.endIndex {
+            if note[index] == "\"" {
+                index = RunDominantFailureClass.afterLiteral(in: note, openingAt: index)
+            } else if note[index...].hasPrefix(" → ") {
+                return index ..< note.index(index, offsetBy: 3)
+            } else {
+                index = note.index(after: index)
+            }
+        }
+        return nil
     }
 }

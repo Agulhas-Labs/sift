@@ -101,6 +101,8 @@ public struct RunOutputFilter {
     private var heldBlank: (index: Int, line: String)?
     /// A `recorded an issue with 1 argument …` line whose argument value broke across lines, held until the line carrying its location arrives.
     private var openIssue: OpenIssue?
+    /// A failure's message or `↳` line whose brackets do not balance, held while the indented lines beneath it carry the rest of the expression — see ``continueOpenExpression(_:with:)``.
+    private var openExpression: RunExpressionJoin?
     /// Every test a start line read from its own head has named, which a glued ending or issue must name to be split off (``RunGluedTestLine``).
     private var startedFromHead: Set<String> = []
     /// Whether the line being read is the framework's line split off a glued one, whose start, if it is one, opens no test for a later glued line.
@@ -214,6 +216,14 @@ public extension RunOutputFilter {
                 diagnostics.record(held.line, building: !testsStarted)
             }
         }
+        if let open = openExpression {
+            openExpression = nil
+            if continueOpenExpression(open, with: line) {
+                return
+            }
+            unnotedFailure = nil
+            noted = open.index
+        }
         // An observer, not a reader that claims the line: a test's finishing line is read here and still
         // reaches the readers below, which is how a failure keeps its place in the listing as well. A line
         // of an open note is the author's text whatever it says, so it is no test's ending.
@@ -304,6 +314,10 @@ public extension RunOutputFilter {
         if let open = openIssue {
             openIssue = nil
             appendUnlocated(open)
+        }
+        if let open = openExpression {
+            openExpression = nil
+            closeExpression(open)
         }
         diagnostics.closeLinkerBlock()
         if let unnotedFailure {
@@ -695,6 +709,49 @@ extension RunOutputFilter {
         let (location, message) = splitLocation(located)
         append(RunTestFailure(name: name, arguments: arguments, location: location, message: message))
         unnotedFailure = testFailures.count - 1
+        openExpression = RunExpressionJoin.opening(message, index: testFailures.count - 1, inNote: false)
+    }
+
+    /// Carries an expression Swift Testing printed over several lines on across the indented lines beneath its first, joining each to it, until its brackets balance.
+    ///
+    /// Swift Testing prints an `#expect` written over several lines as it was written, in the issue line and again in each `↳` expansion beneath it: `Expectation failed: Gizmo.soleElement(` and then indented `of: note,`, `width: 320`, `)?.label == "note 0"`. Read one line at a time, the message stopped at the first of them and the rest became the failure's note, so the `↳` evaluation that repeats the expression never matched it (``RunFailureShape/merging(_:with:)``) and every failure of that shape shared the signature `Gizmo.soleElement(`. Each continuation is joined trimmed, with a space between pieces but none after an opening bracket or before a closing one, so the joined text reads as the one-line spelling.
+    ///
+    /// Joining stops at a line that is not indented, at a line the filter reads as its own (a `↳`, an event, XCTest's counter), and at ``noteContinuationCap`` lines; what was joined is kept, balanced or not, and the line that stopped it is read as it always was. A message whose brackets balance never opens one of these, so a `↳` or indented line beneath it is the note it always was.
+    private mutating func continueOpenExpression(_ open: RunExpressionJoin, with line: String) -> Bool {
+        guard open.lines < Self.noteContinuationCap, let piece = expressionContinuation(in: line) else {
+            closeExpression(open)
+            return false
+        }
+        var open = open
+        open.join(piece)
+        if open.isOpen {
+            openExpression = open
+        } else {
+            closeExpression(open)
+        }
+        unnotedFailure = open.index
+        return true
+    }
+
+    /// Writes a held expression where it belongs: the failure's message, or one `↳` line of its note.
+    private mutating func closeExpression(_ open: RunExpressionJoin) {
+        guard open.inNote else {
+            let failure = testFailures[open.index]
+            testFailures[open.index] = RunTestFailure(name: failure.name, arguments: failure.arguments, location: failure.location, message: open.text)
+            return
+        }
+        foldNoteLine(open.text, marked: true, into: open.index)
+    }
+
+    /// The text of an indented line that may carry on an open expression, or `nil` for a `↳` line, an event, XCTest's counter or a line that is not indented.
+    private func expressionContinuation(in line: String) -> String? {
+        guard markedContinuation(in: line) == nil, let text = plainContinuation(in: line) else {
+            return nil
+        }
+        guard !Self.opensAnEvent(text), !(text.hasPrefix("Executed ") && text.contains(" with ")) else {
+            return nil
+        }
+        return text
     }
 
     /// Carries a parameterized failure's arguments on across the line breaks inside a printed value, until the ` at File.swift:10:9:` that ends them arrives.
@@ -758,6 +815,11 @@ extension RunOutputFilter {
     private mutating func recordMarkedNote(_ line: String, on index: Int?) -> Bool {
         guard let index, let note = markedContinuation(in: line) else {
             return false
+        }
+        if let open = RunExpressionJoin.opening(note, index: index, inNote: true) {
+            openExpression = open
+            unnotedFailure = index
+            return true
         }
         foldNoteLine(note, marked: true, into: index)
         return true

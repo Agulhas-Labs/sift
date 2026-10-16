@@ -39,12 +39,14 @@ public extension SymbolRow {
 
 extension SymbolRow {
     /// The row `where` lists this declaration with, under `qualifiedName`: with its signature and doc summary, or only its path when `compact`, and the `#if` condition it sits under after its range, as `digest` places it — `condition` where the caller has labelled it (`IfConfigLabel`), the stored one otherwise.
-    func declarationLine(qualifiedName: String, compact: Bool, condition: String? = nil) -> String {
-        let located = "\(path)\(rangeDescription)" + ((condition ?? ifConfigCondition).map { "  [\($0)]" } ?? "")
+    func declarationLine(qualifiedName: String, compact: Bool, condition: String? = nil, memberCount: Int? = nil, mark: String? = nil) -> String {
+        let located = "\(path)\(rangeDescription)" + ((condition ?? ifConfigCondition).map { "  [\($0)]" } ?? "") + (mark.map { " — \($0)" } ?? "")
+        let members = memberCount.map { " — \($0) members" }
         if compact {
-            return "  \(qualifiedName) — \(kind.rawValue) — \(located)"
+            let context = kind == .extensionKind ? extensionContext(self) : ""
+            return "  \(qualifiedName) — \(kind.rawValue)\(context)\(members ?? "") — \(located)"
         }
-        let line = "  \(qualifiedName) — \(kind.rawValue) — \(SourceSlicer.shown(signature)) — \(located)"
+        let line = "  \(qualifiedName) — \(kind.rawValue) — \(SourceSlicer.shown(signature))\(members ?? "") — \(located)"
         return docSummary.map { line + "  /// " + $0 } ?? line
     }
 }

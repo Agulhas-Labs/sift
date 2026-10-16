@@ -167,10 +167,10 @@ struct DigestExtensionPlacementTests {
         let digest = try engine.digest(target: "Alpha.Box", options: DigestOptions())
         let found = try await engine.lookup(symbol: "Alpha.Box", freshness: freshness)
 
-        let listed = found.components(separatedBy: "\n")
-            .drop { !$0.hasPrefix("extensions of Box (") }
-            .dropFirst()
-            .prefix { $0.hasPrefix("  extension ") }
+        // The extensions `where` prints once: those a `declarations` row carries and those the `extensions of` block goes on to list.
+        let lines = found.components(separatedBy: "\n")
+        let listed = lines.filter { $0.hasPrefix("  Alpha.Box — extension — ") }
+            + lines.drop { !$0.hasPrefix("extensions of Box (") }.dropFirst().prefix { $0.hasPrefix("  extension ") }
         let wherePaths = listed.compactMap { $0.components(separatedBy: " — ").last }
         let digestPaths = Self.extensionLines(of: digest).compactMap { $0.components(separatedBy: " — ").last }
 

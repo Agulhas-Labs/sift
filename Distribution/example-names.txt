@@ -447,6 +447,8 @@ SomewhereElse
 SourceKit
 SourcePackages
 SpreadTests
+Sprocket0Tests
+Sprocket7Tests
 StacksTests
 StoreExample
 StoredEntry
@@ -661,6 +663,7 @@ benchWarnVar
 besideIndexCall
 betaOnly
 binaryTarget
+bodyWidth
 branchOnlyRamp
 brandPrimary
 buildArray
@@ -989,6 +992,7 @@ readDataToEndOfFile
 readabilityHandler
 readdedNames
 readsItsOwnName
+readsLabel
 realCall
 recoverySuggestion
 regularExpression
@@ -1047,6 +1051,7 @@ skipUnavailableActions
 skipsHiddenFiles
 slateDim
 smallDocument
+soleElement
 someFlagThisTableHasNeverHeardOf
 someNewFlag
 sortedKeys

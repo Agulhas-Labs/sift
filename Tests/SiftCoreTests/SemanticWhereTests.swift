@@ -282,7 +282,8 @@ struct SemanticWhereTests {
         let output = try await engine.lookup(symbol: "Base", freshness: freshness)
 
         // An extension carries no USR of its own, so refusing it would tell the reader to run a build that could never clear it.
-        #expect(output.contains("extensions of Base"))
+        #expect(output.contains("— extension — extension Base — 1 members —"))
+        #expect(!output.contains("extensions of Base"))
         #expect(!output.contains("REFUSED"))
         #expect(output.contains("semantic: fresh"))
     }

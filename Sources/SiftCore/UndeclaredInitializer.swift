@@ -20,6 +20,10 @@ struct UndeclaredInitializer {
     var paging: SyntacticSweepPaging?
     /// Where a files view (`where X --files`) records every type and site the answer lists, past its caps.
     var filesCollector: WhereFilesCollector?
+    /// The declarations-only view (`where X --decl`): no call sites, and provenance sentences that do not point at them.
+    var declarationsOnly = false
+    /// The typealiases a call building a type may write in place of its name, which the type's own answer follows, so its sites are scanned for through them too.
+    var initializerAliases: ((SymbolRow) throws -> SyntacticTypeUsage.InitializerAliases)?
 
     /// Whether `query` is a `T.init` naming a type that declares no init and is built by calling its name, whose sites this answers with.
     func buildsAnUndeclaredType(_ query: String) throws -> Bool {
@@ -27,9 +31,9 @@ struct UndeclaredInitializer {
     }
 
     /// The body of the answer to `query` and the paths it cites, or `nil` unless it is a `T.init` query for types that declare no initializer.
-    func answer(for query: String) async throws -> (body: [String], cited: [String])? {
+    func answer(for query: String) async throws -> Answer? {
         if let declarationSource, let deinits = try DeinitLookup(store: store, source: declarationSource).lookup(for: query) {
-            return (DeinitLookup.whereLines(for: deinits, cap: listCap), deinits.cited)
+            return Answer(body: DeinitLookup.whereLines(for: deinits, cap: listCap), cited: deinits.cited, declared: false)
         }
         let types = try types(for: query)
         guard !types.isEmpty else { return nil }
@@ -38,8 +42,10 @@ struct UndeclaredInitializer {
         filesCollector?.recordDeclarationsHeading("declarations (\(types.count)):")
         var body = ["declarations (\(types.count)):"] + listed.map { $0.row.declarationLine(qualifiedName: $0.path, compact: false) }
         body += try listed.map { try provenance(of: $0.row, named: types.count > 1 ? $0.path : $0.row.name) }
-        body += try await siteLines(for: types.filter { SameNamedTypes.isConstructed($0.row.kind) })
-        return (body, listed.map(\.row.path))
+        if !declarationsOnly {
+            body += try await siteLines(for: types.filter { SameNamedTypes.isConstructed($0.row.kind) })
+        }
+        return Answer(body: body, cited: listed.map(\.row.path), declared: true)
     }
 
     /// The lines for the types a `T.init` query names that declare no initializer, beside `declarations`, the initializers it resolved to under other types of the name.
@@ -50,7 +56,7 @@ struct UndeclaredInitializer {
         recordDeclarations(of: types)
         var lines = ["", "declared with no init of their own (\(types.count)):"] + types.prefix(listCap).map { $0.row.declarationLine(qualifiedName: $0.path, compact: false) }
         lines += try types.prefix(listCap).map { try provenance(of: $0.row, named: $0.path) }
-        return try await lines + siteLines(for: types)
+        return try await lines + (declarationsOnly ? [] : siteLines(for: types))
     }
 
     /// The types a `T.init` query names that declare no initializer — every struct, class, enum, actor and protocol of the path — or empty where the query is not one.
@@ -74,7 +80,7 @@ struct UndeclaredInitializer {
         case .protocolKind:
             return "\(name) declares no init requirement — a protocol is never built itself; where \(type.name) lists the types conforming to it, whose inits are their own"
         case .structKind:
-            return opening + "the compiler writes its memberwise initializer (and init(from:) where it is Decodable), which the calls below reach"
+            return opening + "the compiler writes its memberwise initializer (and init(from:) where it is Decodable)" + (declarationsOnly ? "" : ", which the calls below reach")
         case .enumKind:
             return opening + "any it has is compiler-written: init(rawValue:) for a raw-value enum, init(from:) for a Decodable one"
         case .classKind:
@@ -82,10 +88,10 @@ struct UndeclaredInitializer {
             let parent = String(written.prefix { $0 != "<" })
             let indexed = try store.symbols(named: parent)
             if indexed.contains(where: { $0.kind == .classKind }) {
-                return opening + "it inherits \(parent)'s initializers, which the calls below reach; where \(parent).init lists them"
+                return opening + "it inherits \(parent)'s initializers" + (declarationsOnly ? "" : ", which the calls below reach") + "; where \(parent).init lists them"
             }
             if !indexed.contains(where: { $0.kind == .protocolKind }) {
-                return opening + "the calls below reach one it inherits from \(parent), if that is its superclass, or the default init() the compiler writes"
+                return opening + (declarationsOnly ? "it has one it inherits from \(parent), if that is its superclass, or the default init() the compiler writes" : "the calls below reach one it inherits from \(parent), if that is its superclass, or the default init() the compiler writes")
             }
         default:
             break
@@ -104,7 +110,13 @@ struct UndeclaredInitializer {
     private func siteLines(for types: [SameNamedTypes.Candidate]) async throws -> [String] {
         guard let callSites, !types.isEmpty else { return [] }
         let byName = Dictionary(grouping: types, by: \.row.name)
-        let scanned = await callSites(byName.mapValues { _ in .initializer })
+        let aliases = try initializerAliases.map { aliasesOf in try Dictionary(types.map { try ($0.row.id, aliasesOf($0.row)) }) { first, _ in first } } ?? [:]
+        var request = byName.mapValues { _ in CallSiteScanner.SiteShape.initializer }
+        for name in aliases.values.flatMap(\.names) {
+            request[name] = CallSiteScanner.SiteShape.initializer.widened(by: request[name])
+        }
+        let scanned = await callSites(request)
+        let spelledByName = scanned.mapValues { $0.filter { $0.isListed(ownedBy: []) } }
         var lines: [String] = []
         for name in byName.keys.sorted() {
             let asked = byName[name] ?? []
@@ -119,35 +131,41 @@ struct UndeclaredInitializer {
                 for entry in listed {
                     reading.add(entry.site, owners: entry.owners, among: candidates, asked: [type.path])
                 }
-                let dropped = SameNamedTypes.dropped(another: spelled.count - listed.count, none: 0, named: name).joined(separator: ", ")
+                // A call written through a typealias of the type builds it as one spelling its name does, and is kept whatever its labels, as a direct call is here: the type may take an initializer the index cannot see, a protocol's from outside it (`SetAlgebra`'s array-literal initializer for an `OptionSet`) or a macro's.
+                var typeAliases = aliases[type.row.id]
+                let joined = try typeAliases?.joining(listed.map(\.site), from: spelledByName) ?? (sites: listed.map(\.site), through: [])
+                let sites = joined.sites
+                let byWrittenName = spelled.count + joined.through.count
+                let dropped = SameNamedTypes.dropped(another: spelled.count - listed.count, none: 0, named: name)
+                let aliasClauses = typeAliases?.clauses(for: joined.sites, through: joined.through, filesCollector: filesCollector) ?? []
                 let forType = asked.count > 1 ? " — for \(type.path)" : ""
                 lines.append("")
-                if listed.isEmpty {
-                    lines.append(dropped.isEmpty
+                if sites.isEmpty {
+                    lines.append(dropped.isEmpty && aliasClauses.isEmpty
                         ? "no call spelled \"\(name).init\" anywhere in the working tree\(forType)"
-                        : "no call spelled \"\(name).init\" builds \(type.path) — \(spelled.count) by name, \(dropped)")
+                        : "no call spelled \"\(name).init\" builds \(type.path) — \(byWrittenName) by name, \((aliasClauses + dropped).joined(separator: ", "))")
                     continue
                 }
-                let fileCount = Set(listed.map(\.site.path)).count
+                let fileCount = Set(sites.map(\.path)).count
                 let files = "\(fileCount) file\(fileCount == 1 ? "" : "s")"
-                let count = "\(listed.count) call site\(listed.count == 1 ? "" : "s")"
+                let count = "\(sites.count) call site\(sites.count == 1 ? "" : "s")"
                 // First, beside the count by name it qualifies.
-                let counted = reading.clauses(named: name, listed: listed.map(\.site)) + (dropped.isEmpty ? [] : [dropped, "\(listed.count) kept"])
+                let counted = reading.clauses(named: name, listed: listed.map(\.site)) + aliasClauses + (dropped.isEmpty ? [] : dropped + ["\(sites.count) kept"])
                 lines.append(counted.isEmpty
                     ? "\"\(name).init\" (\(count) by written name in \(files)\(forType)):"
-                    : "\"\(name).init\" (\(spelled.count) call site\(spelled.count == 1 ? "" : "s") by written name, \(counted.joined(separator: ", ")), in \(files)\(forType)):")
+                    : "\"\(name).init\" (\(byWrittenName) call site\(byWrittenName == 1 ? "" : "s") by written name, \(counted.joined(separator: ", ")), in \(files)\(forType)):")
                 let detail = { (site: SyntacticCallSite) -> String in
                     let owners = listed.first { $0.site == site }?.owners
                     return "in \(site.enclosing)" + (owners.map { SameNamedTypes.flag(of: $0, for: [type.path]) } ?? "")
                 }
-                filesCollector?.recordSites(listed.map(\.site))
+                filesCollector?.recordSites(sites)
                 if let paging {
-                    lines += paging.rows(of: listed.map(\.site), detail: detail)
+                    lines += paging.rows(of: sites, detail: detail)
                     continue
                 }
-                lines += NameMatchedSites.rows(listed.prefix(callSiteCap).map(\.site), detail: detail)
-                if listed.count > callSiteCap {
-                    lines.append("    truncated: \(listed.count - callSiteCap) more call sites")
+                lines += NameMatchedSites.rows(Array(sites.prefix(callSiteCap)), detail: detail)
+                if sites.count > callSiteCap {
+                    lines.append("    truncated: \(sites.count - callSiteCap) more call sites")
                 }
             }
             // An implicit `.init call` or a `Self(x)` in an extension of a type declared elsewhere is kept only where its labels may reach an asked type's initializers: the compiler would refuse it on a type none of whose initializers take them, so the count says it was narrowed by them, as a declared initializer's does.
@@ -160,5 +178,14 @@ struct UndeclaredInitializer {
             lines += SyntacticCallerFallback.nameOnlyLines(untold, cap: callSiteCap, initializerOf: name, narrowed: true, grouped: true, paging: paging).map { "  " + $0 }
         }
         return lines
+    }
+}
+
+extension UndeclaredInitializer {
+    /// An answer's lines and the paths it cites; `declared` is false for a `deinit`'s answer, which has no declarations block.
+    struct Answer {
+        let body: [String]
+        let cited: [String]
+        let declared: Bool
     }
 }

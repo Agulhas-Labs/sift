@@ -24,14 +24,19 @@ public struct RunTestFailure: Sendable {
     ///
     /// Worked out from the whole of the note as the log printed it, before the note is capped, because the line that answers the question is rarely among the first few the cap keeps.
     public let closestLine: String?
+    /// Each `↳` line of ``note`` on its own, in the order the log printed them, a multi-line expression joined into one.
+    ///
+    /// The note joins these with a space, which is right for reading and loses where one line ended: Swift Testing prints each expansion of an expectation as a `↳` line of its own, `<expression> → <value>`, and only the line it was printed on says where a value ends and the next expression begins. ``RunDominantFailureClass`` reads the values from these.
+    public let markedLines: [String]
 
-    public init(name: String, arguments: String? = nil, location: String?, message: String, note: String? = nil, closestLine: String? = nil) {
+    public init(name: String, arguments: String? = nil, location: String?, message: String, note: String? = nil, closestLine: String? = nil, markedLines: [String] = []) {
         self.name = name
         self.arguments = arguments
         self.location = location
         self.message = message
         self.note = note
         self.closestLine = closestLine
+        self.markedLines = markedLines
     }
 }
 
@@ -39,13 +44,16 @@ public extension RunTestFailure {
     /// The same failure carrying the `↳` comment printed directly beneath it, appended to any it already had.
     ///
     /// Appended rather than replacing, because a note runs to as many `↳` lines as its author wrote and the second is as much the sentence as the first: replacing would leave a failure holding the source comment above its expectation and drop the line that says what went wrong. Joined with a space, since the line break is the terminal's and not the author's — except for `apart`, a line the log printed on a line of its own beneath the `↳` (an indented list entry), which keeps its break so a short list is read as the list it is. Each line is bounded by ``RunFailureCensus/wordsCap`` when it is rendered, the same as a message.
+    ///
+    /// A line that is not `apart` is a `↳` line of its own, so it is also kept whole in ``markedLines``.
     func noting(_ note: String, apart: Bool = false) -> RunTestFailure {
         let joined = self.note.map { "\($0)\(apart ? "\n" : " ")\(note)" } ?? note
-        return RunTestFailure(name: name, arguments: arguments, location: location, message: message, note: joined, closestLine: closestLine)
+        let marked = apart ? markedLines : markedLines + [note]
+        return RunTestFailure(name: name, arguments: arguments, location: location, message: message, note: joined, closestLine: closestLine, markedLines: marked)
     }
 
     /// The same failure carrying `closestLine`.
     func withClosestLine(_ closestLine: String) -> RunTestFailure {
-        RunTestFailure(name: name, arguments: arguments, location: location, message: message, note: note, closestLine: closestLine)
+        RunTestFailure(name: name, arguments: arguments, location: location, message: message, note: note, closestLine: closestLine, markedLines: markedLines)
     }
 }

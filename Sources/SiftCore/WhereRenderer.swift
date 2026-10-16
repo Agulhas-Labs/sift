@@ -31,6 +31,8 @@ struct WhereRenderer {
     var textSearchFiles: ((String) -> TextSearchFiles?)?
     /// The revision an `--at` answer reads, as written, or `nil` for the working tree's: its degraded note names it, and its `--refs` answer says in one line in place of the `not code` section that its comments are not read.
     var revision: String?
+    /// The Swift files git lists at ``revision``, which the basename pointer names from in place of the store's inventory, since a revision's store holds only the files that spell the name.
+    var revisionPaths: [String] = []
     /// Whether a guessed file's build file renames its module through a setting this tool cannot read, so a count told apart by its module says that rather than that it was guessed from the path.
     var isUnreadablyRenamed: (String) -> Bool = { _ in false }
     /// Records, for the `--files` view, every file each section of this render names, from the section's full data (``WhereFilesCollector``); `nil` in every other render.
@@ -40,6 +42,11 @@ struct WhereRenderer {
     mutating func takeModuleFacts(from resolver: ModuleResolver) {
         projectDirectories = resolver.projectDirectories
         isUnreadablyRenamed = { [resolver] in resolver.isUnreadablyRenamed($0) }
+    }
+
+    /// The revision the basename pointer reads its files from, or `nil` for the working tree's.
+    private var basenameRevision: WhereBasenamePointer.Revision? {
+        revision.map { WhereBasenamePointer.Revision(name: $0, paths: revisionPaths) }
     }
 
     static var listCap: Int {
@@ -102,6 +109,10 @@ struct WhereRenderer {
         var lines: [String] = []
         var axis: SemanticAxis = .syntacticOnly
         var undeclared = UndeclaredInitializer(store: store, semantic: semantic.context, callSites: callSites, declarationSource: declarationSource, filesCollector: filesCollector)
+        undeclared.declarationsOnly = options.declarationsOnly
+        undeclared.initializerAliases = { try SyntacticTypeUsage.InitializerAliases(ofTypes: [$0], store: store, isUnreadablyRenamed: isUnreadablyRenamed, qualifiedName: qualifiedName(of:)) }
+        // Nothing of the store is said under `--decl`: no degraded note, and no pointer to the store where a miss would carry one.
+        let storePointer = options.declarationsOnly ? [] : WhereDegradedNote.pointer(semantic: semantic)
         let sweepsByName = try isSweptByName(declarations, query: query, semantic: semantic, options: options, undeclared: undeclared)
         if sweepsByName {
             undeclared.paging = paging
@@ -124,7 +135,7 @@ struct WhereRenderer {
         }
         // Said only above a list matched by written name: an answer resolving no declaration lists none, unless it is
         // an initializer nobody declared, whose answer places the note itself below.
-        if !declarations.isEmpty, let degraded {
+        if !declarations.isEmpty, !options.declarationsOnly, let degraded {
             lines.append(degraded)
         }
         var narrowingSlot = lines.count
@@ -137,11 +148,11 @@ struct WhereRenderer {
             // A type built only through an initializer nobody declared under it is answered with where it is built,
             // never as a path that does not resolve: the other types' inits that answer listed are not what was asked.
             if let answer = try await undeclared.answer(for: query) {
-                if let degraded {
+                if let degraded, !options.declarationsOnly {
                     lines.insert(degraded, at: narrowingSlot)
                     bannerSlot += 1
                 }
-                lines += paging.settle(answer.body)
+                lines += paging.settle(answer.body) + (options.declarationsOnly && answer.declared ? [Self.declarationsOnlyPointer(query: written)] : [])
                 if let banner = try parseErrorNotice(touching: answer.cited).banner {
                     lines.insert(banner, at: bannerSlot)
                 }
@@ -178,8 +189,8 @@ struct WhereRenderer {
                     lines.insert(absence, at: bannerSlot)
                 }
                 lines.append("no declarations found")
-                try lines.append(contentsOf: WhereBasenamePointer.lines(for: query, in: store))
-                lines.append(contentsOf: WhereDegradedNote.pointer(semantic: semantic))
+                try lines.append(contentsOf: WhereBasenamePointer.lines(for: baseComponent(of: query), in: store, at: basenameRevision))
+                lines.append(contentsOf: storePointer)
                 lines.append(contentsOf: siblingPointerLines(for: query))
                 return Output(body: lines.joined(separator: "\n"), axis: axis)
             }
@@ -189,11 +200,11 @@ struct WhereRenderer {
             if let absence {
                 lines.insert(absence, at: bannerSlot)
             }
-            lines.append("no exact match; nearest symbols:")
+            try lines.append(contentsOf: WhereBasenamePointer.lines(for: baseComponent(of: query), in: store, at: basenameRevision) + ["no exact match; nearest symbols:"])
             for row in candidates {
                 lines.append("  \(row.name) — \(row.kind.rawValue) — \(row.module) — \(row.path):\(row.line)")
             }
-            lines.append(contentsOf: WhereDegradedNote.pointer(semantic: semantic))
+            lines.append(contentsOf: storePointer)
             lines.append(contentsOf: siblingPointerLines(for: query))
             return Output(body: lines.joined(separator: "\n"), axis: axis)
         }
@@ -201,27 +212,17 @@ struct WhereRenderer {
         // A bare name unrelated owners each declare is answered with its declarations and the query that narrows to
         // each; a sweep asked for by name with --refs still lists everything it asked for, and so does a caller that
         // stands the answer in for a search's lines.
-        if options.collapsesSeveralOwners, !options.includeReferences, let output = try await severalOwnersOutput(lines, bannerSlot: bannerSlot, axis: axis, query: query, declarations: declarations, semantic: semantic) {
+        if options.collapsesSeveralOwners, !options.includeReferences, !options.declarationsOnly, let output = try await severalOwnersOutput(lines, bannerSlot: bannerSlot, axis: axis, query: query, declarations: declarations, semantic: semantic) {
             return output
         }
 
-        let compact = declarations.count > Self.compactDeclarationThreshold
-        lines.append("declarations (\(declarations.count)):")
-        filesCollector?.recordDeclarationsHeading("declarations (\(declarations.count)):")
-        // A type's own declaration leads its extensions, whatever its file sorts as: it is the row that says what the
-        // name is, and a reader who takes the head of a long list of extensions would otherwise never see it.
-        let listed = declarations.filter { $0.kind != .extensionKind } + declarations.filter { $0.kind == .extensionKind }
-        // Every declaration, not the listed ones: the view names each file that declares the query, past the list's cap too.
-        try filesCollector?.recordDeclarations(listed, qualifiedName: qualifiedName(of:))
-        for row in listed.prefix(Self.listCap) {
-            citedPaths.append(row.path)
-            try lines.append(row.declarationLine(qualifiedName: qualifiedName(of: row), compact: compact, condition: IfConfigLabel.label(for: row, source: fileSource)))
-        }
-        if declarations.count > Self.listCap {
-            lines.append("  truncated: \(declarations.count - Self.listCap) more declarations")
-        }
-        if compact {
-            lines.append("  signatures: digest \(query) for any one of these")
+        let block = try declarationsBlock(declarations, query: query, written: written, declarationsOnly: options.declarationsOnly)
+        lines += block.lines
+        citedPaths += block.cited
+        let (extensionListings, printedExtensions) = (block.extensionListings, block.printedExtensions)
+        if options.declarationsOnly {
+            try await lines += undeclared.lines(beside: declarations, for: query) + [Self.declarationsOnlyPointer(query: written)]
+            return try Output(body: withParseNotices(lines, at: bannerSlot, citing: citedPaths).joined(separator: "\n"), axis: axis)
         }
 
         // Which symbols are left with no caller answer at all — the refused ones under an open store, or every callable declaration when there is no store to refuse from.
@@ -290,13 +291,14 @@ struct WhereRenderer {
             paging: sweepsByName ? paging : nil,
             memberwise: MemberwiseLabelSites(rows: fallbackRows, sameNamed: sameNamed, source: declarationSource),
             listsLabelCalls: options.includeReferences,
-            filesCollector: filesCollector
+            filesCollector: filesCollector,
+            initializerAliases: { try SyntacticTypeUsage.InitializerAliases(of: $0, store: store, isUnreadablyRenamed: isUnreadablyRenamed, qualifiedName: qualifiedName(of:)) }
         )
         // A type of the name that declares no init of its own is built all the same, and its sites are not the initializers' above.
         try await lines += undeclared.lines(beside: declarations, for: query)
         // A name-matched sweep that found nothing is an empty verdict like the store's: the same sentences, and the degraded note's own "not unused" clause dropped so that exactly one caveat is said.
         lines = SyntacticCallerFallback.endingInTheCaveatsIfEmpty(lines, degradedNote: degraded)
-        try appendTypeRelations(of: declarations, conformerBlocks: conformerBlocks, writtenNameChecks: writtenNameChecks, citing: &citedPaths, into: &lines, qualifiedName: qualifiedName(of:))
+        try appendTypeRelations(of: declarations, conformerBlocks: conformerBlocks, writtenNameChecks: writtenNameChecks, extensions: (extensionListings, printedExtensions), citing: &citedPaths, into: &lines, qualifiedName: qualifiedName(of:))
         // Last, after every declaration's sections, and before the pager settles, since its rows join the answer's one window.
         try await lines += nonCodeLines(for: declarations, query: query, options: options, paging: paging, joinsPager: !semantic.isActive)
         // Every paged list is in now, so the one window they all show is known and each list's slot is filled.
@@ -453,7 +455,7 @@ struct WhereRenderer {
         return [""] + pointers.map { $0.line(for: query) }
     }
 
-    private func qualifiedName(of row: SymbolRow) throws -> String {
+    func qualifiedName(of row: SymbolRow) throws -> String {
         try store.qualifiedName(of: row)
     }
 }

@@ -1183,3 +1183,16 @@ across two directories and about two dozen modules, each module more than once w
 
 The one edit: only the warnings (and their notes) about `CoreFoundation`, `_Builtin_stdarg`, `ptrauth`, `Darwin`,
 `Dispatch`, `Security` and `XPC` were kept, in their order; every other line is as the log had it.
+## One nil read spelled five ways, an `#expect` over five lines among them
+
+One capture from a throwaway SwiftPM package of 43 Swift Testing tests: a `Gizmo` library, `Sprocket0Tests` to
+`Sprocket7Tests` and `WidgetTests`. 42 of them fail, 40 of those on one nil read spelled five ways, one of them an
+`#expect` written over five lines, which Swift Testing prints over several lines in the issue line and in each `↳`
+expansion beneath it. Captured on macOS 27.0, Swift 6.4 (swift-driver 1.168.6), not the toolchains this file's
+header names, 15 Oct 2026 (#829).
+
+| Fixture | Command | Exit | What it is here for |
+| --- | --- | --- | --- |
+| `swift-test-nil-reads.txt` | `swift test` | 1 | The multiLine failures: their message is the whole expression and their `↳ … → false` merges into it, where the message stopped at `Gizmo.soleElement(` and the rest became the note |
+
+The one edit: the XCTest timestamps moved by one whole-second shift to open at `2000-01-01 12:00:00`.

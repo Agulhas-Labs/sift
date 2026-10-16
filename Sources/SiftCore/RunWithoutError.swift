@@ -29,6 +29,8 @@ public enum RunWithoutError: Error, CustomStringConvertible, Sendable {
     case emptyBuildSettingsFile
     /// `--since` was given with no pathspec to read it against.
     case sinceWithoutPathspec
+    /// `--guard` was given with no `--without` or `--without-line` to prove against.
+    case guardWithoutSetAside
     /// `--since` named something git could not resolve to a commit, as the caller wrote it.
     case unresolvedRevision(String)
     /// `--since` named a commit HEAD does not descend from, as the caller wrote it.
@@ -58,6 +60,8 @@ public enum RunWithoutError: Error, CustomStringConvertible, Sendable {
             "sift run --without cannot use `XCODE_XCCONFIG_FILE` in the environment: it is set but empty, which xcodebuild cannot open; unset it with `env -u XCODE_XCCONFIG_FILE sift run --without …`."
         case .sinceWithoutPathspec:
             "sift run --since says which commit's version of a path to set aside, so it needs `--without <pathspec>` to say which paths. Add one — `sift run --without <pathspec> --since <rev> -- <tests>`."
+        case .guardWithoutSetAside:
+            "sift run --guard names a test the run without the change should pass as well, so it needs --without <pathspec> or --without-line <file:line>. Add one — sift run --without <pathspec> --guard <test> -- <tests>."
         case let .unresolvedRevision(named):
             "sift run --without: git cannot resolve `\(named)` to a commit, so there is no version of the pathspec to set the change aside to. Name one it knows — a commit, a tag, a branch, or a form like `HEAD~1`."
         case let .notAnAncestor(named):

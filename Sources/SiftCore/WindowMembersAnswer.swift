@@ -79,7 +79,7 @@ struct WindowMembersAnswer {
     func firstPageReaches(_ ranges: [ClosedRange<Int>], inFile path: String, options: DigestOptions) throws -> Bool {
         guard let file = try WalkedFile(renderer: renderer, path: path) else { return false }
         let topLevel = try renderer.store.topLevelSymbols(inFileID: file.row.id)
-        var outlineBudget = DigestRenderer.outlineCap
+        var outlineBudget = DigestCaps.outlineCap
         let listed = try FileDigestMembers(renderer: renderer, topLevel: topLevel).budget(topLevel: topLevel, suites: nil, options: options, outlineBudget: &outlineBudget).filter(\.counted)
         guard listed.count > options.pageSize else { return true }
         guard let unlisted = listed[options.pageSize].row else { return false }
@@ -92,7 +92,7 @@ struct WindowMembersAnswer {
     func placesEveryMember(_ ranges: [ClosedRange<Int>], inFile path: String, options: DigestOptions) throws -> Bool {
         guard let file = try WalkedFile(renderer: renderer, path: path) else { return false }
         let topLevel = try renderer.store.topLevelSymbols(inFileID: file.row.id)
-        var outlineBudget = DigestRenderer.outlineCap
+        var outlineBudget = DigestCaps.outlineCap
         let listed = try Set(FileDigestMembers(renderer: renderer, topLevel: topLevel).budget(topLevel: topLevel, suites: nil, options: options, outlineBudget: &outlineBudget).compactMap(\.row?.id))
         return try ranges.allSatisfy { range in
             try printedMembers(range, of: file, options: options).members.allSatisfy { listed.contains($0.row.id) }
@@ -140,7 +140,7 @@ private extension WindowMembersAnswer {
     func printedMembers(_ range: ClosedRange<Int>, of file: WalkedFile, options: DigestOptions) throws -> (members: [PrintedMember], gap: SymbolRow?) {
         let walk = file.walk(range)
         let overlaps = { (row: SymbolRow) in walk.start(of: row) <= range.upperBound && range.lowerBound <= row.endLine }
-        var outlineBudget = DigestRenderer.outlineCap
+        var outlineBudget = DigestCaps.outlineCap
         var printed: [PrintedMember] = []
         var gap: SymbolRow?
         // Walks down every level of nesting the range overlaps, as `RangeWalk` does for a single-declaration

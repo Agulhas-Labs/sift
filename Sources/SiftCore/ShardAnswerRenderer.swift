@@ -117,7 +117,8 @@ extension ShardAnswerRenderer {
                         message: failure.message,
                         arguments: failure.arguments,
                         note: failure.note,
-                        closestLine: failure.closestLine
+                        closestLine: failure.closestLine,
+                        markedLines: failure.markedLines
                     )
                 },
                 changedFiles: .unavailable("the working tree was not consulted")

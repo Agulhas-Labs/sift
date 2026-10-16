@@ -250,7 +250,7 @@ private extension CallSiteScanner {
                     WrittenArguments(labels: [], calleeLabels: names.arguments.map { WrittenArguments.label($0.name) })
                 }
                 if arguments != nil || Self.isInSelector(node) {
-                    record(name, at: node, arguments: arguments)
+                    record(name, at: node, arguments: arguments, receiver: CallReceiver.ofHandedOn(node))
                 } else {
                     // A bare `T.f` handed to a call is the function's only on a type declaring it, which the scan does
                     // not know; the reader of the sites judges it by the type written (`SyntacticCallSite.isListed`).
@@ -260,7 +260,7 @@ private extension CallSiteScanner {
                         let location = converter.location(for: node.baseName.positionAfterSkippingLeadingTrivia)
                         sites[name, default: []].append(site(at: node, arguments: nil, unappliedOn: type, operatorAt: "\(location.line):\(location.column)"))
                     } else {
-                        sites[name, default: []].append(site(at: node, arguments: nil, nameOnly: type == nil, unappliedOn: type).handingOnBare(type == nil && BareFunctionReference.isHandedOn(node)))
+                        sites[name, default: []].append(site(at: node, arguments: nil, nameOnly: type == nil, unappliedOn: type, receiver: type.flatMap { _ in CallReceiver.ofHandedOn(node) }).handingOnBare(type == nil && BareFunctionReference.isHandedOn(node)))
                     }
                 }
             }
@@ -373,12 +373,12 @@ private extension CallSiteScanner {
             guard reference.baseName.text == "init" else {
                 let type = reference.baseName.identifier?.name ?? reference.baseName.text
                 guard names[type] == .initializer else { return false }
-                record(type, at: node, arguments: arguments, qualifier: CallReceiver.writtenPath(member?.base))
+                sites[type, default: []].append(site(at: node, arguments: arguments, qualifier: CallReceiver.writtenPath(member?.base)).scoped(writing: type as String?, at: node, converter: converter, inFunction: enclosing.count > enclosingTypes.count, atTopLevel: enclosingTypes.isEmpty))
                 return true
             }
             guard let member else { return false }
-            let type: String?
-            let qualifier: String?
+            let type: String?, qualifier: String?
+            var annotation: TypeSyntax?
             if let base = member.base {
                 if let keyword = base.as(DeclReferenceExprSyntax.self)?.baseName.tokenKind, keyword == .keyword(.self) || keyword == .keyword(.Self) {
                     recordOnSelf(at: node, arguments: arguments, untold: keyword == .keyword(.Self))
@@ -393,10 +393,10 @@ private extension CallSiteScanner {
                     }
                     return true
                 }
-                (type, qualifier) = implied
+                (type, qualifier, annotation) = (implied.name, implied.qualifier, implied.annotation)
             }
             if let type, names[type] == .initializer {
-                record(type, at: node, arguments: arguments, qualifier: qualifier)
+                sites[type, default: []].append(member.base == nil ? site(at: node, arguments: arguments, qualifier: qualifier).scoped(impliedBy: annotation, writing: type, converter: converter, enclosing: enclosing.count, types: enclosingTypes.count) : site(at: node, arguments: arguments, qualifier: qualifier).scoped(writing: type, at: node, converter: converter, inFunction: enclosing.count > enclosingTypes.count, atTopLevel: enclosingTypes.isEmpty))
             }
             return true
         }
@@ -736,7 +736,7 @@ private extension CallSiteScanner.Visitor {
     /// The simple name of the type a declaration states an implicit `.init call` makes, with the path it is written under — `Outer` for `let b: Outer.Box = .init call`, or one returned from a function, a computed property or a subscript declared as one — or `nil` where none states it.
     ///
     /// The call may sit under `try`, `await`, a force unwrap or parentheses, and be an element of an array literal whose declared type is an array of the type.
-    private func impliedType(of call: Syntax) -> (name: String, qualifier: String?)? {
+    private func impliedType(of call: Syntax) -> ImpliedInitType? {
         var node = call
         var elementDepth = 0
         while let parent = node.parent {
@@ -755,8 +755,8 @@ private extension CallSiteScanner.Visitor {
         }
         guard let type = declaredType(around: node).flatMap({ unwrapped($0, elementDepth: elementDepth) }) else { return nil }
         let name = DeclaredTypeName.of(type)
-        guard name != "Self" else { return enclosingTypes.last.map { ($0, nil) } }
-        return (name, type.as(MemberTypeSyntax.self).flatMap { DeclaredTypeName.path(of: $0.baseType) })
+        guard name != "Self" else { return enclosingTypes.last.map { ImpliedInitType(name: $0, qualifier: nil, annotation: nil) } }
+        return ImpliedInitType(name: name, qualifier: type.as(MemberTypeSyntax.self).flatMap { DeclaredTypeName.path(of: $0.baseType) }, annotation: type)
     }
 
     /// The type the binding `node` initializes is annotated with, or that the function, computed property or subscript returning `node` declares.

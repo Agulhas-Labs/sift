@@ -25,7 +25,9 @@ struct AliasChain {
     /// The aliases naming `rows`, where one declared at the top level names a type only by writing its whole path, with or without its module.
     ///
     /// Unqualified lookup at the top level never sees a type nested in another, so a shorter path there names some other type. An alias declared in a type or an extension may name a type nested beside it by any trailing part of its path. One writing the whole path behind a leading name that may be the type's module is kept, unproven, and so is every alias of it.
-    init(of rows: [SymbolRow], among typealiases: [SymbolRow], store: IndexStore, guessedModules: [String: GuessedModuleNotice.Reason]) throws {
+    ///
+    /// `source` reads a repo-relative file as it stands, which tells which copy of a type declared once per `#if` clause a nested alias is written in; without it every copy's declarations are read as the alias's own.
+    init(of rows: [SymbolRow], among typealiases: [SymbolRow], store: IndexStore, guessedModules: [String: GuessedModuleNotice.Reason], source: ((String) -> String?)? = nil) throws {
         let written = typealiases.compactMap { alias -> Written? in
             if let target = Self.aliasedPath(of: alias) {
                 return Written(row: alias, targets: [target], built: false)
@@ -54,7 +56,7 @@ struct AliasChain {
             // A round's scopes take every declaration the chain has followed so far as the name's own, so one an alias reached this round shadows nothing it names.
             var scopes: [String: AliasNameScope] = [:]
             for alias in written where !seen.contains(alias.row.id) {
-                let folds = try scopedFolds(of: alias, against: frontier, store: store, scopes: &scopes)
+                let folds = try scopedFolds(of: alias, against: frontier, store: store, source: source, scopes: &scopes)
                 guard let first = folds.first else { continue }
                 let proven = folds.first { $0.fold == .proven }
                 let unproven = proven == nil ? first.fold.unproven : nil
@@ -77,7 +79,7 @@ struct AliasChain {
     /// How `alias` names each path of `frontier`, where one declared in a type writing a bare name that a type or typealias of the path declares reads it from its own scope.
     ///
     /// Swift looks the name up from the alias's position, so a nearer declaration of it hides the chain's: the fold stands where the lookup reaches only the chain's declarations of the name, is dropped where a nearer one certainly shadows them, and is kept where the scope cannot tell. An extension's path is followed as it is.
-    private func scopedFolds(of alias: Written, against frontier: [WrittenPath], store: IndexStore, scopes: inout [String: AliasNameScope]) throws -> [(fold: WrittenPath.Fold, target: String)] {
+    private func scopedFolds(of alias: Written, against frontier: [WrittenPath], store: IndexStore, source: ((String) -> String?)?, scopes: inout [String: AliasNameScope]) throws -> [(fold: WrittenPath.Fold, target: String)] {
         var folds: [(fold: WrittenPath.Fold, target: String)] = []
         var parents: [String]?
         for path in frontier {
@@ -85,12 +87,12 @@ struct AliasChain {
                 guard var fold = path.fold(of: target, atTopLevel: alias.row.parentID == nil) else { continue }
                 if alias.row.parentID != nil, !target.contains("."), Self.declares(target, path.row) {
                     if scopes[target] == nil {
-                        scopes[target] = try AliasNameScope(store: store, name: target, aliases: paths.map(\.row).filter { Self.declares(target, $0) }, reachedCap: false)
+                        scopes[target] = try AliasNameScope(store: store, name: target, aliases: paths.map(\.row).filter { Self.declares(target, $0) }, reachedCap: false, source: source)
                     }
                     let enclosing = try parents ?? QualifiedPath.flattened(chain: store.parentChain(of: alias.row).map(\.name))
                     parents = enclosing
                     // A fold through a declaration of the name the lookup does not reach is dropped, so a farther proven one never stands in for a nearer kept one.
-                    switch try scopes[target]?.reach(writtenIn: enclosing) {
+                    switch try scopes[target]?.reach(writtenIn: enclosing, from: (alias.row.module, alias.row.path), at: source == nil ? nil : (alias.row.path, alias.row.line)) {
                     case let .aliases(reached) where !reached.contains(path.row.id): continue
                     case .another: continue
                     case .undecided where fold == .proven: fold = .kept(.sharesNameWithAnother, throughKept: false)

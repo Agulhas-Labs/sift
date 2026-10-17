@@ -29,9 +29,9 @@ struct RunWithoutUnbuiltTests {
         let lines = text.split(separator: "\n").map(String.init)
 
         #expect(lines.contains("    Sources/Widgets/Widget.swift:5:13: error: initialization of immutable value 'phase' was never used; consider replacing with assignment to '_' or removing it"), "\(text)")
-        #expect(lines.contains("  12 tests pass with it and did not run without Sources/, which did not build"), "\(text)")
-        #expect(!lines.contains { $0.contains("did not run without Sources/;") }, "\(text)")
-        #expect(lines.contains { $0.hasPrefix("without Sources/ — ✘ swift test — did not build") }, "\(text)")
+        #expect(lines.contains("  12 tests pass with it and did not run without the change, which did not build"), "\(text)")
+        #expect(!lines.contains { $0.contains("did not run without the change;") }, "\(text)")
+        #expect(lines.contains { $0.hasPrefix("without the change — ✘ swift test — did not build") }, "\(text)")
     }
 
     /// A single test is said in the singular, and the folded line is where the test would have been listed.
@@ -42,7 +42,7 @@ struct RunWithoutUnbuiltTests {
             with: RunWithoutAnswerTests.run(["shoutingWorks()": true])
         ).render().text
 
-        #expect(text.contains("\n  1 test passes with it and did not run without Sources/, which did not build\n"), "\(text)")
+        #expect(text.contains("\n  1 test passes with it and did not run without the change, which did not build\n"), "\(text)")
     }
 
     /// A test that failed with the change is still listed by name, since it has something to say that a count would lose.
@@ -54,8 +54,8 @@ struct RunWithoutUnbuiltTests {
         ).render().text
         let lines = text.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains { $0.hasPrefix("  ⚠ theGridReflows() — did not run without Sources/;") }, "\(text)")
-        #expect(lines.contains("  1 test passes with it and did not run without Sources/, which did not build"), "\(text)")
+        #expect(lines.contains { $0.hasPrefix("  ⚠ theGridReflows() — did not run without the change;") }, "\(text)")
+        #expect(lines.contains("  1 test passes with it and did not run without the change, which did not build"), "\(text)")
     }
 
     /// A test that passed with the change only on a retry keeps its line, so the retry note is not counted away.

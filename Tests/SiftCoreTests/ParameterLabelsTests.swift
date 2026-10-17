@@ -157,6 +157,8 @@ struct ParameterLabelsTests {
 
 private extension ParameterLabels {
     /// Whether a call written with `arguments` can be a call of an instance method with these labels.
+    ///
+    /// It defaults `takesInstance` to true because most of this suite's calls test instance methods.
     func accepts(_ arguments: WrittenArguments) -> Bool {
         accepts(arguments, takesInstance: true)
     }

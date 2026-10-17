@@ -62,7 +62,7 @@ struct StopGateLiveRunTests {
 
         try run(in: fixture, tree: treeKey(fixture), phase: .failed)
         let reason = try #require(try await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript], now: instant)))
-        #expect(reason.contains("Run `sift run -- swift build` from"))
+        #expect(reason.contains("Run `(cd "))
     }
 
     /// A run whose process is gone is a run that died, whatever its heartbeat says: the gate blocks as it always has.
@@ -74,7 +74,7 @@ struct StopGateLiveRunTests {
 
         let reason = try #require(try await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript], now: instant)))
 
-        #expect(reason.contains("Run `sift run -- swift build` from"))
+        #expect(reason.contains("Run `(cd "))
         #expect(!reason.contains("in progress"))
     }
 
@@ -87,7 +87,7 @@ struct StopGateLiveRunTests {
 
         let reason = try #require(try await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript], now: instant)))
 
-        #expect(reason.contains("Run `sift run -- swift build` from"))
+        #expect(reason.contains("Run `(cd "))
     }
 
     /// Edits made after the run started: the run says nothing about this tree, so the stop is blocked, but the advice is to wait for that run and not to start a build beside it.
@@ -100,7 +100,7 @@ struct StopGateLiveRunTests {
         let reason = try #require(try await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript], now: instant)))
 
         #expect(reason.contains("A `sift run` of an earlier tree is in progress"))
-        #expect(reason.contains("Once it ends, run `sift run -- swift build`"))
+        #expect(reason.contains("Once it ends, run `(cd "))
         #expect(reason.contains("1 Swift file (Depot.swift)"))
         #expect(!reason.contains("Run `sift run"))
 
@@ -118,7 +118,7 @@ struct StopGateLiveRunTests {
         try run(in: fixture, tree: Self.otherTree, phase: .done)
         let reason = try #require(try await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript], now: instant)))
 
-        #expect(reason.contains("Run `sift run -- swift build` from"))
+        #expect(reason.contains("Run `(cd "))
     }
 
     /// A run of no known tree (a linter, a run that builds elsewhere, a file an older sift wrote) is neither a pass nor a reason to say wait.
@@ -130,7 +130,7 @@ struct StopGateLiveRunTests {
 
         let reason = try #require(try await StopGateFixture.blockReason(of: fixture.hook(["transcript_path": transcript], now: instant)))
 
-        #expect(reason.contains("Run `sift run -- swift build` from"))
+        #expect(reason.contains("Run `(cd "))
     }
 
     /// A green record for the tree still answers first: a live run of an earlier tree beside it says nothing.

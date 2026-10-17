@@ -638,7 +638,7 @@ private extension DiffRenderer {
     /// The tests `affected` found reaching the changed files, in a bounded section that says exactly what it is — and points at the command whose answer carries the limits and the runner arguments.
     static func testSection(_ tests: AffectedRenderer.Output, range: DiffRange) -> [String] {
         let walkedOn = AffectedBlindSpots.walkedOnClause(tests.walkedOn)
-        let source = "from `sift affected`: every declaration in each changed file, not only the changed lines, followed \(plural(tests.depth, "hop"))\(walkedOn)"
+        let source = "from `sift affected`: the declarations the diff touched in each changed file (every declaration of a file the answer names as seeded whole), followed \(plural(tests.depth, "hop"))\(walkedOn)"
         guard !tests.reached.isEmpty else {
             return [
                 "",

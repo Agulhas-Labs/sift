@@ -1832,7 +1832,14 @@ import, never the path`:
   declared in a type that writes a bare name only where that name, looked up from the alias's own scope,
   reaches the path it folds against: `typealias Bin = Crate` inside a type that declares its own `Crate`
   names that one, so it is no alias of the type; where the scope cannot tell, the alias is kept, worded as
-  not proven to name it.
+  not proven to name it. At the top level a module's own declaration of the name hides every imported
+  module's, so where another module declares the name too, an alias in `Lib` writing `Gizmo` reaches Lib's
+  own `Gizmo` alone and is proven, asked as `Lib.Gizmo` or with both types. The own declaration must be
+  certain: both files' modules read from the build file rather than guessed from the path, the declaration
+  `internal` or wider (or in the alias's own file), and under no `#if`. Without one the top level stays
+  undecided where any declaration there is not one the chain follows. The rule decides only the reach of a
+  nested alias's right-hand side; a bare use of the type's name, a function-local alias and a use written
+  through an alias's name still read another module's declaration of the name as undecided.
 - **A typealias declaration of the type is not a use of it**, and its line is excluded like an `extension`
   header: the alias is dead exactly when the type is unless something uses the alias, which the fold has
   counted. How many lines went out on that ground is said. A type whose every reference is its own
@@ -2824,6 +2831,8 @@ compiler diagnostic even where stdout is a pipe, so every ANSI CSI and OSC seque
 reader anchors on a line; the `.sift/runs/` log keeps the raw bytes. `xcodebuild` colours nothing piped, so
 the child's environment is left alone.
 
+`--root <dir>` changes the process to `<dir>`, and sets `PWD`, before anything reads its directory, so the log, the proof key, the set-aside's repository and the child's directory are a cd'd run's. It replaces the by-name refusal from #573, whose message told the caller to `cd`; in a Claude Code session that re-roots every later command. No allow rule covers the flag, since a rule that matched any directory could match any command after it. In a session that asks about commands a `--root` run asks, and so does `(cd <dir> && sift run -- …)`, whose parentheses Claude Code asks about; only a bare `cd <dir> &&` in front runs unasked, and it moves the shell for every later command. The Stop block names the bare command where the context already stands in the build's directory, and the subshell only where it does not.
+
 **A linter is wrapped on the same terms, and which executables count is configuration.** A linter prints
 one diagnostic per violation in the compiler's own `file:line:col: severity: message` shape and no closing
 verdict line, so its verdict comes from the exit code alone and its violations group by rule through the
@@ -2966,6 +2975,10 @@ their content, directly above the receipt, on `verdict: ` and the headline exact
 counts added. A shorter answer already has its headline within its last three lines, so it carries no such
 line. The reason is a gate's `| tail -3`: a build with warnings listed two of them and the receipt, and the
 verdict, which is only the first line, was gone; learning whether it passed took a second build (#794).
+An answer whose accessibility notes sit under the receipt (one per simulator that owes one) closes on the verdict
+instead, below the last note, whatever its shape and with or without a `totals:` line: the notes would push
+anything above them out of a `| tail -3`. It is printed once, never also above the receipt, and the receipt's
+line count includes it.
 
 **Its word is the verdict's, and both frameworks are counted under their own names.** The word after the
 glyph is the run verdict's — never a tally's own `passed`, which speaks only for Swift Testing's half of
@@ -3597,6 +3610,8 @@ every file the revert touched re-read as changed on disk. One property overrides
 loses anyone's uncommitted work, on any path, including being killed and including other processes writing
 the tree — and eight things carry it.
 
+**The set-aside's pathspecs are named once.** They appear in the answer's headline, whichever variant it takes, and in the `set aside and put back:` line, which is about the paths. Every other line (a test's verdict, a guard's, the listing, the stragglers line, the side labels of the raw logs) says `without the change`, so a proof over several pathspecs does not repeat the list on each line.
+
 **Set aside means the pathspec reads exactly as HEAD has it, in the index as well as the files**, since a
 test that lists what git tracks reads the index, and HEAD's files over a staged change is a state no commit
 ever had. Every change git reports under the pathspec goes (staged and unstaged edits, untracked files,
@@ -3639,7 +3654,7 @@ a local above it leaves that local unused when commented out, which a package th
 refuses, so the help text says to route such a guard through a helper whose parameters carry the inputs; the
 run does not pre-check for it. Whenever the run without the change did not build (`swift test` stopped on a
 compiler error, not an assertion), the answer quotes the first compiler error under its headline, and the tests
-that passed with the change are one count line, `<n> tests pass with it and did not run without <path>, which
+that passed with the change are one count line, `<n> tests pass with it and did not run without the change, which
 did not build`, rather than a line apiece saying only that nothing ran; a test that failed with the change, or passed
 with it only on a retry, stays listed by name. Everything else is the pathspec case: the record holds a
 byte-for-byte copy of the file, the watcher, lock, `sift run --restore` and exit codes are the same, and the
@@ -3661,9 +3676,9 @@ function name. A guard that matches two or more distinct printed names is ambigu
 are judged as if no guard named them, and its own line reads `⚠ <guard> — named by --guard, but it matches <n> tests
 (<up to three names>); name the one meant as the run printed it`. A pattern that also caught a test meant to pin
 would hide the one failure this gate exists to show. Where the run without the change
-compiled, a matched guard that passed both ways is listed `✔ <name> — a named guard: passes without <paths> and
+compiled, a matched guard that passed both ways is listed `✔ <name> — a named guard: passes without the change and
 with it`; one that reached both runs and did not pass both is `✘ <name> — named as a guard, but <before>
-without <paths> and <after> with it`, with the failure detail of the run with the change where there is one; one
+without the change and <after> with it`, with the failure detail of the run with the change where there is one; one
 absent from a run is undecided, its sentence prefixed `named as a guard; `. Where the tests did not compile
 without the change every test keeps today's judgement. A guard that matched no test either run printed gets its
 own line after the tests', `⚠ <guard> — named by --guard, but no test of that name ran`, and the answer is not
@@ -3831,7 +3846,7 @@ headline of its own over the errors, claimed only where a compiler error lands i
 or Testing. **Its tests carry that weaker claim on their own lines, and never a tick**: one whose suite did
 not build without the change passed with it and was never run without it, which a test that pins the
 behaviour and one that merely names the new type are equally consistent with, so it reads `◇ … passes with
-it; without Sources/ it did not compile — needed, not pinned`. Where the change adds a file HEAD does not
+it; without the change it did not compile — needed, not pinned`. Where the change adds a file HEAD does not
 have, the answer also says that setting it aside *removed* the file (a target's sources are globbed, so a
 file that goes takes its declarations with it), names up to three such paths, and says what is left
 unanswered: whether a test pins what the file *does* rather than merely naming it. It names no command,
@@ -4438,14 +4453,26 @@ could not determine, above the list** — reflection, selectors, string-keyed lo
 an override reached through its base, resources loaded by name, anything behind a macro, comments and
 string literals — closing on *a green run of only these tests is not a green suite*, and saying of an
 empty result that finding no reference is not evidence that nothing is affected. **A changed file resolves
-to every declaration in it**, since hunk line numbers refer to the old file for a deletion and a deleted
-method has no extent to intersect; erring wide costs a longer list, erring narrow costs a test that should
-have run. **Except right after an edit**: a file the store refuses as changed since the build is seeded
-from the declarations the diff touched in it, read by comparing both sides' parses as `diff` does (a removed or
-renamed one by its old name, an added file's in full, a file whose change the comparison cannot fully account
-for still whole), and walked to their call sites the way syntactic `where` finds callers rather than to every
-token spelling a name; the answer labels that walk `syntactic, lower bound`, and a test the diff touched is
-listed itself. Seeding the whole of such a file reached all 283 tests of a 354-test target for a three-call-site
+to the declarations the diff touched in it**, read by comparing both sides' parses as `diff` does, never by
+intersecting hunk line numbers with extents: a hunk's numbers refer to the old file for a deletion, and a
+deleted method has no extent to intersect. An added file counts in full. A removed or renamed declaration, or
+one whose signature changed, is seeded by its old name into the call-site walk, since a call left unedited can
+now resolve to an overload the diff did not touch. A touched member is also walked from what it overrides or
+implements; a witness of a requirement declared outside the index roots its type, since calls through that requirement are recorded against a declaration the walk cannot start from, and one nothing references falls back to its type. A file whose change the comparison cannot fully account for still resolves to every
+declaration in it, and the answer names it with its reason (`seeded whole: <reason>: <paths>`); a file whose
+only change is a comment is named and not walked. The per-file line says how many were touched:
+`Sources/App/Gizmo.swift — added or modified, 2 of 112 declarations touched`. **Hops are counted from the
+touched declarations, and a declaration in the same file that reaches one through references inside that
+file counts as hop 0.** The touched set alone would push a test → API → helper chain written in one file from
+hop 1 to hop 2 under the default bound, and the whole file was the over-count: a two-function change to one
+type's private helpers, seeded whole, listed every test of both targets (1,613), where the change's own suites
+held 134. The closure follows only references whose site and target lie in that file, to a fixed point, so it
+is bounded by the file's own declarations. Three sources answer for the touched declarations. **With a fresh
+store**, they and their same-file closure root the resolved walk. **Right after an edit**, a file the store
+refuses as changed since the build is walked from them to their call sites the way syntactic `where` finds
+callers rather than to every token spelling a name, and the answer labels that walk `syntactic, lower bound`;
+a test the diff touched is listed itself. **With no store** (nothing built yet), every changed file is walked
+that same way, under the same label. Seeding the whole of such a file reached all 283 tests of a 354-test target for a three-call-site
 rename. Where that walk still name-matches at least half the tests of a target past the list cap, the target is
 not listed: two lines say it could not narrow below it, from which touched names over how many, and the command
 that runs it (an answer-shape change on the CLI only; `affected` has no MCP face). Commands are printed for the repository's runner only, read from the index store's provenance (a SwiftPM `.build` store: `swift test`; DerivedData or `buildServer.json`: `xcodebuild`; any other store, or none: both), and the `affected tests` heading says which and why. A suite list past 2,000 characters (`#769`, `#798`: ~15 KB and ~10k tokens on a wide diff, no reader used either list) is replaced by the target's own filter with its counts; `--suites` restores the list. **The walk is bounded and says so**, two hops by default, because one under-counts every
@@ -4631,8 +4658,8 @@ name-matched over the working tree otherwise, and every member says which, and w
 always name-matched: it has no declaration left to resolve, and what still spells its name is what the
 removal may have broken. Both read
 the working tree as it stands, and the heading says whether that is the range's after side. *Tests reaching
-the changed files* come from `affected` over the same change set — every declaration in each changed file,
-not only the changed lines — listed briefly, with a pointer to the `sift affected` invocation whose answer
+the changed files* come from `affected` over the same change set — the declarations the diff touched in each changed file,
+every declaration of a file it names as seeded whole — listed briefly, with a pointer to the `sift affected` invocation whose answer
 carries its limits and the runner arguments, rather than embedding that answer whole: its fixed block would
 otherwise outweigh most small changes several times over.
 
@@ -5466,10 +5493,13 @@ answers for the checkout (a linked worktree is its own) holding the directory it
 moved by each plain `cd` before it that `&&` joins to it, or what a `swift --package-path`/`-C` or an
 `xcodebuild -project`/`-workspace` names — and only where the call's result vouches for the run's: it ends
 its pipeline (`sift run … | tail` has `tail`'s status), no `||` stands just before it, and only `&&`
-follows it. A subshell or other compound statement, a `pushd`, a `cd` a `;` or a newline separates from the
+follows it. A line that is one subshell `( … )` or one brace group `{ …; }`, with nothing around it but blanks,
+is read as its inside, which starts in the line's own directory and gives the line its status, so
+`(cd D && sift run -- swift build)` validates D (#852). Any other subshell or compound statement, a `pushd`, a `cd` a `;` or a newline separates from the
 run (a newline joins statements as `;` does), or a relative path with no `cwd` places no run, and the edits
 stand (#318). The line is read as the shell reads it: comments out first, then each backslash-newline joined
-away, and a statement of blanks alone is none, so `cd P && \`, a newline and the run, or a run followed by
+away, then one enclosing group opened, and a statement of blanks alone is none. A `sift run` passing its own `--root` is placed there,
+resolved against the directory the walk reached (a relative one with no directory known places nothing). So `cd P && \`, a newline and the run, or a run followed by
 `# check` or by `;` and spaces, is placed as its one-line form is (#321). That transcript reading is the
 fallback. The main route is the record a green `sift run` build or test writes itself, in
 `<checkout>/.sift/green-builds.json` (`RunLedger.greenBuilds(inCheckout:)`): exit 0, the command ran what it
@@ -5492,9 +5522,19 @@ pre-push. With any left, each repository they fall in
 of a command. An edited file no longer on disk — deleted, or checked out away with the branch it was committed on — asks nothing; an
 edit committed on a branch, validated there, and then checked out away from is no reason to build `main`
 (#672). For the first repository left unanswered the hook prints `{"decision":"block","reason":…}`
-naming a build, never a test: `sift run -- swift build` where `Package.swift` is at the repository root,
-else the `sift run -- xcodebuild … build` Bash command this context last ran (failed or not), as the agent
-wrote it, else no block: an `xcodebuild` is never spelled here. It
+naming a build, never a test, and never as a directory to run it from, since in a Claude Code
+session a `cd` re-roots every later command: `sift run -- swift build` where `Package.swift`
+is at the repository root, else the `sift run -- xcodebuild … build` Bash command this context last ran
+(failed or not), read as the fallback reads its line, so a backslash-continued one is named joined and one
+inside a lone subshell or group as its inside. Where the context already stands in the directory the build
+runs in (the `cwd` of its transcript's last line that carries one) it is named bare, since only a bare
+command, or a bare `cd <dir> &&` in front of one, runs unasked under the installed rules: Claude Code asks
+about a subshell's parentheses, as it does about `--root`. Anywhere else it is a subshell, `(cd <dir> &&
+<command>)`, with `<dir>` the directory the line's own plain cds put the segment in, inside the checkout or
+not, so its relative paths resolve as they did; where the line leaves that unknown (a `pushd`, a group that is not the whole line) no build is named and the gate
+stays silent: it never names a build it cannot place. Else no block: an `xcodebuild` is never
+spelled here. A subshell's run is credited by the record it writes, and by the transcript fallback, which
+reads a line that is one subshell as its inside. It
 cannot loop: `stop_hook_active` never blocks, and a block is claimed in the reuse marks by context and tree
 key, so a tree is sent back once. Fails open on anything unreadable and past a one-second budget.
 **A live run of the tree as it stands lets the stop through, silently.** Before it names a build, the gate lists

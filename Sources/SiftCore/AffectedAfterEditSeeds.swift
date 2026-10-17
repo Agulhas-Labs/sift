@@ -6,7 +6,7 @@ import Foundation
 
 /// The declarations a diff touched in the files the store refused as changed since the build: what the after-edit walk starts from in place of every declaration in those files.
 ///
-/// The whole-file rule exists because a hunk's lines cannot be laid over the index's current ranges: a deletion has no extent to intersect, and an added file is new throughout. Comparing both sides' parses instead answers both — a removed or renamed declaration is read off the before side and seeded by its old name, an added file's declarations are all added — and a file whose change the comparison cannot fully account for (text outside every declaration such as an import, a hunk no declaration explains, a side that did not parse or read) is still seeded whole, as is one with a touched file-scope operator, which leaves no identifier to scan for.
+/// The whole-file rule exists because a hunk's lines cannot be laid over the index's current ranges: a deletion has no extent to intersect, and an added file is new throughout. Comparing both sides' parses instead answers both — a removed or renamed declaration is read off the before side and seeded by its old name, an added file's declarations are all added — and a file whose change the comparison cannot fully account for (text outside every declaration such as an import, but not a comment, which changes no behaviour; a hunk no declaration explains, a side that did not parse or read) is still seeded whole, as is one with a touched file-scope operator, which leaves no identifier to scan for.
 struct AffectedAfterEditSeeds {
     /// The names to scan for, for every file the comparison accounted for.
     var seeds: [AffectedNameSeed] = []
@@ -18,8 +18,23 @@ struct AffectedAfterEditSeeds {
     var committedSinceBuild: Set<String> = []
     /// Whether `committedSinceBuild` is every refused file because `HEAD` moved since the build (or when it last moved could not be read).
     var headMovedSinceBuild = false
+    /// The refused files whose only change is a comment, so nothing was walked from them and the written-name walk skips them too.
+    var commentOnly: Set<String> = []
+    /// The refused files seeded whole for a reason other than being committed since the build, by reason: the paths each reason refused.
+    var seededWhole: [String: [String]] = [:]
     /// For a seed name, the outermost types declaring the touched declarations it stands for, a removed one aside: seeded in its place when its own call-site scan finds no site, since a declaration no site names is reached, if at all, through its type — a witness the language or a framework calls, a coding key, a decoding initializer.
     var fallbacks: [String: Set<AffectedNameSeed>] = [:]
+    /// The names of the declarations the diff removed, a rename's old name among them: no store holds a row for one, and a call left unedited can now resolve to an overload the diff did not touch.
+    var removed: [AffectedNameSeed] = []
+    /// The names of the callables the diff kept but changed the signature of: the store's row is the new declaration, and a call left unedited can now resolve to an overload the diff did not touch, as after a removal.
+    var signatureChanged: [AffectedNameSeed] = []
+    /// The names of the types each file's changes are seeded by, so a type is rooted only in the file its seed came from.
+    var typeSeeds: [String: Set<String>] = [:]
+
+    /// The names followed to their call sites as well as resolved: the removed declarations' and those whose signature changed, each once.
+    var seededByName: [AffectedNameSeed] {
+        removed + signatureChanged.filter { !removed.contains($0) }
+    }
 
     /// How many distinct names the walk was seeded with, one name declared in two modules counted once.
     var nameCount: Int {
@@ -37,15 +52,44 @@ struct AffectedAfterEditSeeds {
         var result = AffectedAfterEditSeeds()
         var seen: Set<AffectedNameSeed> = []
         for diff in diffs.sorted(by: { $0.path < $1.path }) {
-            guard diff.unreadableSides == nil, diff.parseErrorSides.isEmpty, diff.outside.isEmpty, diff.lineChanges.isEmpty,
-                  let module = try store.fileRow(path: diff.path)?.module else { continue }
+            var outside = diff.outside
+            outside.removeAll { $0.category == .comments }
+            if diff.unreadableSides != nil {
+                result.seededWhole["a side is not text", default: []].append(diff.path)
+                continue
+            }
+            if !diff.parseErrorSides.isEmpty {
+                result.seededWhole["a side did not parse", default: []].append(diff.path)
+                continue
+            }
+            if !outside.isEmpty {
+                result.seededWhole["text outside its declarations changed", default: []].append(diff.path)
+                continue
+            }
+            if !diff.lineChanges.isEmpty {
+                result.seededWhole["a hunk no declaration explains", default: []].append(diff.path)
+                continue
+            }
+            guard let module = try store.fileRow(path: diff.path)?.module else {
+                result.seededWhole["not in the index", default: []].append(diff.path)
+                continue
+            }
             let rows = try store.symbols(inFile: diff.path)
             var touchedRows: [SymbolRow] = []
             var fileSeeds: [AffectedNameSeed] = []
             var fileFallbacks: [String: Set<AffectedNameSeed>] = [:]
+            var fileRemoved: [AffectedNameSeed] = []
+            var fileSignatureChanged: [AffectedNameSeed] = []
             let changes = diff.changes.filter { !($0.kind == .moved && $0.movedIntact) }
+            if changes.isEmpty {
+                result.commentOnly.insert(diff.path)
+                continue
+            }
             // An operator is no name a site spells: one declared in a type seeds the type, and one at file scope, which no type declares, seeds its whole file.
-            guard !changes.contains(where: { $0.containerPath.isEmpty && !AffectedNameSeed.isIdentifier(CallSiteScanner.baseName(of: $0.name)) }) else { continue }
+            guard !changes.contains(where: { $0.containerPath.isEmpty && !AffectedNameSeed.isIdentifier(CallSiteScanner.baseName(of: $0.name)) }) else {
+                result.seededWhole["a file-scope operator changed", default: []].append(diff.path)
+                continue
+            }
             for change in changes {
                 let wholeContainer = change.memberCount != nil
                 var changeRows: [SymbolRow] = []
@@ -65,17 +109,32 @@ struct AffectedAfterEditSeeds {
                     }
                 }
                 fileSeeds += changeSeeds
+                if change.kind == .removed {
+                    fileRemoved += changeSeeds
+                } else if change.kind == .changed, change.signatureChanged, [.function, .initializer, .subscriptKind].contains(change.symbolKind) {
+                    fileSignatureChanged += changeSeeds
+                }
             }
             for row in touchedRows where row.kind != .extensionKind {
                 try fileSeeds.append(AffectedNameSeed.callSite(of: row, in: store))
             }
             fileSeeds = fileSeeds.filter { AffectedNameSeed.isIdentifier($0.name) }
             // A file whose changes leave nothing to scan for is seeded whole rather than from nothing.
-            guard !fileSeeds.isEmpty else { continue }
+            guard !fileSeeds.isEmpty else {
+                result.seededWhole["nothing it touched has a name to scan for", default: []].append(diff.path)
+                continue
+            }
             result.files.insert(diff.path)
             result.rows += touchedRows
             result.seeds += fileSeeds.filter { seen.insert($0).inserted }
             result.fallbacks.merge(fileFallbacks) { $0.union($1) }
+            for seed in fileRemoved where AffectedNameSeed.isIdentifier(seed.name) && !result.removed.contains(seed) {
+                result.removed.append(seed)
+            }
+            for seed in fileSignatureChanged where AffectedNameSeed.isIdentifier(seed.name) && !result.signatureChanged.contains(seed) {
+                result.signatureChanged.append(seed)
+            }
+            result.typeSeeds[diff.path] = Set(fileSeeds.filter { $0.kind == .structKind }.map(\.name))
         }
         return result
     }

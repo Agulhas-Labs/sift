@@ -25,6 +25,7 @@ struct AffectedHelpTopic {
 
         \(limits)
         - the reference walk is bounded (two hops by default): a test reaching the change through a longer chain of helpers is not listed, and a bounded walk is bounded
+        - a changed file counts the declarations the diff touched in it, read by comparing both sides' parses; a file the comparison cannot account for counts whole, and the answer names it
 
         **When the answer prints runner arguments.** \(AffectedBlindSpots.moduleNameCaveat)
 

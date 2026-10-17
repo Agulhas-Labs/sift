@@ -19,6 +19,14 @@ public enum CallSpelling: Sendable {
         }
     }
 
+    /// A `digest` of `target` as it stood at `revision`, spelled for the face.
+    func digest(_ target: String, at revision: String) -> String {
+        switch self {
+        case .commandLine: "digest \(target) --at \(revision)"
+        case .toolCall: "digest target:\"\(target)\" at:\"\(revision)\""
+        }
+    }
+
     /// The `offset` argument alone, spelled for the face — for a truncation line with no target of its own to carry it.
     func offset(_ offset: Int) -> String {
         switch self {

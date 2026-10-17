@@ -126,6 +126,7 @@ ChangedProtocol
 ChangedType
 ChartGridTests
 CheckoutFlow
+ChildTests
 ChoreTasks
 ChuteTap
 ClampTests
@@ -181,6 +182,7 @@ DerivedData
 DesignKit
 DetailData
 DiagnosticReports
+DialTests
 DirectTests
 DispatchGroup
 DispatchQueue
@@ -247,6 +249,7 @@ HandlerTests
 HealthKit
 HelperTests
 HelpersTests
+HolderTests
 HopperGaugeTests
 HowTheHooksBehave
 IBAction
@@ -267,12 +270,14 @@ KernelTests
 KettleTests
 KeyDecodingStrategy
 KeyPath
+KeysTests
 KindTests
 KindType
 KitCore
 KitHolder
 Kite3Wing
 KiteWing
+KnobTests
 LLVMSupport
 LSOverride
 LampTests
@@ -449,6 +454,7 @@ SourcePackages
 SpreadTests
 Sprocket0Tests
 Sprocket7Tests
+SquareTests
 StacksTests
 StoreExample
 StoredEntry
@@ -504,6 +510,7 @@ TtCC8LibTests11WidgetTests10GizmoTests
 TtCO10GizmoTests8BayFloor11PalletTests
 TtCO8LibTests10ChoreTasks9LampTests
 TtCOV8LibTests10DepotStore8BayFloor11PalletTests
+TuneTests
 TupleHolder
 TypeA
 TypeScript
@@ -580,6 +587,7 @@ aGridReflows
 aLongExplanation
 aMisspeltManifestNameIsNotSkippedAndANonSheetNameIs
 aName
+aRunsWidget
 aTest
 aTestNamed
 aTestThatFailed
@@ -935,7 +943,6 @@ onOpenURL
 onReceive
 onSubmit
 onTapGesture
-oneLine
 oneOfSeveral
 onlyShared
 onlyUsePackageVersionsFromResolvedFile

@@ -18,7 +18,7 @@ struct RunWithoutGuardTests {
         )
 
         #expect(Self.lines(answer.render()).first == "✔ 2 of 2 fail without Sources/ and pass with it; 1 named guard passes both ways")
-        #expect(Self.lines(answer.render()).contains("  ✔ theGridReflows() — a named guard: passes without Sources/ and with it"))
+        #expect(Self.lines(answer.render()).contains("  ✔ theGridReflows() — a named guard: passes without the change and with it"))
         #expect(answer.proven)
     }
 
@@ -33,7 +33,7 @@ struct RunWithoutGuardTests {
         let lines = Self.lines(answer.render())
 
         #expect(lines.first == "✘ 2 of 2 fail without Sources/ and pass with it; 0 of 1 named guards pass both ways")
-        #expect(lines.contains("  ✘ theGridReflows() — named as a guard, but failed without Sources/ and passed with it"))
+        #expect(lines.contains("  ✘ theGridReflows() — named as a guard, but failed without the change and passed with it"))
         #expect(!answer.proven)
     }
 
@@ -48,7 +48,7 @@ struct RunWithoutGuardTests {
         let lines = Self.lines(answer.render())
 
         #expect(lines.first == "✘ 2 of 2 fail without Sources/ and pass with it; 0 of 1 named guards pass both ways")
-        #expect(lines.contains { $0.hasPrefix("  ✘ theGridReflows() — named as a guard, but passed without Sources/ and failed with it — with it: WidgetTests.swift:7:9") })
+        #expect(lines.contains { $0.hasPrefix("  ✘ theGridReflows() — named as a guard, but passed without the change and failed with it — with it: WidgetTests.swift:7:9") })
         #expect(!answer.proven)
     }
 
@@ -89,7 +89,7 @@ struct RunWithoutGuardTests {
             guards: ["theGridReflows"]
         )
 
-        #expect(Self.lines(answer.render()).contains("  ✔ WidgetTests.theGridReflows() — a named guard: passes without Sources/ and with it"))
+        #expect(Self.lines(answer.render()).contains("  ✔ WidgetTests.theGridReflows() — a named guard: passes without the change and with it"))
         #expect(Self.lines(answer.render()).first == "✔ 1 of 1 fails without Sources/ and passes with it; 1 named guard passes both ways")
         #expect(answer.proven)
     }
@@ -105,8 +105,8 @@ struct RunWithoutGuardTests {
         let lines = Self.lines(answer.render())
 
         #expect(lines.first == "✘ 1 of 2 fails without Sources/ and passes with it; 1 named guard passes both ways")
-        #expect(lines.contains("  ✘ \"fix sets the heading\" — passes without Sources/ too, so it pins nothing"))
-        #expect(lines.contains("  ✔ \"guard keeps the heading\" — a named guard: passes without Sources/ and with it"))
+        #expect(lines.contains("  ✘ \"fix sets the heading\" — passes without the change too, so it pins nothing"))
+        #expect(lines.contains("  ✔ \"guard keeps the heading\" — a named guard: passes without the change and with it"))
         #expect(!answer.proven)
     }
 
@@ -135,8 +135,8 @@ struct RunWithoutGuardTests {
 
         #expect(lines.first == "✘ 1 of 3 fails without Sources/ and passes with it; 0 of 1 named guards pass both ways")
         #expect(lines.contains("  ⚠ testNaming — named by --guard, but it matches 2 tests (GadgetTests.testNaming, WidgetTests.testNaming); name the one meant as the run printed it"))
-        #expect(lines.contains("  ✘ WidgetTests.testNaming — passes without Sources/ too, so it pins nothing"))
-        #expect(lines.contains("  ✘ GadgetTests.testNaming — passes without Sources/ too, so it pins nothing"))
+        #expect(lines.contains("  ✘ WidgetTests.testNaming — passes without the change too, so it pins nothing"))
+        #expect(lines.contains("  ✘ GadgetTests.testNaming — passes without the change too, so it pins nothing"))
         #expect(!answer.proven)
     }
 
@@ -149,7 +149,7 @@ struct RunWithoutGuardTests {
             guards: ["\"guard keeps the heading\""]
         )
 
-        #expect(Self.lines(answer.render()).contains("  ✔ \"guard keeps the heading\" — a named guard: passes without Sources/ and with it"))
+        #expect(Self.lines(answer.render()).contains("  ✔ \"guard keeps the heading\" — a named guard: passes without the change and with it"))
         #expect(answer.proven)
     }
 
@@ -162,7 +162,7 @@ struct RunWithoutGuardTests {
         let guarded = Self.judged(without: without, with: with, changedTests: ["shoutingWorks"], guards: ["theGridReflows()"])
 
         #expect(Self.lines(folded).contains { $0.contains("does not touch") })
-        #expect(Self.lines(guarded.render()).contains("  ✔ theGridReflows() — a named guard: passes without Sources/ and with it"))
+        #expect(Self.lines(guarded.render()).contains("  ✔ theGridReflows() — a named guard: passes without the change and with it"))
         #expect(!Self.lines(guarded.render()).contains { $0.contains("does not touch") })
         #expect(guarded.proven)
     }
@@ -187,7 +187,7 @@ struct RunWithoutGuardTests {
         }
         let answer = Self.judged(without: without, with: with, guards: ["theGridReflows()"])
 
-        #expect(Self.lines(answer.render()).contains("  +1 more: 0 fail without Sources/ and pass with it, 1 named guard passes both ways, 0 do not — see the raw logs"))
+        #expect(Self.lines(answer.render()).contains("  +1 more: 0 fail without the change and pass with it, 1 named guard passes both ways, 0 do not — see the raw logs"))
     }
 
     /// Without a guard named, a test that passes both ways reads as it always did.
@@ -200,7 +200,7 @@ struct RunWithoutGuardTests {
         let lines = Self.lines(answer.render())
 
         #expect(lines.first == "✘ 1 of 2 fails without Sources/ and passes with it")
-        #expect(lines.contains("  ✘ theGridReflows() — passes without Sources/ too, so it pins nothing"))
+        #expect(lines.contains("  ✘ theGridReflows() — passes without the change too, so it pins nothing"))
         #expect(!answer.proven)
     }
 

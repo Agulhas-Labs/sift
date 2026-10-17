@@ -35,7 +35,6 @@ struct AffectedWholeTargetTests {
     private static func affected(testFiles: [String: String]) async throws -> String {
         let root = try TestSources.makeTempRepo()
         try TestSources.write(manifest(), to: "Package.swift", in: root)
-        try TestSources.write("public struct Widget {\n    public init() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
         for (name, source) in testFiles {
             try TestSources.write("import Testing\n@testable import Lib\n\n" + source, to: "Tests/LibTests/\(name).swift", in: root)
         }

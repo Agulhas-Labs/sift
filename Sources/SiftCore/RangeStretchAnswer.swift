@@ -4,7 +4,7 @@
 
 /// The answer for lines of a file asked for by range that resolve to two or more declarations within the source floor: the stretch of the file as written, under one header.
 ///
-/// A block per declaration spends a header and a blank line on each, and leaves out what sits between the declarations — their doc comments, the blank lines, the comments that separate them — which is what a cited range of several one-line declarations asks for. The stretch runs from the range's first line, or the first declaration's where it starts above it, to the range's last line, or the last declaration's end where it runs past it. The header names the lines, the type they sit in where they share one, and how many declarations they hold.
+/// A block per declaration spends a header and a blank line on each, and leaves out what sits between the declarations — their doc comments, the blank lines, the comments that separate them — which is what a cited range of several one-line declarations asks for. The stretch runs from the range's first line, or the first declaration's where it starts above it, to the range's last line, or the last declaration's end where it runs past it. The header names the lines, the type they sit in where they share one and the stretch lies within its range, and how many declarations they hold.
 struct RangeStretchAnswer {
     let renderer: DigestRenderer
     /// Every row of the file, where the shared parent is found.
@@ -19,7 +19,8 @@ struct RangeStretchAnswer {
         }
         let first = max(1, min(range.start, firstDeclared))
         let last = max(range.end, lastDeclared)
-        guard last - first + 1 <= SourcePassthrough.floorLineCeiling, last <= source.count else {
+        let lineCount = source.last == "" ? source.count - 1 : source.count
+        guard last - first + 1 <= SourcePassthrough.floorLineCeiling, last <= lineCount else {
             return nil
         }
         let path = blocks[0].path
@@ -28,12 +29,13 @@ struct RangeStretchAnswer {
         return (preamble + [header, ""] + source[(first - 1) ..< last]).joined(separator: "\n")
     }
 
-    /// The line naming the stretch: its lines, and the type they are in where every declaration has the same one.
+    /// The line naming the stretch: its lines, and the type they are in where every declaration has the same one and the lines lie within that type's range.
     private func header(path: String, blocks: [SymbolRow], lines: ClosedRange<Int>) throws -> String {
         let named = "\(path) lines \(lines.lowerBound)-\(lines.upperBound)"
         let count = "(\(blocks.count) declarations)"
         guard let parentID = blocks[0].parentID, blocks.allSatisfy({ $0.parentID == parentID }),
-              let parent = rows.first(where: { $0.id == parentID })
+              let parent = rows.first(where: { $0.id == parentID }),
+              parent.line <= lines.lowerBound, lines.upperBound <= parent.endLine
         else {
             return "\(named) \(count)"
         }

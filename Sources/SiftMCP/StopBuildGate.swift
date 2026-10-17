@@ -41,7 +41,7 @@ public struct StopBuildGate {
                 continue
             }
             let running = RunProgressPaths.liveRuns(inRepositoryAt: rootURL, at: now).filter { $0.tree != nil && $0.processIsGoingOn(at: now) }
-            guard let command = command(root: rootURL, xcodebuild: scan.xcodebuild),
+            guard let command = command(root: rootURL, xcodebuild: scan.xcodebuild, standingIn: scan.cwd),
                   marks.claim(context: context.key, file: root, declaration: running.isEmpty ? "stop \(tree.value)" : "stop waiting \(tree.value)")
             else {
                 continue
@@ -51,17 +51,25 @@ public struct StopBuildGate {
         return nil
     }
 
-    /// The build the block names: `swift build` where a package sits at the root, else the `sift run -- xcodebuild … build` the context already ran, else nothing.
+    /// The build the block names, and the directory in the checkout it is about: `swift build` where a package sits at the root, else the `xcodebuild … build` the context already ran, else nothing.
     ///
-    /// Always a build, never a test, and never a command spelled here: a scheme and a destination are the project's to name, so an `xcodebuild` is only ever one the agent wrote itself. The ledger is not a source: it records test runs, and a test is more than the block asks for.
-    static func command(root: URL, xcodebuild: (command: String, directory: String?)?) -> (command: String, directory: String)? {
+    /// Always a build, never a test, and never a command spelled here: a scheme and a destination are the project's to name, so an `xcodebuild` is only ever one the agent wrote itself, run in the directory it ran in, inside the checkout or not; where the line leaves that directory unknown, nothing is named, since a fragment of a line would build somewhere else. The ledger is not a source: it records test runs, and a test is more than the block asks for.
+    ///
+    /// Named bare where `cwd`, the directory the context stands in, is the one the build runs in, since only a bare command runs without asking in a session that asks about commands; anywhere else it is a subshell, `(cd <dir> && …)`, which runs it there without moving the caller's shell.
+    ///
+    /// The directory returned is the one the build runs in where that is inside the checkout, and the checkout's root otherwise.
+    static func command(root: URL, xcodebuild: (command: String, directory: String?)?, standingIn cwd: String? = nil) -> (command: String, directory: String)? {
+        let standing = cwd.map(CanonicalPath.of)
         if FileManager.default.fileExists(atPath: root.appendingPathComponent("Package.swift").path) {
-            return ("sift run -- swift build", root.path)
+            let build = "sift run -- swift build"
+            return (standing == CanonicalPath.of(root.path) ? build : "(cd \(ShellWord.quoted(root.path)) && \(build))", root.path)
         }
         guard let xcodebuild else { return nil }
+        guard let directory = xcodebuild.directory else { return nil }
         let canonicalRoot = CanonicalPath.of(root.path)
-        let ranIn = xcodebuild.directory.map(CanonicalPath.of).flatMap { $0 == canonicalRoot || $0.hasPrefix(canonicalRoot + "/") ? $0 : nil }
-        return (xcodebuild.command, ranIn ?? root.path)
+        let ranIn = CanonicalPath.of(directory)
+        let shown = ranIn == canonicalRoot || ranIn.hasPrefix(canonicalRoot + "/") ? ranIn : root.path
+        return (standing == ranIn ? xcodebuild.command : "(cd \(ShellWord.quoted(ranIn)) && \(xcodebuild.command))", shown)
     }
 }
 
@@ -128,14 +136,14 @@ private extension StopBuildGate {
         let (files, shown) = summary(of: edited)
         return "sift: you edited \(files) (\(shown)) and no green `sift run` build or test is on record for the tree as it stands. "
             + "A `sift run` of an earlier tree is in progress in \(command.directory); do not start another build beside it. "
-            + "Once it ends, run `\(command.command)` again from \(command.directory) and fix what it reports before reporting done. (Asked once for this tree; SIFT_NO_ADVICE=1 turns it off.)"
+            + "Once it ends, run `\(command.command)` again and fix what it reports before reporting done. (Asked once for this tree; SIFT_NO_ADVICE=1 turns it off.)"
     }
 
     /// What the model is told: which files it changed, that nothing has validated the tree they are in, and the one command that will.
     static func reason(edited: [String], command: (command: String, directory: String)) -> String {
         let (files, shown) = summary(of: edited)
         return "sift: you edited \(files) (\(shown)) and no green `sift run` build or test is on record for the tree as it stands. "
-            + "Run `\(command.command)` from \(command.directory) and fix what it reports before reporting done. (Asked once for this tree; SIFT_NO_ADVICE=1 turns it off.)"
+            + "Run `\(command.command)` and fix what it reports before reporting done. (Asked once for this tree; SIFT_NO_ADVICE=1 turns it off.)"
     }
 
     /// How many files the context changed, as a phrase, and the first three by name: Swift files where every one is Swift, build inputs once any is not.

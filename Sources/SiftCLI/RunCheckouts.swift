@@ -35,6 +35,6 @@ struct RunCheckouts {
             return nil
         }
         let reads = builtDirectory.map { "builds \($0)" } ?? "names the directory it builds through a variable"
-        return "sift run \(flag): the command \(reads), not the checkout the change is set aside from — run it from the checkout it builds."
+        return "sift run \(flag): the command \(reads), not the checkout the change is set aside from — run it in the checkout it builds, with sift run --root naming that checkout."
     }
 }

@@ -36,7 +36,6 @@ struct AffectedCollapseOnceTests {
     private static func affected(libTests: [String: String], gadgetTests: [String: String] = [:]) async throws -> String {
         let root = try TestSources.makeTempRepo()
         try TestSources.write(manifest(), to: "Package.swift", in: root)
-        try TestSources.write("public struct Widget {\n    public init() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
         for (target, files) in [("LibTests", libTests), ("GadgetTests", gadgetTests)] {
             for (name, source) in files {
                 try TestSources.write(source, to: "Tests/\(target)/\(name).swift", in: root)

@@ -29,7 +29,7 @@ struct AffectedHelperRouteBoundsTests {
     }
 
     private static var changedWidget: String {
-        "public struct Widget {\n    public init() {}\n    public func shine() {}\n}\n"
+        "public struct Widget: Sendable {\n    public init() {}\n    public func shine() {}\n}\n"
     }
 
     /// A suite whose helper `helper` has the body `body`, and a test of its own that calls it.

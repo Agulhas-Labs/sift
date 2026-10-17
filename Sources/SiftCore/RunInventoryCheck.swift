@@ -104,6 +104,9 @@ public extension RunInventoryCheck {
     /// - Parameter executedNothing: Whether the run executed no test, as ``testedPackage(by:report:workingDirectory:executedNothing:)`` takes it: its empty outcomes reconcile as zero reported, so the line names every declared test that never reported.
     static func check(_ outcomes: RunTestOutcomes, loggedAt logURL: URL?, repositoryRoot: URL, package: URL? = nil, budget: TimeInterval = freshenBudget, executedNothing: Bool = false) -> RunInventoryCheck {
         let root = CanonicalPath.of(repositoryRoot.path)
+        guard GitContext.discoverRoot(from: repositoryRoot) != nil else {
+            return .skipped("\(root) is not inside a git repository, and the inventory is read from sift's index, which needs one")
+        }
         let packagePath = package.map { CanonicalPath.of($0.path) } ?? root
         guard packagePath == root || packagePath.hasPrefix(root + "/") else {
             return .skipped("the package at \(packagePath) lies outside the repository at \(root), whose index this reads")

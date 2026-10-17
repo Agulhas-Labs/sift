@@ -26,6 +26,8 @@ public struct RunTestFailure: Sendable {
     public let closestLine: String?
     /// Each `↳` line of ``note`` on its own, in the order the log printed them, a multi-line expression joined into one.
     ///
+    /// A line read from the console keeps the depth Swift Testing printed it at, the text after the `↳` less its one separating space, so a subexpression's line opens on two spaces per level beneath the whole expression's; a multi-line expression keeps the depth of its first line. A line from the event stream carries no depth. ``note`` never holds the indentation.
+    ///
     /// The note joins these with a space, which is right for reading and loses where one line ended: Swift Testing prints each expansion of an expectation as a `↳` line of its own, `<expression> → <value>`, and only the line it was printed on says where a value ends and the next expression begins. ``RunDominantFailureClass`` reads the values from these.
     public let markedLines: [String]
 
@@ -45,10 +47,10 @@ public extension RunTestFailure {
     ///
     /// Appended rather than replacing, because a note runs to as many `↳` lines as its author wrote and the second is as much the sentence as the first: replacing would leave a failure holding the source comment above its expectation and drop the line that says what went wrong. Joined with a space, since the line break is the terminal's and not the author's — except for `apart`, a line the log printed on a line of its own beneath the `↳` (an indented list entry), which keeps its break so a short list is read as the list it is. Each line is bounded by ``RunFailureCensus/wordsCap`` when it is rendered, the same as a message.
     ///
-    /// A line that is not `apart` is a `↳` line of its own, so it is also kept whole in ``markedLines``.
-    func noting(_ note: String, apart: Bool = false) -> RunTestFailure {
+    /// A line that is not `apart` is a `↳` line of its own, so it is also kept whole in ``markedLines``, behind the `indent` the log printed it at; the note itself never carries it.
+    func noting(_ note: String, apart: Bool = false, indent: String = "") -> RunTestFailure {
         let joined = self.note.map { "\($0)\(apart ? "\n" : " ")\(note)" } ?? note
-        let marked = apart ? markedLines : markedLines + [note]
+        let marked = apart ? markedLines : markedLines + [indent + note]
         return RunTestFailure(name: name, arguments: arguments, location: location, message: message, note: joined, closestLine: closestLine, markedLines: marked)
     }
 

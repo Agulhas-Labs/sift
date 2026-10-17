@@ -111,9 +111,9 @@ struct WhereAliasReachTests {
         ), "\(output)")
     }
 
-    /// A nested alias writing a name two modules declare at their top levels stays in the answer for its own module's type, kept since the name may mean the other module's.
+    /// A nested alias writing a name two modules declare at their top levels is folded into its own module's type, since a module's own declaration hides an imported one.
     @Test
-    func aNestedAliasOfATypeTwoModulesDeclareIsKept() async throws {
+    func aNestedAliasOfATypeTwoModulesDeclareIsFoldedIntoItsOwnModules() async throws {
         let output = try await Self.lookupAcrossModules(
             "Lib.Gizmo",
             app: """
@@ -135,7 +135,8 @@ struct WhereAliasReachTests {
         )
 
         #expect(output.contains(
-            "\"Gizmo\" (2 uses by written name in 1 file) — 2 production · 0 tests; 1 written as Lib.Shelf.Bin (Gizmo), a typealias writing a name another declaration shares, kept as a use though not proven to name it, as the name may mean that other declaration where it is written (for Lib.Gizmo):"
+            "\"Gizmo\" (1 use by written name in 1 file) — 1 production · 0 tests; 1 written as Lib.Shelf.Bin, a typealias naming it, folded in here; 1 more line declaring a typealias of it, which is another name for the type rather than use of it (for Lib.Gizmo):"
         ), "\(output)")
+        #expect(output.contains(":8  | func one() { _ = Bin(\"t\") }"), "\(output)")
     }
 }

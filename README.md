@@ -3,13 +3,21 @@
 **Two tools in one binary for AI coding agents working in Swift: build and test output an agent can afford
 to read, and semantic lookups for when grep is too noisy.** Everything runs on your machine.
 
+Homebrew:
+
 ```sh
 brew install agulhas-labs/tap/sift && sift install
 ```
 
+npm:
+
+```sh
+npm install -g @agulhas-labs/sift && sift install
+```
+
 macOS 13+ on Apple silicon. Give Homebrew the full name: its plain `sift` is an unrelated grep alternative.
 `sift install` finds Claude Code, Cursor and Codex, asks once for each, and adds the MCP server and hooks;
-then start a new session (`sift doctor` checks it). npm, a release bundle and building from source:
+then start a new session (`sift doctor` checks it). A release bundle and building from source:
 [INSTALL.md](Distribution/INSTALL.md) and [the guide](Docs/Guide.md#2-install).
 
 ## What pays from the first command

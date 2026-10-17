@@ -166,7 +166,7 @@ public extension RunOutputFilter {
             outcomes.recordStreamed(ending.attempt, of: ending.name)
         }
         for name in fold.failedNames {
-            append(RunTestFailure(name: name, location: nil, message: fold.messages[name] ?? "failed, recorded in the event stream — the console relayed none of its lines"))
+            append(RunTestFailure(name: name, location: nil, message: fold.messages[name] ?? "failed, recorded in the event stream — the console relayed none of its lines", markedLines: fold.markedLines[name] ?? []))
         }
         eventStreamNote = fold.note
     }
@@ -716,13 +716,16 @@ extension RunOutputFilter {
     ///
     /// Swift Testing prints an `#expect` written over several lines as it was written, in the issue line and again in each `↳` expansion beneath it: `Expectation failed: Gizmo.soleElement(` and then indented `of: note,`, `width: 320`, `)?.label == "note 0"`. Read one line at a time, the message stopped at the first of them and the rest became the failure's note, so the `↳` evaluation that repeats the expression never matched it (``RunFailureShape/merging(_:with:)``) and every failure of that shape shared the signature `Gizmo.soleElement(`. Each continuation is joined trimmed, with a space between pieces but none after an opening bracket or before a closing one, so the joined text reads as the one-line spelling.
     ///
+    /// A blank line inside the expression is taken by the join, counted toward the cap and joined to nothing.
+    ///
     /// Joining stops at a line that is not indented, at a line the filter reads as its own (a `↳`, an event, XCTest's counter), and at ``noteContinuationCap`` lines; what was joined is kept, balanced or not, and the line that stopped it is read as it always was. A message whose brackets balance never opens one of these, so a `↳` or indented line beneath it is the note it always was.
     private mutating func continueOpenExpression(_ open: RunExpressionJoin, with line: String) -> Bool {
-        guard open.lines < Self.noteContinuationCap, let piece = expressionContinuation(in: line) else {
+        var open = open
+        let blank = line.allSatisfy(\.isWhitespace)
+        guard open.lines < Self.noteContinuationCap, let piece = blank ? "" : expressionContinuation(in: line) else {
             closeExpression(open)
             return false
         }
-        var open = open
         open.join(piece)
         if open.isOpen {
             openExpression = open
@@ -740,7 +743,7 @@ extension RunOutputFilter {
             testFailures[open.index] = RunTestFailure(name: failure.name, arguments: failure.arguments, location: failure.location, message: open.text)
             return
         }
-        foldNoteLine(open.text, marked: true, into: open.index)
+        foldNoteLine(open.text, marked: true, into: open.index, indent: open.indent)
     }
 
     /// The text of an indented line that may carry on an open expression, or `nil` for a `↳` line, an event, XCTest's counter or a line that is not indented.
@@ -812,16 +815,20 @@ extension RunOutputFilter {
     /// **What the interleaving does to a line is handled rather than described.** Every splice the corpus holds — three in the passing capture, one in the truncated — is ``RunOutputFilter/outputBarrier`` in front of an otherwise intact line, and it comes off in ``consume(line:)`` before any reader here sees it. A `recorded an issue` line that arrives spliced is therefore read like any other: name, location, message and the note beneath it. `aBarrierSplicedOntoAnIssueLineIsStrippedBeforeTheLineIsRead` is that claim. What is left over is the paragraph above, which is about which failure a continuation belongs to rather than about the characters a line begins with.
     ///
     /// A note that runs to more than one line stays whole. Consecutive `↳` lines are one note: the claim is renewed here rather than expiring on the line that consumed it, which would leave a two-line note as its first line alone — in the failing capture, the source comment kept and the sentence that said what actually went wrong dropped.
+    ///
+    /// A `↳` line opens an expression join only when its text occurs in the failure's message, since a real expansion always repeats part of the expression and a comment such as `missing (` does not; a comment with an unmatched bracket is folded as the note line it is, and the indented lines beneath it stay lines of their own.
     private mutating func recordMarkedNote(_ line: String, on index: Int?) -> Bool {
         guard let index, let note = markedContinuation(in: line) else {
             return false
         }
-        if let open = RunExpressionJoin.opening(note, index: index, inNote: true) {
+        let repeatsTheExpression = testFailures[index].message.contains(note.trimmingCharacters(in: .whitespaces))
+        let indent = RunExpansionDepth.printedIndent(of: line)
+        if repeatsTheExpression, let open = RunExpressionJoin.opening(note, index: index, inNote: true, indent: indent) {
             openExpression = open
             unnotedFailure = index
             return true
         }
-        foldNoteLine(note, marked: true, into: index)
+        foldNoteLine(note, marked: true, into: index, indent: indent)
         return true
     }
 
@@ -849,7 +856,7 @@ extension RunOutputFilter {
     /// Folds one continuation line into `index`'s note while ``noteContinuationCap`` allows it, and counts it instead once it does not.
     ///
     /// An empty `note` is a held blank the note went on across: part of the haystack a containment failure searches, and nothing in the note a reader sees, which joins its lines with a space.
-    private mutating func foldNoteLine(_ note: String, marked: Bool, into index: Int) {
+    private mutating func foldNoteLine(_ note: String, marked: Bool, into index: Int, indent: String = "") {
         bufferContainmentLine(RunFailureCensus.NoteLine(text: note, marked: marked), of: index)
         unnotedFailure = index
         guard !note.isEmpty else {
@@ -857,7 +864,7 @@ extension RunOutputFilter {
         }
         let kept = noteLinesKept[index, default: 0]
         if kept < Self.noteContinuationCap {
-            testFailures[index] = testFailures[index].noting(note, apart: !marked)
+            testFailures[index] = testFailures[index].noting(note, apart: !marked, indent: indent)
             noteLinesKept[index] = kept + 1
         } else {
             noteLinesElided[index, default: 0] += 1

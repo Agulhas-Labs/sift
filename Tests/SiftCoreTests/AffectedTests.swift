@@ -83,7 +83,8 @@ struct AffectedTests {
         )
         try TestSources.commitAll(in: root, message: "fixture")
         // The change under test, left uncommitted so the working tree has something to report.
-        try TestSources.write(core(extra: "    public func shine() {}"), to: "Sources/Lib/Core.swift", in: root)
+        // The type's own declaration changes too, so the walk starts from `Widget` itself and not only from the member added to it.
+        try TestSources.write(core(extra: "    public func shine() {}").replacingOccurrences(of: "struct Widget {", with: "struct Widget: Sendable {"), to: "Sources/Lib/Core.swift", in: root)
         return root
     }
 
@@ -143,7 +144,7 @@ struct AffectedTests {
     func everyAnswerStatesItsOwnIncompletenessBeforeItListsAnything() async throws {
         let output = try await Self.affected(Self.makeRepo())
 
-        #expect(output.contains("what this cannot see — read before trusting the list below: answered by a name match. this is a lower bound"))
+        #expect(output.contains("what this cannot see — read before trusting the list below: answered by a call-site walk from the declarations the diff touched (syntactic, lower bound). this is a lower bound"))
         #expect(!output.contains(".this is"))
         #expect(output.contains("this is a lower bound, not a safe-to-skip set"))
         #expect(output.contains("`sift help affected-limits`"))
@@ -227,7 +228,7 @@ struct AffectedTests {
         let idle = (0 ..< 40).map { "    @Test func idle\($0)() {}" }.joined(separator: "\n")
         try TestSources.write("import Testing\n\nstruct Orchard {\n\(idle)\n}\n", to: "Tests/LibTests/Orchard.swift", in: root)
         try TestSources.commitAll(in: root, message: "fixture")
-        try TestSources.write("public struct Widget {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
+        try TestSources.write("public struct Widget: Sendable {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
 
         let output = try await Self.affected(root)
 
@@ -237,13 +238,12 @@ struct AffectedTests {
     /// A change whose first hop widens past the name frontier: one changed type, mentioned once inside each of `count` differently-named functions.
     private static func makeWideningRepo(mentions count: Int) throws -> URL {
         let root = try TestSources.makeTempRepo()
-        try TestSources.write("public struct Widget {\n    public init() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
         // Each mention sits in a differently-named function, so hop one hands the next hop one name per
         // function — past the 200 the frontier carries, which is the bound under test.
         let mentions = (0 ..< count).map { "func mention\($0)() { _ = Widget() }" }.joined(separator: "\n")
         try TestSources.write(mentions + "\n", to: "Sources/Lib/Mentions.swift", in: root)
         try TestSources.commitAll(in: root, message: "fixture")
-        try TestSources.write("public struct Widget {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
+        try TestSources.write("public struct Widget: Sendable {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
         return root
     }
 
@@ -302,7 +302,6 @@ struct AffectedTests {
     @Test
     func anOperatorReachedOnALaterHopIsDroppedExactlyAsOneInTheSeedSetIs() async throws {
         let root = try TestSources.makeTempRepo()
-        try TestSources.write("public struct Widget {\n    public init() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
         try TestSources.write(
             """
             public struct Box {}
@@ -316,7 +315,7 @@ struct AffectedTests {
             in: root
         )
         try TestSources.commitAll(in: root, message: "fixture")
-        try TestSources.write("public struct Widget {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
+        try TestSources.write("public struct Widget: Sendable {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
 
         let output = try await Self.affected(root)
 
@@ -393,7 +392,7 @@ struct AffectedTests {
         let mentions = (0 ..< 1600).map { "public func mention\($0)() { Widget().polish() }" }.joined(separator: "\n")
         try TestSources.write(mentions + "\n", to: "Sources/Lib/Mentions.swift", in: root)
         try TestSources.commitAll(in: root, message: "fixture")
-        try TestSources.write("public struct Widget {\n    public init() {}\n    public func polish() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
+        try TestSources.write("public struct Widget: Sendable {\n    public init() {}\n    public func polish() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
         try await TestSources.swiftBuildSuspending(packageAt: root)
 
         let output = try await Self.affected(root)

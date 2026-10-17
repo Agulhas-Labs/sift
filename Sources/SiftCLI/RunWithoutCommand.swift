@@ -245,7 +245,7 @@ struct RunWithoutCommand {
             if !restored.record.leftInPlace.isEmpty {
                 lines.append(RunWithoutAnswer.leftInPlaceLine(restored.record))
             }
-            if let stopped = RunWithoutAnswer.stragglersLine(stragglers, pathspecs: pathspecs) {
+            if let stopped = RunWithoutAnswer.stragglersLine(stragglers) {
                 lines.append(stopped)
             }
             lines.append(contentsOf: restored.kept.map { "  ⚠ changed while it was set aside, so kept rather than overwritten: \($0)" })
@@ -253,7 +253,7 @@ struct RunWithoutCommand {
                 lines.append(RunWithoutAnswer.watcherLostLine)
             }
             let paths = RunAnswerPaths.read(in: workingDirectory)
-            lines.append("  raw output at \(RunWithoutAnswer.logLine(before, named: "without \(pathspecs)", paths: paths))")
+            lines.append("  raw output at \(RunWithoutAnswer.logLine(before, named: "without the change", paths: paths))")
             StandardStreams.emit(lines.joined(separator: "\n"))
             session.close()
             throw Exit.notProven.code

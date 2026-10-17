@@ -69,7 +69,7 @@ public struct HelpTopics {
         a filtered one — the one direction this command otherwise never goes. Read that as the tool saying it \
         could not name what went wrong, not as a filter that failed.
 
-        **An answer with no `totals:` line closes on `verdict: ` and its headline** once its content runs to three lines, just above `raw:`, so a `| tail -3` keeps the verdict.
+        **An answer with no `totals:` line closes on `verdict: ` and its headline** once its content runs to three lines, just above `raw:`, so a `| tail -3` keeps the verdict; when accessibility notes sit under `raw:`, the verdict is the last line instead, below them, on every answer.
 
         **A plain `swift test` is checked against the tests the index declares** — an unfiltered, serial \
         `swift test` of a package, at the repository's root or nested in it (`--package-path` or its own directory), carries one more line under `totals:`, \
@@ -89,7 +89,7 @@ public struct HelpTopics {
         (Xcode's over every test target), from the package's directory with no Xcode project named or beside it, is checked as that `swift test` is; \
         any other prints `inventory: not checked — …` saying why, unless `-only-testing`, `-skip-testing`, `-testPlan` or a test configuration narrows it. A run in scope that could not be \
         checked prints the one line saying why, `inventory: not checked — …`: the checkout has no index yet, \
-        which this never builds; the inventory could not be read; every test the index declares was lifted \
+        which this never builds; the directory lies inside no git repository; the inventory could not be read; every test the index declares was lifted \
         out of the counts; or bringing it up to date and reconciling took longer than 20 s.
 
         **An `xcodebuild` build or test of a stale generated project says so first** — when an XcodeGen `project.yml` beside the `.xcodeproj` holds Swift files its `project.pbxproj` does not list, one line, `project: Apps/Gizmo.xcodeproj does not list 1 Swift file its spec Apps/project.yml holds (GizmoTests.swift) — run xcodegen generate`, comes before the command's output. It is a note and never a verdict, and prints nothing where the spec or project cannot be read.

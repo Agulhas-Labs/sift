@@ -19,7 +19,7 @@ struct RunWithoutDidNotBuildKeptLogTests {
 
         let result = try fixture.sift(Fixture.proof)
         let logs = named(in: result.stdout)
-        let without = try #require(logs["without Sources/"], "\(result.stdout)")
+        let without = try #require(logs["without the change"], "\(result.stdout)")
         prune(fixture)
         let names = try kept(fixture)
 

@@ -21,6 +21,9 @@ struct RunEventStreamFold {
     /// The message of the failing issue each test that failed without starting recorded — a condition that threw — by the name the console prints for it: the console's own line for it is not one the filter reads, so the stream's message is the only one the answer has.
     let messages: [String: String]
 
+    /// The expansion lines the console prints as `↳` lines beneath each failing test's message, for the tests the stream recorded any for, by the name the console prints for it; a test's message is then the stream's headline, which the lines are read against.
+    let markedLines: [String: [String]]
+
     /// The line the answer carries: how many endings each recorded, and which the counts are read from.
     let note: String
 
@@ -36,6 +39,7 @@ struct RunEventStreamFold {
         var streamed: [String: [RunTestOutcomes.Attempt]] = [:]
         var failing: Set<String> = []
         var messages: [String: String] = [:]
+        var markedLines: [String: [String]] = [:]
         for test in stream.attempts.keys.sorted(by: { $0.enumerated < $1.enumerated }) {
             let attempts = stream.attempts[test] ?? []
             // Two suites' tests can print the same name, so the counts below are compared name by name, never test by test.
@@ -47,6 +51,11 @@ struct RunEventStreamFold {
             if let message = stream.failedBeforeStarting[test], messages[name] == nil {
                 messages[name] = message
             }
+            // The headline goes with the lines: they are read against the expression it names.
+            if let expansion = stream.failureExpansions[test], markedLines[name] == nil {
+                markedLines[name] = expansion.lines.map(RunExpressionJoin.oneLine)
+                messages[name] = messages[name] ?? RunExpressionJoin.oneLine(expansion.headline)
+            }
         }
         let recorded = streamed.values.reduce(0) { $0 + $1.count }
         let relayed = outcomes.swiftTestingNames.reduce(0) { $0 + (outcomes.attempts[$1]?.count ?? 0) }
@@ -55,7 +64,7 @@ struct RunEventStreamFold {
         }
         let counts = "event stream: \(recorded) Swift Testing \(recorded == 1 ? "ending" : "endings"), the console relayed \(relayed)"
         guard recorded > relayed else {
-            return RunEventStreamFold(endings: [], failedNames: [], messages: [:], note: "\(counts) — the tests and failures here are the console's")
+            return RunEventStreamFold(endings: [], failedNames: [], messages: [:], markedLines: [:], note: "\(counts) — the tests and failures here are the console's")
         }
         let endings = streamed.keys.sorted().flatMap { name in
             (streamed[name] ?? []).dropFirst(outcomes.attempts[name]?.count ?? 0).map { (name: name, attempt: $0) }
@@ -64,6 +73,7 @@ struct RunEventStreamFold {
             endings: endings,
             failedNames: failing.subtracting(named).sorted(),
             messages: messages,
+            markedLines: markedLines,
             note: "\(counts) — the other \(recorded - relayed) read from the stream"
         )
     }

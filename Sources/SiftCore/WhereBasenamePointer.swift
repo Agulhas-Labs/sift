@@ -9,7 +9,7 @@ struct WhereBasenamePointer {
     /// The paths named before the rest are counted.
     private static let pathCap = 3
 
-    static func lines(for query: String, in store: IndexStore, at revision: Revision? = nil) throws -> [String] {
+    static func lines(for query: String, in store: IndexStore, at revision: Revision? = nil, spelling: CallSpelling = .commandLine) throws -> [String] {
         guard !query.isEmpty, !query.contains("/") else {
             return []
         }
@@ -25,7 +25,7 @@ struct WhereBasenamePointer {
         guard !paths.isEmpty else {
             return []
         }
-        let shown = paths.prefix(pathCap).map { "digest \($0)\(revision.map { " --at \($0.name)" } ?? "")" }.joined(separator: ", ")
+        let shown = paths.prefix(pathCap).map { path in revision.map { spelling.digest(path, at: $0.name) } ?? "digest \(path)" }.joined(separator: ", ")
         let more = paths.count > pathCap ? ", and \(paths.count - pathCap) more" : ""
         let lead = paths.count == 1 ? "a file has that name" : "\(paths.count) files have that name"
         return ["no declaration named \(query); \(lead): \(shown)\(more)"]

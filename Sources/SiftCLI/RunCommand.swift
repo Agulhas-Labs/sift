@@ -13,7 +13,7 @@ struct RunCommand: ParsableCommand {
             commandName: "run",
             abstract: "Run a Swift toolchain command and print only what failed.",
             // Written out because the generated line draws every array option as repeatable (`<file:line> ...`), and `--without-line` is one value, refused when given twice.
-            usage: "sift run [<command> ...] [--without <without> ...] [--without-line <file:line>] [--since <since>] [--guard <test> ...] [--keep-without-build] [--restore] [--proved] [--coverage] [--from <from>]",
+            usage: "sift run [<command> ...] [--without <without> ...] [--without-line <file:line>] [--since <since>] [--guard <test> ...] [--keep-without-build] [--restore] [--proved] [--coverage] [--from <from>] [--root <dir>]",
             discussion: """
             Wraps `swift build`, `swift test` and `xcodebuild`, printing their errors, test failures, \
             warnings grouped by message and own summary line instead of the thousands of progress lines a \
@@ -82,7 +82,8 @@ struct RunCommand: ParsableCommand {
             tree; and 64 when the line itself is a usage error, said before anything moves: a command that \
             cannot prove anything run twice (tests not named, --skip-build, --parallel), a --since \
             revision git cannot resolve or HEAD does not descend from, a command that builds another \
-            checkout, or flags that do not go together.
+            checkout, or flags that do not go together. With --root <dir> the command runs as if sift run had \
+            been started in that directory, as after a cd, and the caller's shell stays where it was.
             """
         )
     }
@@ -120,6 +121,9 @@ struct RunCommand: ParsableCommand {
 
     @Option(name: .customLong("from"), help: "With --coverage: the revision the change is measured from (default HEAD); the after side is always the working tree.")
     var from: String?
+
+    @Option(name: .customLong("root"), help: "Run the command as if sift run had been started in this directory: its log, its proof and every check are that directory's, as after a cd, without moving the caller's shell.")
+    var directory: String?
 
     /// Where a run files itself — injected so a test can watch it happen.
     ///
@@ -170,9 +174,21 @@ struct RunCommand: ParsableCommand {
         if asked.rewritten {
             output.emit(RunRewrite.notice(for: asked.arguments))
         }
-        // `--root` is a query flag; here it would reach the wrapped command (`env` rejects it as an option).
+        // Before anything reads the process's directory, so a `--root` run is a cd'd run by construction.
+        if let directory {
+            let logical = RunRootPath.logical(
+                directory,
+                inheritedPWD: ProcessInfo.processInfo.environment["PWD"],
+                current: FileManager.default.currentDirectoryPath
+            )
+            // The logical path first, so `..` after a symbolic link lands where a shell `cd` does; the raw argument otherwise.
+            guard RunRootPath.changeDirectory(logical: logical) || FileManager.default.changeCurrentDirectoryPath(directory) else {
+                throw ValidationError("sift run --root: \(directory) is not a directory.")
+            }
+            setenv("PWD", RunRootPath.pwd(logical: logical, current: FileManager.default.currentDirectoryPath), 1)
+        }
         if arguments.first == "--root" {
-            throw ValidationError("sift run takes no --root: it runs in the current directory, so cd into the worktree first.")
+            throw ValidationError("sift run: --root goes before the command: sift run --root <dir> -- <command>.")
         }
         let workingDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         if let guardSetAside {
@@ -683,5 +699,6 @@ extension RunCommand {
         case guardSetAside
         case coverage
         case from
+        case directory
     }
 }

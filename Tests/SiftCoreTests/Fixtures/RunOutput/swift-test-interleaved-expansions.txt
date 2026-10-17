@@ -1,0 +1,77 @@
+Building for debugging...
+[Planning deferred tasks]
+[27 / 50]
+[32 / 55] Lib
+[40 / 55] Lib
+[45 / 56] LibTests-product
+[54 / 84]
+[57 / 84]
+[59 / 84]
+[61 / 84]
+[62 / 84]
+[73 / 84] LibTests-product
+[78 / 84] LibTests-product
+[80 / 84] LibTests-product
+Build complete! (2.98 secs)
+Test Suite 'All tests' started at 2000-01-01 12:00:00.119.
+Test Suite 'All tests' passed at 2000-01-01 12:00:00.120.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+◇ Test run started.
+↳ Testing Library Version: 2084
+↳ Target Platform: arm64e-apple-macos14.0
+✘ Test check0() recorded an issue at Sprocket1Tests.swift:9:5: Expectation failed: c(0) == "ok"
+↳ c(0) == "ok" → false
+↳   c(0) → "v0"
+↳ q == .none → false
+↳   q → nil
+✘ Test check1() recorded an issue at Sprocket2Tests.swift:9:5: Expectation failed: d(1) == "ok"
+↳ d(1) == "ok" → false
+↳   d(1) → "v1"
+↳ q == .none → false
+↳   q → nil
+✘ Test check2() recorded an issue at Sprocket3Tests.swift:9:5: Expectation failed: e(2) == "ok"
+↳ e(2) == "ok" → false
+↳   e(2) → "v2"
+↳ q == .none → false
+↳   q → nil
+✘ Test check3() recorded an issue at Sprocket1Tests.swift:9:5: Expectation failed: c(3) == "ok"
+↳ c(3) == "ok" → false
+↳   c(3) → "v3"
+↳ q == .none → false
+↳   q → nil
+✘ Test check4() recorded an issue at Sprocket2Tests.swift:9:5: Expectation failed: d(4) == "ok"
+↳ d(4) == "ok" → false
+↳   d(4) → "v4"
+↳ q == .none → false
+↳   q → nil
+✘ Test check5() recorded an issue at Sprocket3Tests.swift:9:5: Expectation failed: e(5) == "ok"
+↳ e(5) == "ok" → false
+↳   e(5) → "v5"
+↳ q == .none → false
+↳   q → nil
+✘ Test check6() recorded an issue at Sprocket1Tests.swift:9:5: Expectation failed: c(6) == "ok"
+↳ c(6) == "ok" → false
+↳   c(6) → "v6"
+↳ q == .none → false
+↳   q → nil
+✘ Test check7() recorded an issue at Sprocket2Tests.swift:9:5: Expectation failed: d(7) == "ok"
+↳ d(7) == "ok" → false
+↳   d(7) → "v7"
+✘ Test check8() recorded an issue at Sprocket3Tests.swift:9:5: Expectation failed: e(8) == "ok"
+↳ e(8) == "ok" → false
+↳   e(8) → "v8"
+✘ Test check9() recorded an issue at Sprocket1Tests.swift:9:5: Expectation failed: c(9) == "ok"
+↳ c(9) == "ok" → false
+↳   c(9) → "v9"
+✘ Test check10() recorded an issue at Sprocket2Tests.swift:9:5: Expectation failed: d(10) == "ok"
+↳ d(10) == "ok" → false
+↳   d(10) → "v10"
+✘ Test check11() recorded an issue at Sprocket3Tests.swift:9:5: Expectation failed: e(11) == "ok"
+↳ e(11) == "ok" → false
+↳   e(11) → "v11"
+✘ Suite Sprocket1Tests failed after 0.002 seconds with 4 issues.
+✘ Suite Sprocket2Tests failed after 0.002 seconds with 4 issues.
+✘ Suite Sprocket3Tests failed after 0.002 seconds with 4 issues.
+✘ Test run with 12 tests in 3 suites failed after 0.002 seconds with 12 issues.
+Note: Some test targets reported failures:
+  - LibTests (Swift Testing)

@@ -480,11 +480,11 @@ extension RunFailureShape {
         return message + note[arrow.lowerBound...]
     }
 
-    /// The first ` → ` of `note` that no string literal holds, or `nil` where it has none.
+    /// The first ` → ` of `note` that no string literal, raw ones included, holds, or `nil` where it has none.
     private static func firstArrow(in note: String) -> Range<String.Index>? {
         var index = note.startIndex
         while index < note.endIndex {
-            if note[index] == "\"" {
+            if note[index] == "\"" || note[index] == "#" {
                 index = RunDominantFailureClass.afterLiteral(in: note, openingAt: index)
             } else if note[index...].hasPrefix(" → ") {
                 return index ..< note.index(index, offsetBy: 3)

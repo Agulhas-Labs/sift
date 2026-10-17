@@ -20,4 +20,4 @@ A cited `File.swift:120` or `:95-135` goes to `digest File.swift:120`, not a gue
 
 The hook answers a Swift lookup in place or lets it through. A denial is not a wall: re-run the same lookup and it is allowed, and a re-run is never held against you.
 
-In a git worktree, pass `--root` to lookups, not to `sift run`. No `sift` tools present: use the CLI if `sift` is on PATH.
+In a git worktree, pass `--root` to lookups and `sift run` alike, not `cd`. No `sift` tools present: use the CLI if `sift` is on PATH.

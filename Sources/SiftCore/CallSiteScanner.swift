@@ -753,48 +753,10 @@ private extension CallSiteScanner.Visitor {
                 break
             }
         }
-        guard let type = declaredType(around: node).flatMap({ unwrapped($0, elementDepth: elementDepth) }) else { return nil }
+        guard let type = ImpliedInitType.declaredType(around: node).flatMap({ ImpliedInitType.unwrapped($0, elementDepth: elementDepth) }) else { return nil }
         let name = DeclaredTypeName.of(type)
         guard name != "Self" else { return enclosingTypes.last.map { ImpliedInitType(name: $0, qualifier: nil, annotation: nil) } }
         return ImpliedInitType(name: name, qualifier: type.as(MemberTypeSyntax.self).flatMap { DeclaredTypeName.path(of: $0.baseType) }, annotation: type)
-    }
-
-    /// The type the binding `node` initializes is annotated with, or that the function, computed property or subscript returning `node` declares.
-    private func declaredType(around node: Syntax) -> TypeSyntax? {
-        if let binding = node.parent?.as(InitializerClauseSyntax.self)?.parent?.as(PatternBindingSyntax.self) {
-            return binding.typeAnnotation?.type
-        }
-        let isReturned = node.parent?.is(ReturnStmtSyntax.self) == true
-            || (node.parent?.is(CodeBlockItemSyntax.self) == true && node.parent?.parent?.as(CodeBlockItemListSyntax.self)?.count == 1)
-        guard isReturned else { return nil }
-        var ancestor = node.parent
-        while let current = ancestor {
-            if let function = current.as(FunctionDeclSyntax.self) {
-                return function.signature.returnClause?.type
-            }
-            if let subscriptDecl = current.as(SubscriptDeclSyntax.self) {
-                return subscriptDecl.returnClause.type
-            }
-            if let binding = current.as(PatternBindingSyntax.self) {
-                return binding.typeAnnotation?.type
-            }
-            if current.is(ClosureExprSyntax.self) || (current.is(DeclSyntax.self) && !current.is(AccessorDeclSyntax.self)) {
-                return nil
-            }
-            ancestor = current.parent
-        }
-        return nil
-    }
-
-    /// The declared type an implicit member is looked up in — an optional's wrapped type — taken `elementDepth` array elements in, or `nil` where it is no array that deep.
-    private func unwrapped(_ type: TypeSyntax, elementDepth: Int) -> TypeSyntax? {
-        if let optional = type.as(OptionalTypeSyntax.self) {
-            return unwrapped(optional.wrappedType, elementDepth: elementDepth)
-        }
-        if elementDepth > 0 {
-            return type.as(ArrayTypeSyntax.self).flatMap { unwrapped($0.element, elementDepth: elementDepth - 1) }
-        }
-        return type
     }
 
     /// Whether `node` is a leading-dot call `.m(x)`, or the name such a call calls, with nothing applied after it: no member, call, subscript, `?` or `!`.

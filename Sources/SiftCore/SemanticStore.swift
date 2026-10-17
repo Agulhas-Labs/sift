@@ -317,6 +317,19 @@ final class SemanticStore: @unchecked Sendable {
         .map { ImplementedRequirement(name: displayName(of: $0), owner: owner(ofRequirement: $0.usr), restated: restated) }
     }
 
+    /// The USRs of the declarations ``implementedRequirements(ofUSR:)`` names: a call reaching the symbol through a protocol or a superclass is recorded against one of them, never against the symbol.
+    func implementedUSRs(ofUSR usr: String) -> [String] {
+        var seen: Set<String> = []
+        return occurrences(ofUSR: usr, roles: [.definition, .overrideOf])
+            .flatMap { $0.relations.filter { $0.roles.contains(.overrideOf) }.map(\.symbol.usr) }
+            .filter { seen.insert($0).inserted }
+    }
+
+    /// Where the symbol is written: the absolute path and line of each explicit definition, none for a library's, read from its SDK interface at line 0, or a synthesized one.
+    func writtenDefinitions(ofUSR usr: String) -> [(path: String, line: Int)] {
+        occurrences(ofUSR: usr, roles: .definition).filter { !$0.roles.contains(.implicit) && $0.location.line > 0 }.map { ($0.location.path, $0.location.line) }
+    }
+
     /// The protocol or class that declares the requirement `usr`: its definition's parent where the store holds the definition, else the symbol whose USR is the longest prefix of the requirement's, as a member's USR extends its container's — and `nil` where the store holds neither.
     private func owner(ofRequirement usr: String) -> ImplementedRequirement.Owner? {
         let parents = occurrences(ofUSR: usr, roles: .definition).compactMap { definition in

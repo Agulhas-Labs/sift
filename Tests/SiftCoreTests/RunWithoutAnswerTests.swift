@@ -19,8 +19,8 @@ struct RunWithoutAnswerTests {
         let lines = answer.text.split(separator: "\n").map(String.init)
 
         #expect(lines.first == "✔ 2 of 2 fail without Sources/ and pass with it")
-        #expect(lines.contains("  ✔ shoutingWorks() — fails without Sources/, passes with it"))
-        #expect(lines.contains("  ✔ sizeIsCarried() — fails without Sources/, passes with it"))
+        #expect(lines.contains("  ✔ shoutingWorks() — fails without the change, passes with it"))
+        #expect(lines.contains("  ✔ sizeIsCarried() — fails without the change, passes with it"))
         #expect(answer.lines == answer.text.split(separator: "\n", omittingEmptySubsequences: false).count)
     }
 
@@ -34,9 +34,9 @@ struct RunWithoutAnswerTests {
         let lines = answer.text.split(separator: "\n").map(String.init)
 
         #expect(lines.first == "✘ 1 of 3 fails without Sources/ and passes with it")
-        let pinsNothing = lines.firstIndex(of: "  ✘ sizeIsCarried() — passes without Sources/ too, so it pins nothing")
+        let pinsNothing = lines.firstIndex(of: "  ✘ sizeIsCarried() — passes without the change too, so it pins nothing")
         let failsBothWays = lines.firstIndex { $0.hasPrefix("  ✘ theGridReflows() — fails both ways — with it: WidgetTests.swift:7:9: Expectation failed") }
-        let pins = lines.firstIndex(of: "  ✔ shoutingWorks() — fails without Sources/, passes with it")
+        let pins = lines.firstIndex(of: "  ✔ shoutingWorks() — fails without the change, passes with it")
         #expect(pinsNothing != nil && failsBothWays != nil && pins != nil)
         if let pinsNothing, let failsBothWays, let pins {
             #expect(pinsNothing < failsBothWays && failsBothWays < pins)
@@ -56,7 +56,7 @@ struct RunWithoutAnswerTests {
 
         #expect(lines.first == "◇ the tests did not compile without Sources/ — evidence they need it, not a failing assertion; 1 of 1 passes with it")
         #expect(lines.contains("    Tests/WidgetTests/WidgetTests.swift:3:5: error: cannot find 'Gadget' in scope"))
-        #expect(lines.contains("  ◇ shoutingWorks() — passes with it; without Sources/ it did not compile — needed, not pinned"))
+        #expect(lines.contains("  ◇ shoutingWorks() — passes with it; without the change it did not compile — needed, not pinned"))
         #expect(!lines.contains { $0.hasPrefix("  ✔") }, "a tick is a test that failed an assertion without the change, and none did")
         #expect(!judged.proven, "tests that did not compile are evidence, not the proof")
     }
@@ -77,7 +77,7 @@ struct RunWithoutAnswerTests {
         )
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains("  Sources/Widgets/Gadget.swift is not in HEAD, so setting it aside removed it: a test that names what it declared could not build, and none failed an assertion without Sources/. Whether a test pins what the file does, rather than merely naming it, is not shown — that needs the file committed and what it does changed."), "\(lines)")
+        #expect(lines.contains("  Sources/Widgets/Gadget.swift is not in HEAD, so setting it aside removed it: a test that names what it declared could not build, and none failed an assertion without the change. Whether a test pins what the file does, rather than merely naming it, is not shown — that needs the file committed and what it does changed."), "\(lines)")
         #expect(!judged.proven)
     }
 
@@ -140,7 +140,7 @@ struct RunWithoutAnswerTests {
             let text = judged.render().text
 
             #expect(text.hasPrefix("✘ the command failed before running tests without Sources/ — nothing was proven\n"), "\(text)")
-            #expect(text.contains("  without Sources/, \(what) before any test ran:"), "\(text)")
+            #expect(text.contains("  without the change, \(what) before any test ran:"), "\(text)")
             #expect(!text.contains("did not compile"), "\(text)")
             #expect(!judged.proven)
         }
@@ -167,8 +167,8 @@ struct RunWithoutAnswerTests {
         let text = judged.render().text
 
         #expect(text.hasPrefix("✘ the command failed before running tests without Sources/ — nothing was proven\n"), "\(text)")
-        #expect(text.contains("without Sources/ — ✘ swift test — did not build — no test ran (the command exited 1; sift run exits 5)"), "\(text)")
-        #expect(!text.contains("without Sources/ — ✘ swift test — exit 1"), "the per-run line must not read as an ordinary failure beside the run with it, which is the false proof --without exists to rule out: \(text)")
+        #expect(text.contains("without the change — ✘ swift test — did not build — no test ran (the command exited 1; sift run exits 5)"), "\(text)")
+        #expect(!text.contains("without the change — ✘ swift test — exit 1"), "the per-run line must not read as an ordinary failure beside the run with it, which is the false proof --without exists to rule out: \(text)")
         #expect(!judged.proven)
     }
 
@@ -186,7 +186,7 @@ struct RunWithoutAnswerTests {
 
         let answer = Self.answer(without: without, with: Self.run(["shoutingWorks()": true]))
 
-        #expect(answer.text.contains("✘ shoutingWorks() — 2 tests print this name, and without Sources/ 1 passed and 1 failed — the log cannot tell them apart"))
+        #expect(answer.text.contains("✘ shoutingWorks() — 2 tests print this name, and without the change 1 passed and 1 failed — the log cannot tell them apart"))
         #expect(answer.text.hasPrefix("✘ 0 of 1 fail without Sources/"))
     }
 
@@ -199,9 +199,9 @@ struct RunWithoutAnswerTests {
         )
 
         #expect(answer.text.contains("  set aside and put back: 2 paths under Sources/ (1 with staged changes, 1 untracked), checked by content hash"))
-        #expect(answer.text.contains("without Sources/ — ✘ swift test — exit 1"))
+        #expect(answer.text.contains("without the change — ✘ swift test — exit 1"))
         #expect(answer.text.contains("with it — ✔ swift test"))
-        #expect(answer.text.contains("no raw log could be written (without Sources/)"))
+        #expect(answer.text.contains("no raw log could be written (without the change)"))
     }
 
     /// A `--since` run's entries are committed changes, whose `Entry.status` is empty — `split` counts nothing from it, so the parenthetical the uncommitted case fills with "staged"/"unstaged"/"untracked" must not render as an empty `()`.
@@ -413,7 +413,7 @@ struct RunWithoutAnswerTests {
         let retried = Self.judged(without: without, with: with, retries: true)
         let folded = Self.judged(without: without, with: with)
 
-        #expect(retried.render().text.contains("  ✔ -[WidgetTests.LegacyWidgetTests testNaming] — fails without Sources/, passes with it (with it it passed only on a retry, after 1 failure)"), "\(retried.render().text)")
+        #expect(retried.render().text.contains("  ✔ -[WidgetTests.LegacyWidgetTests testNaming] — fails without the change, passes with it (with it it passed only on a retry, after 1 failure)"), "\(retried.render().text)")
         #expect(retried.proven)
         #expect(folded.render().text.contains("2 tests print this name"), "without a retry flag, two finishes under one name are two tests")
         #expect(!folded.proven)
@@ -432,7 +432,7 @@ struct RunWithoutAnswerTests {
         #expect(plain.proven)
         #expect(busy.proven)
         #expect(busy.render().text.contains("  left in place: .sift/config.json — changed, but in this tool's own .sift/ directory, which a set-aside never moves"))
-        #expect(busy.render().text.contains("  stopped 2 processes the run without Sources/ left running, before putting the changes back"))
+        #expect(busy.render().text.contains("  stopped 2 processes the run without the change left running, before putting the changes back"))
         #expect(moved.render().text.hasPrefix("⚠ HEAD moved from aaaaaaaaaa to bbbbbbbbbb while the tests ran"))
         #expect(!moved.proven)
     }
@@ -508,10 +508,10 @@ extension RunWithoutAnswerTests {
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
         #expect(lines.first == "⚠ module 'Sidecar' could not be found without Sources/ — none of the paths set aside is a manifest, lockfile, project, settings or module-map file this recognises, or a folder or built-module file named for it, so it is read as missing from this run's own build directory, not as evidence; nothing was proven")
-        #expect(lines.contains("  without Sources/, module 'Sidecar' could not be found:"), "\(lines)")
+        #expect(lines.contains("  without the change, module 'Sidecar' could not be found:"), "\(lines)")
         #expect(lines.contains("    Tests/WidgetTests/WidgetTests.swift:2:8: error: no such module 'Sidecar'"))
         #expect(!lines.contains(where: { $0.contains("did not compile") }), "\(lines)")
-        #expect(lines.contains("  ⚠ shoutingWorks() — did not run without Sources/; passed with it"), "\(lines)")
+        #expect(lines.contains("  ⚠ shoutingWorks() — did not run without the change; passed with it"), "\(lines)")
         #expect(!judged.proven, "a module the run could not find is never proof")
     }
 
@@ -532,7 +532,7 @@ extension RunWithoutAnswerTests {
         #expect(lines.first?.hasPrefix("⚠ module 'Sidecar' could not be found without Sources/ — ") == true, "\(lines)")
         #expect(lines.contains { $0.hasPrefix("    Tests/WidgetTests/WidgetTests.swift:3:8: error: ") && $0.contains("module dependency: 'Sidecar'") }, "\(lines)")
         #expect(!lines.contains { $0.contains("did not compile") || $0.contains("evidence they need it") }, "\(lines)")
-        #expect(lines.contains("  ⚠ shoutingWorks() — did not run without Sources/; passed with it"), "\(lines)")
+        #expect(lines.contains("  ⚠ shoutingWorks() — did not run without the change; passed with it"), "\(lines)")
         #expect(!judged.proven)
     }
 
@@ -570,7 +570,7 @@ extension RunWithoutAnswerTests {
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
         #expect(lines.first == "⚠ module 'Sidecar' could not be found without Sources/ — the change may provide it, or it is only built outside this run's build directory, so it is counted neither way; nothing was proven", "\(lines)")
-        #expect(lines.contains("  ⚠ shoutingWorks() — did not run without Sources/; passed with it"), "\(lines)")
+        #expect(lines.contains("  ⚠ shoutingWorks() — did not run without the change; passed with it"), "\(lines)")
         #expect(!judged.proven)
     }
 
@@ -602,7 +602,7 @@ extension RunWithoutAnswerTests {
 
         #expect(lines.first == "◇ the tests did not compile without Sources/ — evidence they need it, not a failing assertion; 1 of 1 passes with it", "\(lines)")
         #expect(lines.contains { $0.hasPrefix("    Tests/WidgetTests/WidgetTests.swift:3:8: error: ") && $0.contains("'Sidecar'") }, "\(lines)")
-        #expect(lines.contains("  ◇ shoutingWorks() — passes with it; without Sources/ it did not compile — needed, not pinned"), "\(lines)")
+        #expect(lines.contains("  ◇ shoutingWorks() — passes with it; without the change it did not compile — needed, not pinned"), "\(lines)")
         #expect(!lines.contains { $0.contains("could not be found") }, "\(lines)")
         #expect(!judged.proven, "tests that did not compile are evidence, not the proof")
     }
@@ -645,7 +645,7 @@ extension RunWithoutAnswerTests {
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
         #expect(lines.first?.hasPrefix("⚠ module 'Sidecar' could not be found without Sources/ — ") == true, "\(lines)")
-        #expect(lines.contains("  without Sources/, module 'Sidecar' could not be found:"), "\(lines)")
+        #expect(lines.contains("  without the change, module 'Sidecar' could not be found:"), "\(lines)")
         #expect(lines.contains("    Tests/WidgetTests/WidgetTests.swift:3:8: error: \(missing)"), "\(lines)")
         #expect(lines.contains("    +1 other error — see the raw log"), "\(lines)")
         #expect(!lines.contains { $0.contains("Sources/Widget/Widget.swift:3:5") }, "\(lines)")
@@ -800,7 +800,7 @@ extension RunWithoutAnswerTests {
         )
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains("  ✘ shoutingWorks() — passes without Sources/ too, so it pins nothing"))
+        #expect(lines.contains("  ✘ shoutingWorks() — passes without the change too, so it pins nothing"))
         #expect(lines.contains("  note: Tests/WidgetTests/WidgetTests.swift was also set aside, so this ran the committed test, not your edited one. To gate an edited test against old sources, leave the test file out of --without and write its assertions to compile against them. Where the change declares what the test has to name — a new case, method or type — no assertion compiles against the old sources, and the most this can show is that the tests needed the change, not a failing assertion."), "\(lines)")
     }
 
@@ -859,7 +859,7 @@ extension RunWithoutAnswerTests {
         )
         let text = judged.render().text
 
-        #expect(text.contains("  ✘ \"the widget keeps its heading\" — passes without Sources/ too, so it pins nothing"), "\(text)")
+        #expect(text.contains("  ✘ \"the widget keeps its heading\" — passes without the change too, so it pins nothing"), "\(text)")
         #expect(!text.contains("ran the committed test"), "\(text)")
     }
 
@@ -1130,8 +1130,8 @@ extension RunWithoutAnswerTests {
         )
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains("  3 tests the change does not touch pass without Sources/ too — expected, so they are not listed"), "\(lines)")
-        #expect(lines.contains("  ✔ shoutingWorks() — fails without Sources/, passes with it"))
+        #expect(lines.contains("  3 tests the change does not touch pass without the change too — expected, so they are not listed"), "\(lines)")
+        #expect(lines.contains("  ✔ shoutingWorks() — fails without the change, passes with it"))
         #expect(!lines.contains { $0.contains("sizeIsCarried") }, "an untouched test is counted, not named")
         // The headline counts the tests the listing names, not the ones folded beside them.
         #expect(lines.first == "✔ 1 of 1 fails without Sources/ and passes with it")
@@ -1179,8 +1179,8 @@ extension RunWithoutAnswerTests {
         )
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains("  ✘ shoutingWorks() — passes without Sources/ too, so it pins nothing"), "\(lines)")
-        #expect(lines.contains("  2 tests the change does not touch pass without Sources/ too — expected, so they are not listed"))
+        #expect(lines.contains("  ✘ shoutingWorks() — passes without the change too, so it pins nothing"), "\(lines)")
+        #expect(lines.contains("  2 tests the change does not touch pass without the change too — expected, so they are not listed"))
     }
 
     /// One test folded is said in the singular, because a line that reads `1 tests` is a line nobody wrote on purpose.
@@ -1193,7 +1193,7 @@ extension RunWithoutAnswerTests {
             changedTests: ["shoutingWorks"]
         )
 
-        #expect(judged.render().text.contains("  1 test the change does not touch passes without Sources/ too — expected, so it is not listed"))
+        #expect(judged.render().text.contains("  1 test the change does not touch passes without the change too — expected, so it is not listed"))
     }
 
     /// A set read and empty is the change touching no test at all, so every test that passes both ways is expected — and counted.
@@ -1203,7 +1203,7 @@ extension RunWithoutAnswerTests {
         let judged = Self.judged(without: Self.run(results), with: Self.run(results), changedTests: [])
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains("  3 tests the change does not touch pass without Sources/ too — expected, so they are not listed"), "\(lines)")
+        #expect(lines.contains("  3 tests the change does not touch pass without the change too — expected, so they are not listed"), "\(lines)")
         #expect(!lines.contains { $0.hasPrefix("  ✘ ") }, "no test was named individually")
     }
 
@@ -1224,8 +1224,8 @@ extension RunWithoutAnswerTests {
         let unread = Self.judged(without: Self.run(results), with: Self.run(results), changedTests: nil)
         let lines = unread.render().text.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains("  ✘ shoutingWorks() — passes without Sources/ too, so it pins nothing"))
-        #expect(lines.contains("  ✘ sizeIsCarried() — passes without Sources/ too, so it pins nothing"))
+        #expect(lines.contains("  ✘ shoutingWorks() — passes without the change too, so it pins nothing"))
+        #expect(lines.contains("  ✘ sizeIsCarried() — passes without the change too, so it pins nothing"))
         #expect(!unread.render().text.contains("the change does not touch"))
     }
 
@@ -1243,8 +1243,8 @@ extension RunWithoutAnswerTests {
         )
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
-        #expect(lines.contains("  \(RunWithoutAnswer.testLineCap + 4) tests the change does not touch pass without Sources/ too — expected, so they are not listed"), "\(lines)")
-        #expect(lines.contains("  ✔ shoutingWorks() — fails without Sources/, passes with it"))
+        #expect(lines.contains("  \(RunWithoutAnswer.testLineCap + 4) tests the change does not touch pass without the change too — expected, so they are not listed"), "\(lines)")
+        #expect(lines.contains("  ✔ shoutingWorks() — fails without the change, passes with it"))
         #expect(!judged.render().text.contains("more: "), "the fold left the listing inside the cap")
     }
 
@@ -1284,7 +1284,7 @@ extension RunWithoutAnswerTests {
             lines.contains { $0.contains("the widget keeps its heading") && $0.contains("pins nothing") },
             "a display name resolves to no declaration, so it is undetermined rather than untouched: \(lines)"
         )
-        #expect(lines.contains("  1 test the change does not touch passes without Sources/ too — expected, so it is not listed"), "\(lines)")
+        #expect(lines.contains("  1 test the change does not touch passes without the change too — expected, so it is not listed"), "\(lines)")
     }
 
     /// The `+N more:` tail counts tests, not lines: a fold that lands past the cap still has to add up, or the tail says a smaller number than the run had.
@@ -1302,7 +1302,7 @@ extension RunWithoutAnswerTests {
         let lines = judged.render().text.split(separator: "\n").map(String.init)
 
         // 5 written tests past the cap, and the counted line standing for 5 more.
-        #expect(lines.contains("  +10 more: 0 fail without Sources/ and pass with it, 10 do not — see the raw logs"), "\(lines)")
+        #expect(lines.contains("  +10 more: 0 fail without the change and pass with it, 10 do not — see the raw logs"), "\(lines)")
     }
 }
 

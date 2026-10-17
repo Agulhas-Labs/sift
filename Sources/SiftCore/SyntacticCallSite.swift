@@ -48,7 +48,7 @@ public struct SyntacticCallSite: Sendable, Equatable {
     var writtenOutsideTypes = false
     /// The function-local typealias whose right-hand side writes the type at this site as a whole path, or `nil` for any other site.
     var localTypealias: LocalTypealias?
-    /// For a type use inside a function, closure or accessor body, the declarations its name written bare may mean among the types and typealiases declared in the blocks around it, by the `line:column` of their names (``LocalTypealias``), or `nil` for any other site.
+    /// For a type use inside a function, closure or accessor body, the declarations its name written bare may mean among the types and typealiases declared in the blocks around it, by the `line:column` each starts at (``LocalTypealias``), or `nil` for any other site.
     var localDeclarations: [String]?
     /// Those of `enclosingTypes` declared inside a function, whose supertypes and members no top-level type of the same name shows.
     var localEnclosingTypes: Set<String> = []

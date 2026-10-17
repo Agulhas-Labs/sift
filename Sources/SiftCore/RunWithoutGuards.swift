@@ -18,7 +18,7 @@ struct RunWithoutGuards {
 
     /// Whether a name a run printed is the test `named` points at.
     ///
-    /// A guard written as a bare identifier (letters, digits and `_`, then optionally `()`) matches by identifier, and only a printed name that is not a quoted display name. Any other guard matches only the printed name written the same way, with or without its surrounding double quotes.
+    /// A guard written as a bare identifier (letters, digits and `_`, then optionally `()`) matches by identifier, whether the run printed the test bare or with its argument labels (`name(count:label:)`), and only a printed name that is not a quoted display name. Any other guard matches only the printed name written the same way, with or without its surrounding double quotes.
     static func matches(_ printed: String, _ named: String) -> Bool {
         if isBareIdentifier(named) {
             return !printed.contains("\"") && RunWithoutAnswer.identifier(of: printed) == RunWithoutAnswer.identifier(of: named)
@@ -100,13 +100,13 @@ extension RunWithoutAnswer {
         let withIt = failureDetail(of: name).map { " — with it: \($0)" } ?? ""
         return switch (before, after) {
         case (.passed, .passed):
-            (.guardHolds, "a named guard: passes without \(pathspecs) and with it")
+            (.guardHolds, "a named guard: passes without the change and with it")
         case (.absent, _):
-            (.undecided, "named as a guard; did not run without \(pathspecs); \(describe(after)) with it")
+            (.undecided, "named as a guard; did not run without the change; \(describe(after)) with it")
         case (_, .absent):
-            (.undecided, "named as a guard; \(describe(before)) without \(pathspecs), and did not run with it")
+            (.undecided, "named as a guard; \(describe(before)) without the change, and did not run with it")
         default:
-            (.guardFails, "named as a guard, but \(describe(before)) without \(pathspecs) and \(describe(after)) with it\(withIt)")
+            (.guardFails, "named as a guard, but \(describe(before)) without the change and \(describe(after)) with it\(withIt)")
         }
     }
 }

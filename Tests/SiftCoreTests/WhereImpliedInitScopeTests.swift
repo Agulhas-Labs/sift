@@ -25,6 +25,10 @@ struct WhereImpliedInitScopeTests {
         "1 written as \"Crate\" bare inside a function that declares its own \"Crate\", which is what the name means there, dropped"
     }
 
+    private static var droppedAnywhere: String {
+        "written as \"Crate\" bare inside a function that declares its own \"Crate\""
+    }
+
     private static var kept: String {
         "kept as a use though not proven to name it, as the name may mean that other declaration where it is written"
     }
@@ -34,8 +38,13 @@ struct WhereImpliedInitScopeTests {
     }
 
     private static func lookup(calling calls: String) async throws -> String {
+        try await lookup(declaring: base, calling: calls)
+    }
+
+    /// The answer to `where Gizmo.init` over `types` and `calls`, each its own file.
+    private static func lookup(declaring types: String, calling calls: String) async throws -> String {
         let root = try TestSources.makeTempRepo()
-        try TestSources.write(base, to: "Sources/App/Types.swift", in: root)
+        try TestSources.write(types, to: "Sources/App/Types.swift", in: root)
         try TestSources.write(calls, to: "Sources/App/Calls.swift", in: root)
         try TestSources.commitAll(in: root, message: "fixture")
         let engine = try SiftEngine(directory: root)
@@ -86,5 +95,146 @@ struct WhereImpliedInitScopeTests {
         """)
 
         Self.expectClauses(output, present: [Self.folded], absent: [Self.droppedInFunction])
+    }
+
+    @Test
+    func aClosureTypeAnnotationNamingALocalTypeIsDropped() async throws {
+        let output = try await Self.lookup(calling: """
+        func f() { struct Crate { init(_ s: String) {} }; let make: () -> Crate = { \(Self.implied)("k") } }
+        """)
+
+        Self.expectClauses(output, present: [Self.droppedInFunction], absent: [Self.folded])
+    }
+
+    @Test
+    func anAnnotationInAPlainTypeInsideTheBodyIsDroppedAndCounted() async throws {
+        let output = try await Self.lookup(calling: """
+        func f() {
+            struct Crate { init(_ s: String) {} }
+            struct Box {
+                subscript(i: Int) -> Crate { \(Self.implied)("s") }
+                var c: Crate { \(Self.implied)("c") }
+            }
+        }
+        """)
+
+        Self.expectClauses(output, present: [Self.droppedInFunction.replacingOccurrences(of: "1 written", with: "2 written")], absent: [Self.kept, Self.folded])
+    }
+
+    @Test(arguments: [
+        "struct Box: Base {",
+        "struct Box<T> {",
+        "@Observable final class Box {",
+        "struct Box { typealias Crate = Other",
+        "struct Box { struct Crate { init(_ s: String) {} }",
+        "struct Box {\n#if DEBUG\ntypealias Crate = Other\n#endif",
+        "struct Box { #makeGizmo",
+        "struct Box {}; extension Box {",
+    ])
+    func anAnnotationInATypeTheNameMayResolveInIsKept(opening box: String) async throws {
+        let output = try await Self.lookup(calling: """
+        func f() {
+            struct Crate { init(_ s: String) {} }
+            \(box)
+                var c: Crate { \(Self.implied)("c") }
+            }
+        }
+        """)
+
+        Self.expectClauses(output, present: [Self.kept], absent: [Self.folded, Self.droppedAnywhere])
+    }
+
+    @Test
+    func anAnnotationNamingAGenericParameterOfAPlainTypesMemberIsKept() async throws {
+        let output = try await Self.lookup(calling: """
+        func f() {
+            struct Crate { init(_ s: String) {} }
+            struct Box {
+                subscript<Crate>(i: Crate) -> Crate { \(Self.implied)("s") }
+            }
+        }
+        """)
+
+        Self.expectClauses(output, present: [Self.kept], absent: [Self.folded, Self.droppedAnywhere])
+    }
+
+    @Test
+    func anAnnotationNamingAGenericParameterOfANestedFunctionIsKept() async throws {
+        let output = try await Self.lookup(calling: """
+        func f() {
+            struct Crate { init(_ s: String) {} }
+            func g<Crate>(_ c: Crate) { let k: Crate = \(Self.implied)("z") }
+        }
+        """)
+
+        Self.expectClauses(output, present: [Self.kept], absent: [Self.folded, Self.droppedAnywhere])
+    }
+
+    @Test
+    func aCallInAnActorOrAPayloadFreeEnumInsideTheBodyIsKept() async throws {
+        let output = try await Self.lookup(declaring: """
+        struct Gizmo { init(_ name: String) {} }
+        extension Actor { typealias Crate = Gizmo }
+        extension Hashable { typealias Bin = Gizmo }
+        """, calling: """
+        func f() { struct Crate { init(_ s: String) {} }
+            actor Box { nonisolated func make() { _ = Crate("d") } } }
+        func g() { struct Bin { init(_ s: String) {} }
+            enum Box2 { case a; func make() { _ = Bin("f") } } }
+        """)
+
+        Self.expectClauses(output, present: [":2  in f().Box.make()", ":4  in g().Box2.make()", "kept as uses though not proven to name it"], absent: ["no call spelled", "inside a function that declares its own"])
+    }
+
+    @Test(arguments: [
+        (conformance: "Actor", opening: "actor Box { nonisolated"),
+        (conformance: "Equatable", opening: "enum Box { case a;"),
+        (conformance: "Hashable", opening: "enum Box { case a;"),
+    ])
+    func aCallInATypeConformingWithoutSayingSoIsKept(conformance: String, opening box: String) async throws {
+        let output = try await Self.lookup(declaring: """
+        struct Gizmo { init(_ name: String) {} }
+        extension \(conformance) { typealias Crate = Gizmo }
+        """, calling: """
+        func f() {
+            struct Crate { init(_ s: String) {} }
+            \(box) func make() { _ = Crate("d") } }
+        }
+        """)
+
+        Self.expectClauses(output, present: [":3  in f().Box.make()", Self.kept], absent: ["no call spelled", "inside a function that declares its own"])
+    }
+
+    @Test(arguments: [
+        (conformance: "Actor", opening: "actor Box { nonisolated"),
+        (conformance: "Hashable", opening: "enum Box { case a;"),
+    ])
+    func anAnnotationInATypeConformingWithoutSayingSoIsDropped(conformance: String, opening box: String) async throws {
+        let output = try await Self.lookup(declaring: """
+        struct Gizmo { init(_ name: String) {} }
+        extension \(conformance) { typealias Crate = Gizmo }
+        """, calling: """
+        func f() {
+            struct Crate { init(_ s: String) {} }
+            \(box) var c: Crate { \(Self.implied)("c") } }
+        }
+        """)
+
+        Self.expectClauses(output, present: [Self.droppedAnywhere], absent: [Self.kept])
+    }
+
+    @Test
+    func aCallInAPlainStructInsideTheBodyIsDropped() async throws {
+        let output = try await Self.lookup(declaring: """
+        struct Gizmo { init(_ name: String) {} }
+        extension Hashable { typealias Crate = Gizmo }
+        """, calling: """
+        func f() {
+            struct Crate { init(_ s: String) {} }
+            struct Box { func make() { _ = Crate("d") } }
+        }
+        """)
+
+        Self.expectClauses(output, present: [Self.droppedAnywhere], absent: [Self.kept])
     }
 }

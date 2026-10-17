@@ -64,7 +64,7 @@ struct AffectedSuiteHelperRouteTests {
             in: root
         )
         try TestSources.commitAll(in: root, message: "fixture")
-        try TestSources.write("public struct Widget {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
+        try TestSources.write("public struct Widget: Sendable {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
         if built {
             try await TestSources.swiftBuildSuspending(packageAt: root, includingTests: true)
         }
@@ -112,7 +112,7 @@ struct AffectedSuiteHelperRouteTests {
             in: root
         )
         try TestSources.commitAll(in: root, message: "fixture")
-        try TestSources.write("public struct Widget {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
+        try TestSources.write("public struct Widget: Sendable {\n    public init() {}\n    public func shine() {}\n}\n", to: "Sources/Lib/Core.swift", in: root)
         try await TestSources.swiftBuildSuspending(packageAt: root, includingTests: true)
         let engine = try SiftEngine(directory: root)
         try await engine.awaitSemanticStore()

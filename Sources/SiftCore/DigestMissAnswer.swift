@@ -140,14 +140,14 @@ struct DigestMissAnswer {
             // The most absolute absence claim the tool makes: a file the parser could not finish is *exactly*
             // how "no symbol named X" comes to be said about a symbol written in plain sight, and without this
             // the reader has nothing in the answer to suspect it with.
-            let text = try (renderer.absenceBanner() + ["\(DigestMiss.noSymbolPrefix)\(name)\(DigestMiss.noSymbolSuffix)"] + WhereBasenamePointer.lines(for: QualifiedPath.baseName(of: name), in: renderer.store, at: renderer.revision) + siblingPointerLines(for: written)).joined(separator: "\n")
+            let text = try (renderer.absenceBanner() + ["\(DigestMiss.noSymbolPrefix)\(name)\(DigestMiss.noSymbolSuffix)"] + WhereBasenamePointer.lines(for: QualifiedPath.baseName(of: name), in: renderer.store, at: renderer.revision, spelling: options.spelling) + siblingPointerLines(for: written)).joined(separator: "\n")
             return MeasuredAnswer(text: text, missed: true)
         }
         // In the class too: "no type named X, here are some near ones" leads with an absence, and a fuzzy
         // candidate is not the declaration asked for. Leaving it out would make the rule something a reader has
         // to know rather than something the answer states.
         var lines = try renderer.absenceBanner()
-        try lines.append(contentsOf: WhereBasenamePointer.lines(for: QualifiedPath.baseName(of: name), in: renderer.store, at: renderer.revision))
+        try lines.append(contentsOf: WhereBasenamePointer.lines(for: QualifiedPath.baseName(of: name), in: renderer.store, at: renderer.revision, spelling: options.spelling))
         lines.append("no \(wasMemberTarget ? "type or member" : "type") named \(name)\(DigestMiss.nearestSymbolsSuffix)")
         for row in candidates {
             lines.append("  \(row.name) — \(row.kind.rawValue) — \(row.module) — \(row.path):\(row.line)")

@@ -278,7 +278,7 @@ rule there is one it cannot see. Either way the whole log is kept under
 `where`, `search` and `strings`, so a context whose sift tools are deferred can use the CLI without a prompt: asking
 as two questions on a terminal, the lookups first (default yes: they write only sift's own index and caches, the
 repository's `.sift/` (and its `.git/info/exclude` entry) and `~/.sift`, and run git with the repository's fsmonitor and git hooks off; a no is remembered in `~/.sift`, and the question then defaults to no until a yes or `--allow-lookups`), then the builds (default no: they run package manifests and build plugins), each asked
-only where its block is missing, and each adding only its own block. `sift install` asks the same two where it installs
+only where its block is missing, and each adding only its own block. None of the build rules covers `sift run --root <dir> -- …`, since a rule that matched any directory could match any command written after it: in a session that asks about commands a `--root` run asks, and so does `(cd <dir> && sift run -- …)`, whose parentheses Claude Code asks about. Only a bare `cd <dir> &&` in front runs unasked, and it moves your shell for every later command. `sift install` asks the same two where it installs
 Claude Code's hooks; with no terminal neither asks and nothing is added. `--allow-run` adds both without asking,
 `--allow-lookups` only the lookups, `--no-allow-run` neither, and `uninstall-hook` removes the last block of each set. The session primer points a context at the CLI only where those four are allowed.
 
@@ -350,9 +350,11 @@ added a function shaped like one that already exists, which it names in one line
 The `Stop` and `SubagentStop` hooks run `sift stop` when the session or a subagent ends its turn. If that
 context made a successful Write, Edit or MultiEdit of a `.swift` file since its own last green `sift run`
 build or test in that repository, and no green `sift run` is on record for the repository's tree as it
-stands, it blocks the stop once with the build to run: `sift run -- swift build` where `Package.swift`
-sits at the root, else the `sift run -- xcodebuild … build` command that context already ran, as it wrote
-it. It never guesses an `xcodebuild`, and an edit to a file the index leaves out (a git-ignored path) does
+stands, it blocks the stop once with the build to run: `sift run -- swift build` where `Package.swift` sits at
+the root, else the `sift run -- xcodebuild … build` that context last ran. It is named bare where you already
+stand in the directory it runs in, and otherwise as a subshell that runs it there without moving your shell,
+`(cd <dir> && …)`, with `<dir>` the directory that command ran in; where the line leaves that directory unknown (a `pushd`,
+a group that is not the whole line) it names no build. It never guesses an `xcodebuild`, and an edit to a file the index leaves out (a git-ignored path) does
 not count. A green `sift run` build or test records the tree it built in the checkout it built (the one a
 `--package-path` or `-project` names; a run that skips the build, `swift test --skip-build` or
 `xcodebuild test-without-building`, built nothing and records nothing), so a piped run (`| tail`) counts, and a logged one
@@ -542,7 +544,8 @@ your parent's, and check that the header's `tree:` names the worktree (`tree: Si
 agent-1a2b3c4d)`, not a bare `tree: Sift`). **Build once before relying on `where`'s
 callers, overrides and references**: a fresh worktree has no index store until a build creates one, and
 until then `where` and `affected` fall back to name-matched leads. `sift help worktree-index` has the
-build command and why the parent checkout's store is never borrowed.
+build command and why the parent checkout's store is never borrowed. Run builds and tests there with
+`sift run --root <worktree> -- …` rather than a `cd`, since in a Claude Code session a `cd` stays in force for every later command.
 
 ## 5. Getting it indexing
 
@@ -940,7 +943,7 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `sift test --scheme S --device D [--os V] [--plan P] [--only T]… [--skip T]… [--shards N] [--shard-timeout S] [--project P \| --workspace W] -- <xcodebuild arguments>` | Run a scheme's tests across several simulators at once, creating and deleting the simulators it uses. `--only`/`--skip` take `Target`, `Target/Class` or `Target/Class/test` and repeat; `--shards` defaults to what the host can run at once; `--shard-timeout` is the floor under a shard's bound, 600 seconds by default and refused below 30 |
 | `sift test --analyse [--plan P] [--against <log>]` | How many tests are supposed to run, from the index and the test plans — declared, in a plan, never run, conditional — building, booting and running nothing; `--against` reconciles a finished run's output (the file `swift test` wrote, or a log under `.sift/runs/`) against that inventory: tests missing or reported twice |
 | `sift test --sweep` | Delete the simulators this checkout's dead runs left behind, and run nothing |
-| `sift run [--coverage [--from R]] -- <command>` | Run `swift build` / `swift test` / `xcodebuild` and print only what failed. `--coverage` runs `swift test` or `xcodebuild test` with coverage on and says which lines of each changed declaration ran and which did not, measured from `--from` (default `HEAD`) to the working tree |
+| `sift run [--root <dir>] [--coverage [--from R]] -- <command>` | Run `swift build` / `swift test` / `xcodebuild` and print only what failed. `--root` runs the command as if started in that directory (its log, proof and checks are that checkout's) without a `cd`. `--coverage` runs `swift test` or `xcodebuild test` with coverage on and says which lines of each changed declaration ran and which did not, measured from `--from` (default `HEAD`) to the working tree |
 | `sift run --proved -- <command>` | Run nothing: answer whether this command already passed on this tree's exact content. Exit 0 proved, 1 no such run on record (running it would fix that) or a later run on this content failed, 2 the question cannot be put (the ledger is off, or no repository, tree or toolchain to name) |
 | `sift run --without <pathspec>… [--since <rev>] [--guard <test>]… [--keep-without-build] -- <tests>` | Run the named tests with your uncommitted changes under the pathspec set aside, then with them back: one line per test on whether it fails without the change and passes with it. The flag repeats, one pathspec per flag, and everything it names is set aside as one unit; `--since` sets aside what the commits since that revision changed under it instead, for a fix already committed; `--guard` names a test expected to pass both ways (a guard against over-reach; a bare identifier matches by identifier, anything else only the printed name, with or without its quotes, and one that matches two tests is ambiguous and holds for neither; a `@Test("…")` test is named by its display text, not its function name), which is listed as held rather than as pinning nothing, so the exit code stays the gate's verdict. The build made without the change is removed once your changes are back; a run that could not put them back leaves it (and says so), for the next run to clear. `--keep-without-build` keeps it for the next proof to build on |
 | `sift run --without-line <file:line> -- <tests>` | The same proof for a fix that cannot build without its own change: comment out that one line, run, put it back, run again |
@@ -948,7 +951,7 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `sift affected [--from R [--to R]] [--depth N] [--reached NAME]... [--suites]` | Which tests reference what a diff changed, with the `-only-testing:` and `--filter` arguments — it reports, it never runs and never decides what to skip |
 | `sift diff [<range>] [--member <Type.member>] [--offset N] [--coverage]` | A structural digest of a change for review, in place of the raw `git diff`: every touched file, declarations added/removed/changed with before → after signatures, what changed outside them, callers of changed signatures, test names, and the tests reaching the changed files. `<range>` is a single commit (its own change), `A..B`, `A...B` (against the merge-base), or omitted for the working tree vs `HEAD`. `--member` prints one declaration's before/after; its header ends in an address `path#Type.member:line` (the file, the declaration's label, and its line after the change; `path#Type.member:before:line` for a declaration the range removed, which has no after side), and that whole address can be passed back to `--member`, as the ambiguity refusal's list does. `--coverage` adds what the last `sift run --coverage` measured, where it measured this very tree, and says so where it is stale or absent |
 | `sift usage [--since W] [--root R] [--unredact] [--all-roots] [--include-scratch] [--file P] [--run-file P]` | Summarise the index usage log — calls by tool, root and day, latency, top targets; `--all-roots` lists every root rather than the top five; `--file`/`--run-file` read other copies of `usage.jsonl` and `run.jsonl` |
-| `sift flakes [--since W] [--root R] [--unredact] [--file P]` | For every test that has both failed and passed across wrapped runs: how many named it, out of how many, and when one last did; `--file` reads another copy of `run.jsonl` |
+| `sift flakes [--since W] [--root R] [--unredact] [--file P]` | For every test that has both failed and passed across wrapped runs: how many named it, out of how many, and when one last did; `--file` reads another copy of `run.jsonl`; inside a git work tree `--root` defaults to that repository, and `--root /` is every repository |
 | `sift audit [--since W] [--until W] [--all] [--transcript P] [--projects D] [--unredact] [--include-scratch] [--progress] [--verbs] [--replay [--sample N] [--shapes P] [--against <binary>]] [--scan-diff --against <binary> [--all-windows]] [--summary \| --share \| --by day\|week]` | Audit transcripts for Swift lookups that went around the index, named file by file; `--until` bounds the window above, `--projects` reads another transcript directory. `--replay`, `--against`, `--scan-diff`, `--summary`, `--share` and `--by` are described under **Auditing the misses**; `--verbs` prints in their place one row per kind of answer sift gave (`where`, `where --refs`, `digest (file)`, `run`…), the costliest first: its calls, median and 90th-percentile answer in characters, its price in tokens and share of the window's, and the share of its calls followed by a `read` of a file the answer names, a `grep` of its target, `sift` again, `other` or `none`; it names nothing in the tree and is refused beside those views |
 | `sift report --deploys` | List each install of the bundle's binary, one line each, newest last: time, commit, version, tree, size; read from `~/.sift/deploys.jsonl`, which `install.sh` appends to |
 | `sift report [--since W] [--root R] [--out P] [--include-scratch] [--no-open] [--progress] [--file P] [--run-file P] [--projects D]` | Write a self-contained HTML page — conditions awaiting you, index share, estimated savings, failures — and open it; `--file`, `--run-file` and `--projects` read other copies of the usage log, the run log and the transcripts |
@@ -963,9 +966,9 @@ Worth knowing before pointing it at a codebase that isn't yours:
 | `sift mcp` | Run the MCP stdio server |
 | `sift servers [--stop --pid N \| --root R] [--yes] [--file P] [--usage-file P]` | The MCP servers this machine believes are running, and the one sanctioned way to stop one — it stops nothing it selected for you (a `--root` at or above `$HOME` is refused), nothing until `--yes`, and never this session's own, one in this process's ancestry, or one with a sign of life in the last ten minutes. Every answer names the two logs it read; `--file`/`--usage-file` point it at other copies of them |
 
-All take `--root` to target a repo other than the one enclosing the current directory — except `run`,
-which wraps a command in the directory you are standing in and does not touch the index at all, and
-`help`, which is static reference text with no repository to target.
+All take `--root` to target a repo other than the one enclosing the current directory — except `help`,
+which is static reference text with no repository to target. For `run`, `--root` is the directory its
+command runs in.
 
 To stop a server: `sift servers --stop --pid N` prints the plan, and the same line with `--yes` sends the
 signal.
@@ -1029,7 +1032,8 @@ passed** across the runs that recorded which tests failed — how many named it,
 out of, and the day one last did.
 
 ```sh
-sift flakes                      # every repository this machine has wrapped a run in
+sift flakes                      # the repository you are in; outside one, every repository
+sift flakes --root /             # every repository this machine has wrapped a run in
 sift flakes --since 7d --root Orchard/app
 sift flakes --unredact           # real test names; pseudonymised by default
 ```
@@ -1402,16 +1406,16 @@ line read, it names the `_ = name` hand form. Such a fix needs `--without` or a 
 
 ```
 ✘ 1 of 2 fails without Sources/ and passes with it
-  ✘ sizeIsCarried() — passes without Sources/ too, so it pins nothing
-  ✔ shoutingWorks() — fails without Sources/, passes with it
+  ✘ sizeIsCarried() — passes without the change too, so it pins nothing
+  ✔ shoutingWorks() — fails without the change, passes with it
   set aside and put back: 3 paths under Sources/ (1 with staged changes, 1 with unstaged changes, 1 untracked), checked by content hash
 
-without Sources/ — ✘ swift test — exit 1
+without the change — ✘ swift test — exit 1
   Test run with 2 tests in 1 suite failed after 0.001 seconds with 1 issue.
 with it — ✔ swift test
   Test run with 2 tests in 1 suite passed after 0.001 seconds.
 
-sift run: 212 lines in, 11 out — raw output at .sift/runs/run-20260818-102214Z-5c1d09aa.log (without Sources/) and .sift/runs/run-20260818-102301Z-e8b7f412.log (with it)
+sift run: 212 lines in, 11 out — raw output at .sift/runs/run-20260818-102214Z-5c1d09aa.log (without the change) and .sift/runs/run-20260818-102301Z-e8b7f412.log (with it)
 ```
 
 - **Your work comes back exactly.** Staged and unstaged edits, untracked files, deletions, renames and
@@ -1433,7 +1437,7 @@ sift run: 212 lines in, 11 out — raw output at .sift/runs/run-20260818-102214Z
 
 - **A suite that did not compile without the change is said separately**: evidence the tests need the
   change, not an assertion that fails without it, claimed only for a compiler error in a file that
-  imports XCTest or Testing. Its tests get `◇ … passes with it; without Sources/ it did not compile —
+  imports XCTest or Testing. Its tests get `◇ … passes with it; without the change it did not compile —
   needed, not pinned`, never a tick.
 - **A fix that adds a new file is set aside by removing it**, staged or untracked alike, and the answer
   says so (on stderr before the first run too). It also says what that leaves unanswered: whether a test

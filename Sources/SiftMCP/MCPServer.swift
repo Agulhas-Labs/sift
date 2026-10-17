@@ -347,7 +347,8 @@ public actor MCPServer {
                 includeReferences: filesOnly || arguments["refs"] as? Bool ?? false,
                 offset: arguments["offset"] as? Int ?? 0,
                 filesOnly: filesOnly,
-                declarationsOnly: arguments["decl"] as? Bool ?? false
+                declarationsOnly: arguments["decl"] as? Bool ?? false,
+                spelling: .toolCall
             )
             if let revision = try Self.atRevision(tool: "where", arguments: arguments) {
                 return try await MeasuredAnswer(text: engine.lookup(symbol: symbol, at: revision, options: options))
@@ -434,6 +435,12 @@ public actor MCPServer {
         guard missed, arguments["targets"] == nil,
               let target = arguments["target"] as? String, target.contains(where: \.isWhitespace)
         else { return nil }
+        // Only a trailing `--at` or `--at <rev>` is the CLI's flag pasted in: a path with ` --at ` inside it, or a revision that ends as a Swift file does, is still one path wrongly spelled.
+        let words = target.split(whereSeparator: \.isWhitespace)
+        if let flag = words.lastIndex(of: "--at"), flag >= words.count - 2, words.last?.hasSuffix(".swift") != true || flag == words.count - 1 {
+            let revision = flag == words.count - 1 ? "<rev>" : String(words[flag + 1])
+            return "read target: as one path — pass the revision as at:\"\(revision)\", not in target:"
+        }
         guard !DigestSpacedTarget.isOnePath(target) else {
             return "read target: as one path, whitespace included — several names go as separate targets in targets: [...]"
         }

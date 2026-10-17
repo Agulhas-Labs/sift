@@ -161,8 +161,10 @@ extension WhereRenderer {
         }
         let primary = counter.primary
         // The counts are the store's, so a file no store holds a unit for, a new caller above all, has its lines writing the name listed after them and counted in the header, as the single-owner answer does.
+        var scannedNames = try ScannedNames(rows: targets.filter { $0.kind != .extensionKind && $0.kind != .operatorKind }, in: store)
+        scannedNames.countsCallsOnly = true
         let mentions = try WhereChangedFileMentions(
-            names: ScannedNames(rows: targets.filter { $0.kind != .extensionKind && $0.kind != .operatorKind }, in: store),
+            names: scannedNames,
             unbuilt: [],
             refused: Set(counter.refusals.map(\.path)),
             in: store,

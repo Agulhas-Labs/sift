@@ -128,7 +128,7 @@ public extension RunWithoutAnswer {
             lines.append(removed)
         }
         if let stop = stopWithout {
-            lines.append(contentsOf: stopLines(stop, of: without, cap: Self.withoutErrorCap, paths: paths, side: "without \(pathspecs)"))
+            lines.append(contentsOf: stopLines(stop, of: without, cap: Self.withoutErrorCap, paths: paths, side: "without the change"))
             if let hint = unusedValueHint() {
                 lines.append(hint)
             }
@@ -145,7 +145,7 @@ public extension RunWithoutAnswer {
         if !restored.record.leftInPlace.isEmpty {
             lines.append(leftInPlaceLine())
         }
-        if let line = Self.stragglersLine(stragglers, pathspecs: pathspecs) {
+        if let line = Self.stragglersLine(stragglers) {
             lines.append(line)
         }
         lines.append(contentsOf: restored.kept.map {
@@ -155,7 +155,7 @@ public extension RunWithoutAnswer {
             lines.append(Self.watcherLostLine)
         }
         lines.append("")
-        lines.append(contentsOf: runLines(without, named: "without \(pathspecs)"))
+        lines.append(contentsOf: runLines(without, named: "without the change"))
         lines.append(contentsOf: runLines(with, named: withName))
         lines.append("")
         lines.append(receipt(answerLines: lines.count + 1, paths: paths))
@@ -350,7 +350,7 @@ extension RunWithoutAnswer {
             return ""
         }
         var notes: [String] = []
-        for (outcomes, side) in [(before, "without \(pathspecs)"), (after, "with it")] {
+        for (outcomes, side) in [(before, "without the change"), (after, "with it")] {
             guard let tally = outcomes[name], tally.failed > 0, outcomes.lastEndings[name] == .passed else {
                 continue
             }
@@ -363,30 +363,30 @@ extension RunWithoutAnswer {
         let withIt = failureDetail(of: name).map { " — with it: \($0)" } ?? ""
         guard compiledWithout else {
             return switch after {
-            case .passed: (.needsIt, "passes with it; without \(pathspecs) it did not compile — needed, not pinned")
+            case .passed: (.needsIt, "passes with it; without the change it did not compile — needed, not pinned")
             case .failed: (.failsBothWays, "fails with it\(withIt)")
             default: (.undecided, "\(describe(after)) with it")
             }
         }
         return switch (before, after) {
         case (.failed, .passed):
-            (.pins, "fails without \(pathspecs), passes with it")
+            (.pins, "fails without the change, passes with it")
         case (.passed, .passed):
-            (.pinsNothing, "passes without \(pathspecs) too, so it pins nothing")
+            (.pinsNothing, "passes without the change too, so it pins nothing")
         case (.failed, .failed):
             (.failsBothWays, "fails both ways\(withIt)")
         case (.passed, .failed):
-            (.breaksWithIt, "passes without \(pathspecs) and fails with it\(withIt)")
+            (.breaksWithIt, "passes without the change and fails with it\(withIt)")
         case let (.mixed(passed, failed), _):
-            (.indistinct, "\(passed + failed) tests print this name, and without \(pathspecs) \(passed) passed and \(failed) failed — the log cannot tell them apart")
+            (.indistinct, "\(passed + failed) tests print this name, and without the change \(passed) passed and \(failed) failed — the log cannot tell them apart")
         case let (_, .mixed(passed, failed)):
             (.indistinct, "\(passed + failed) tests print this name, and with it \(passed) passed and \(failed) failed — the log cannot tell them apart")
         case (.absent, _):
-            (.undecided, "did not run without \(pathspecs); \(describe(after)) with it")
+            (.undecided, "did not run without the change; \(describe(after)) with it")
         case (_, .absent):
-            (.undecided, "\(describe(before)) without \(pathspecs), and did not run with it")
+            (.undecided, "\(describe(before)) without the change, and did not run with it")
         default:
-            (.undecided, "\(describe(before)) without \(pathspecs), \(describe(after)) with it")
+            (.undecided, "\(describe(before)) without the change, \(describe(after)) with it")
         }
     }
 
@@ -671,10 +671,10 @@ extension RunWithoutAnswer {
             "  \(test.standing.glyph) \(test.name) — \(test.sentence)"
         case let .untouched(count):
             count == 1
-                ? "  1 test the change does not touch passes without \(pathspecs) too — expected, so it is not listed"
-                : "  \(count) tests the change does not touch pass without \(pathspecs) too — expected, so they are not listed"
+                ? "  1 test the change does not touch passes without the change too — expected, so it is not listed"
+                : "  \(count) tests the change does not touch pass without the change too — expected, so they are not listed"
         case let .neverBuilt(count):
-            "  \(count) \(count == 1 ? "test passes" : "tests pass") with it and did not run without \(pathspecs), which did not build"
+            "  \(count) \(count == 1 ? "test passes" : "tests pass") with it and did not run without the change, which did not build"
         }
     }
 
@@ -694,7 +694,7 @@ extension RunWithoutAnswer {
         let needed = needing > 0 ? ["\(needing) pass with it and did not compile without it"] : []
         let guarded = held > 0 ? ["\(held) named \(held == 1 ? "guard passes" : "guards pass") both ways"] : []
         let others = remaining - pinning - needing - held
-        let parts = ["\(pinning) fail without \(pathspecs) and pass with it"] + needed + guarded + ["\(others) do not"]
+        let parts = ["\(pinning) fail without the change and pass with it"] + needed + guarded + ["\(others) do not"]
         lines.append("  +\(remaining) more: \(parts.joined(separator: ", ")) — see the raw logs")
         return lines
     }
@@ -730,11 +730,23 @@ extension RunWithoutAnswer {
         return "  note: \(named) \(ran). To gate an edited test against old sources, leave the test file out of --without and write its assertions to compile against them. Where the change declares what the test has to name — a new case, method or type — no assertion compiles against the old sources, and the most this can show is that the tests needed the change, not a failing assertion."
     }
 
-    /// The bare test name a run printed, whatever form it printed it in: `shoutingWorks()`, `WidgetTests.testNaming`, `-[WidgetTests testNaming]`.
+    /// The bare test name a run printed, whatever form it printed it in: `shoutingWorks()` and `shoutingWorks(count:label:)` read `shoutingWorks`, `WidgetTests/shoutingWorks(_:)` and `WidgetTests.shoutingWorks` the same, `-[WidgetTests testNaming]` reads `testNaming`.
+    ///
+    /// A trailing argument-label list is dropped only where it is empty or holds nothing but identifier characters and colons, so a quoted display name such as `"the widget (beta)"` reduces as before.
     static func identifier(of name: String) -> String {
-        let bare = name.hasSuffix("()") ? String(name.dropLast(2)) : name
+        let bare = droppingArgumentLabels(name)
         let tail = bare.split(whereSeparator: { $0 == "." || $0 == " " || $0 == "/" }).last ?? ""
         return String(tail.filter { $0.isLetter || $0.isNumber || $0 == "_" })
+    }
+
+    /// `name` without a final `(…)` that is empty or holds only identifier characters and colons: `()`, `(count:label:)`, `(_:)`.
+    private static func droppingArgumentLabels(_ name: String) -> String {
+        guard name.hasSuffix(")"), let open = name.lastIndex(of: "(") else {
+            return name
+        }
+        let inside = name[name.index(after: open) ..< name.index(before: name.endIndex)]
+        let isLabels = inside.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == ":" }
+        return isLabels ? String(name[..<open]) : name
     }
 
     /// Whether `text` declares the test a run printed as `name`, rather than merely mentioning it — a comment, a doc line, or as part of a longer identifier (`run` inside `running`) all pass a bare substring match but declare nothing.
@@ -809,7 +821,7 @@ extension RunWithoutAnswer {
         let needs = restored.record.since == nil
             ? "that needs the file committed and what it does changed"
             : "that needs what it does changed, in a commit of its own"
-        return "  \(clause): a test that names what it declared could not build, and none failed an assertion without \(pathspecs). Whether a test pins what the file does, rather than merely naming it, is not shown — \(needs)."
+        return "  \(clause): a test that names what it declared could not build, and none failed an assertion without the change. Whether a test pins what the file does, rather than merely naming it, is not shown — \(needs)."
     }
 
     /// What the answer says when a set-aside line left the build with nothing but unused-value errors for names that line read: the line was the only reader of a binding, so the hand form `_ = name` keeps the read and removes the store.
@@ -895,11 +907,11 @@ extension RunWithoutAnswer {
     }
 
     /// The line an answer carries for the processes the run without the change left running, ended before the changes went back — `nil` when none did.
-    public static func stragglersLine(_ stragglers: Int, pathspecs: String) -> String? {
+    public static func stragglersLine(_ stragglers: Int) -> String? {
         guard stragglers > 0 else {
             return nil
         }
-        return "  stopped \(stragglers == 1 ? "1 process" : "\(stragglers) processes") the run without \(pathspecs) left running, before putting the changes back"
+        return "  stopped \(stragglers == 1 ? "1 process" : "\(stragglers) processes") the run without the change left running, before putting the changes back"
     }
 
     /// Where one run's raw output was written, as the receipt states it — `outcome`'s own line from ``receipt(answerLines:paths:)``, shared so a run that never reaches the receipt still quotes the one rendering.
@@ -920,7 +932,7 @@ extension RunWithoutAnswer {
     private func receipt(answerLines: Int, paths: RunAnswerPaths) -> String {
         let total = (without.report?.totalLines ?? 0) + (with.report?.totalLines ?? 0)
         let arithmetic = "sift run: \(total) lines in, \(answerLines) out"
-        let logs = [(without, "without \(pathspecs)"), (with, withName)].map { Self.logLine($0, named: $1, paths: paths) }
+        let logs = [(without, "without the change"), (with, withName)].map { Self.logLine($0, named: $1, paths: paths) }
         let built = buildDirectory.map { directory in
             guard !buildDirectoryRemoved else {
                 let size = buildDirectorySize.map { "\(Self.described(bytes: $0)), " } ?? ""

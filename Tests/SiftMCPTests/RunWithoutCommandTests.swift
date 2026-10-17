@@ -21,7 +21,7 @@ struct RunWithoutCommandTests {
 
         #expect(result.status == 0)
         #expect(result.stdout.hasPrefix("✔ 1 of 1 fails without Sources/ and passes with it\n"), "\(result.stdout)")
-        #expect(result.stdout.contains("  ✔ shoutingWorks() — fails without Sources/, passes with it"))
+        #expect(result.stdout.contains("  ✔ shoutingWorks() — fails without the change, passes with it"))
         #expect(result.stdout.contains("(1 with staged changes, 1 with unstaged changes, 1 untracked), checked by content hash"))
         #expect(try fixture.snapshot() == before)
         #expect(!fixture.recordExists)
@@ -139,7 +139,7 @@ struct RunWithoutCommandTests {
         try fixture.waitForTheWriterToEnd()
 
         #expect(result.status == 0, "\(result.stdout)\(result.stderr)")
-        #expect(result.stdout.contains("the run without Sources/ left running, before putting the changes back"), "\(result.stdout)")
+        #expect(result.stdout.contains("the run without the change left running, before putting the changes back"), "\(result.stdout)")
         #expect(try fixture.snapshot() == before)
     }
 
@@ -239,7 +239,7 @@ struct RunWithoutCommandTests {
         #expect(pinsNothing.status == 1, "\(pinsNothing.stdout)")
         // The fixture's change is under `Sources/` and never touches its test, so that test passing either way is
         // the expected case: counted into one line rather than named as pinning nothing.
-        #expect(pinsNothing.stdout.contains("1 test the change does not touch passes without Sources/ too — expected, so it is not listed"), "\(pinsNothing.stdout)")
+        #expect(pinsNothing.stdout.contains("1 test the change does not touch passes without the change too — expected, so it is not listed"), "\(pinsNothing.stdout)")
         let nothingRan = try fixture.sift(Fixture.proof, environment: ["SIFT_TEST_SILENT": "1"])
         #expect(nothingRan.status == 1, "\(nothingRan.stdout)")
         #expect(nothingRan.stdout.hasPrefix("⚠ neither run reported a test"))
@@ -326,7 +326,7 @@ struct RunWithoutCommandTests {
         try fixture.waitForTheWriterToEnd()
 
         #expect(withAStraggler.status == 0, "\(withAStraggler.stdout)\(withAStraggler.stderr)")
-        #expect(withAStraggler.stdout.contains("the run without Sources/ left running, before putting the changes back"), "\(withAStraggler.stdout)")
+        #expect(withAStraggler.stdout.contains("the run without the change left running, before putting the changes back"), "\(withAStraggler.stdout)")
         #expect(fixture.contents(of: own) == "without\n")
 
         #expect(try fixture.sift(keeping, environment: builds).status == 0)

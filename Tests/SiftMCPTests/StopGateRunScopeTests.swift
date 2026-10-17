@@ -113,7 +113,7 @@ struct StopGateRunScopeTests {
         ("sift run -- swift build &", []),
         ("cd /w/xc; sift run -- swift build", []),
         ("false || cd /w/xc && sift run -- swift build", []),
-        ("(cd /w/xc && sift run -- swift build)", []),
+        ("(cd /w/xc && sift run -- swift build)", ["/w/xc"]),
         ("pushd /w/xc && sift run -- swift build", []),
         ("cd $HOME/xc && sift run -- swift build", []),
         ("sift run -- swift build --package-path $PKG", []),

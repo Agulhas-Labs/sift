@@ -148,7 +148,7 @@ struct RunWithoutBuildTests {
         #expect(result.stdout.hasPrefix("✘ could not build without Sources/: dependency resolution failed — nothing was proven (Failed to clone repository https://example.com/acme/Widget.git:)\n"), "\(result.stdout)")
         #expect(result.stdout.contains("  set aside and put back: 3 paths under Sources/ (1 with staged changes, 1 with unstaged changes, 1 untracked), checked by content hash"), "\(result.stdout)")
         #expect(result.stdout.contains("  raw output at "), "\(result.stdout)")
-        #expect(result.stdout.contains(" (without Sources/)"), "\(result.stdout)")
+        #expect(result.stdout.contains(" (without the change)"), "\(result.stdout)")
         #expect(!FileManager.default.fileExists(atPath: fixture.root.appendingPathComponent(".sift/without-build/swiftpm").path), "the build directory the fetch failed in is removed")
         #expect(fixture.contents(of: ".build/built") == nil, "no run with the change was made")
         #expect(try String(contentsOf: seen, encoding: .utf8) == "without\n", "no run with the change was made")

@@ -7,7 +7,7 @@ import SwiftSyntax
 /// A typealias declared inside a function, closure or accessor body, which the index never records, as a type use written on its right-hand side sees it.
 struct LocalTypealias: Sendable, Equatable {
     let name: String
-    /// The `line:column` of its name, which a use's ``SyntacticCallSite`` lists among its local declarations where the name written there may mean it.
+    /// The `line:column` the declaration starts at, attributes included, which a use's ``SyntacticCallSite`` lists among its local declarations where the name written there may mean it.
     let declaredAt: String
     /// Whether no type is around it, so lookup there sees only top-level types and only a whole path names a nested one.
     let atTopLevel: Bool
@@ -25,11 +25,11 @@ struct LocalTypealias: Sendable, Equatable {
             ancestor = current.parent
         }
         guard let declaration = ancestor?.as(TypeInitializerClauseSyntax.self)?.parent?.as(TypeAliasDeclSyntax.self) else { return tagged }
-        tagged.localTypealias = LocalTypealias(name: declaration.name.identifier?.name ?? declaration.name.text, declaredAt: position(of: declaration.name, converter: converter), atTopLevel: atTopLevel)
+        tagged.localTypealias = LocalTypealias(name: declaration.name.identifier?.name ?? declaration.name.text, declaredAt: position(of: declaration, converter: converter), atTopLevel: atTopLevel)
         return tagged
     }
 
-    /// The types and typealiases named `name` declared in the blocks around `node`, by the `line:column` of their names, nearest first: the nearest block declaring one outside any `#if` clause ends the list, and one inside a clause is listed without ending it, since it may be compiled out.
+    /// The types and typealiases named `name` declared in the blocks around `node`, by the `line:column` each starts at, attributes included, where the index records a declaration's row, nearest first: the nearest block declaring one outside any `#if` clause ends the list, and one inside a clause is listed without ending it, since it may be compiled out.
     static func declarations(of name: String, around node: some SyntaxProtocol, converter: SourceLocationConverter) -> [String] {
         var found: [String] = []
         var ancestor = node.parent
@@ -43,7 +43,7 @@ struct LocalTypealias: Sendable, Equatable {
                 []
             }
             let named = declared(in: items, conditional: false).filter { ($0.name.identifier?.name ?? $0.name.text) == name }
-            found += named.map { position(of: $0.name, converter: converter) }
+            found += named.map { position(of: $0.name.parent ?? Syntax($0.name), converter: converter) }
             if named.contains(where: { !$0.conditional }) {
                 break
             }
@@ -71,8 +71,8 @@ private extension LocalTypealias {
         }
     }
 
-    static func position(of token: TokenSyntax, converter: SourceLocationConverter) -> String {
-        let location = converter.location(for: token.positionAfterSkippingLeadingTrivia)
+    static func position(of declaration: some SyntaxProtocol, converter: SourceLocationConverter) -> String {
+        let location = converter.location(for: declaration.positionAfterSkippingLeadingTrivia)
         return "\(location.line):\(location.column)"
     }
 }

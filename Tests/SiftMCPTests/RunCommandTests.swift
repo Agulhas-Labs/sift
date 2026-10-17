@@ -98,16 +98,6 @@ struct RunCommandTests {
         }
     }
 
-    /// `--root` before the command is refused by name: left in the command it reached `env`, which failed with `illegal option -- r`.
-    @Test
-    func rootBeforeTheCommandIsRefusedByName() throws {
-        let command = try RunCommand.parse(["--root", "/tmp/worktree", "--", "swift", "test"])
-
-        #expect(throws: ValidationError.self) {
-            try command.run()
-        }
-    }
-
     /// A wrapped run files one line, and every field on it comes from the run that just happened.
     ///
     /// The log is handed in rather than reached for: the shared per-user log follows the process's `HOME`, which one test cannot move without moving it for every suite running beside it. What would go unasserted is not decoration — the kind decides which section of `usage` counts this run, the exit code decides `nonzeroExits`, the line pair is the whole suppression figure, and the root is what `--root` scopes by.

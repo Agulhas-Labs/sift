@@ -23,6 +23,8 @@ public struct ShardEventStream: Sendable, Equatable {
 
     /// The message of the failing issue each declared test recorded without ever starting — a condition or trait that threw — which the stream is the only record of: the console prints its line in a form its filter does not read.
     public private(set) var failedBeforeStarting: [TestIdentifier: String] = [:]
+    /// The headline and expansion lines of the first failing issue each declared test recorded that carried any, which the console prints as `Expectation failed: …` and the `↳` lines beneath it.
+    public private(set) var failureExpansions: [TestIdentifier: FailureExpansion] = [:]
     /// The name the console prints for each declared test: its display name in quotes where it has one, and its function's name otherwise.
     public private(set) var printedNames: [TestIdentifier: String] = [:]
     /// The identifier of every test function the stream declared, verbatim with its `/File.swift:line:column` location, which is part of what a `--filter` pattern is matched against.
@@ -45,6 +47,7 @@ public struct ShardEventStream: Sendable, Equatable {
         var failing: Set<String> = []
         var failingInOrder: [(id: String, iteration: Int)] = []
         var messages: [String: String] = [:]
+        var expansions: [String: FailureExpansion] = [:]
         var ends: [String: Double] = [:]
         var skipped: Set<String> = []
         var skipReasons: [String: String] = [:]
@@ -92,7 +95,9 @@ public struct ShardEventStream: Sendable, Equatable {
                 let issue = payload["issue"] as? [String: Any]
                 if issue?["isFailure"] as? Bool ?? !(issue?["isKnown"] as? Bool ?? false), failing.insert(key(id, iteration)).inserted {
                     failingInOrder.append((id: id, iteration: iteration))
-                    messages[key(id, iteration)] = ((payload["messages"] as? [[String: Any]])?.first?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                    let recorded = payload["messages"] as? [[String: Any]]
+                    messages[key(id, iteration)] = (recorded?.first?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                    expansions[key(id, iteration)] = FailureExpansion(messages: recorded ?? [])
                 }
             case "testEnded":
                 ends[key(id, iteration)] = instant
@@ -125,6 +130,11 @@ public struct ShardEventStream: Sendable, Equatable {
                 read.failedBeforeStarting[test] = messages[key(failure.id, failure.iteration)] ?? "recorded a failing issue without starting"
             }
         }
+        for failure in failingInOrder {
+            if let listed = functions[failure.id], let test = listed, read.failureExpansions[test] == nil {
+                read.failureExpansions[test] = expansions[key(failure.id, failure.iteration)]
+            }
+        }
         for ending in endings {
             guard let listed = functions[ending.id] else {
                 continue
@@ -144,6 +154,31 @@ public struct ShardEventStream: Sendable, Equatable {
             read.attempts[test, default: []].append(RunTestOutcomes.Attempt(ending: outcome, seconds: seconds, iteration: ending.iteration, skipReason: outcome == .skipped ? skipReasons[key] : nil))
         }
         return read
+    }
+}
+
+public extension ShardEventStream {
+    /// A failing issue's expectation and the lines the testing library expanded it into, which the console prints as `Expectation failed: …` and a `↳` line each.
+    struct FailureExpansion: Sendable, Equatable {
+        /// The issue's first message, the `Expectation failed: …` headline.
+        public let headline: String
+
+        /// Every later message, in order, as the console's `↳` line reads once its marker and indentation are stripped.
+        public let lines: [String]
+
+        /// The expansion of an issue's `messages`; `nil` where it carries no line past the headline, since there is then nothing the console's own lines would add.
+        init?(messages: [[String: Any]]) {
+            let texts = messages.compactMap { ($0["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard let headline = texts.first, !headline.isEmpty else {
+                return nil
+            }
+            let lines = texts.dropFirst().filter { !$0.isEmpty }
+            guard !lines.isEmpty else {
+                return nil
+            }
+            self.headline = headline
+            self.lines = lines
+        }
     }
 }
 

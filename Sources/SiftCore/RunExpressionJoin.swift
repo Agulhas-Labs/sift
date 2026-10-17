@@ -17,11 +17,13 @@ struct RunExpressionJoin {
     private(set) var depth: Int
     /// How many continuation lines have been joined so far.
     private(set) var lines = 0
+    /// The depth the first line was printed at, as the whitespace ``RunExpansionDepth`` keeps; empty for a message.
+    var indent = ""
 
     /// A join over `text`, or `nil` where its brackets balance and nothing beneath it is owed.
-    static func opening(_ text: String, index: Int, inNote: Bool) -> RunExpressionJoin? {
+    static func opening(_ text: String, index: Int, inNote: Bool, indent: String = "") -> RunExpressionJoin? {
         let depth = bracketDepth(of: text)
-        return depth > 0 ? RunExpressionJoin(index: index, inNote: inNote, text: text, depth: depth) : nil
+        return depth > 0 ? RunExpressionJoin(index: index, inNote: inNote, text: text, depth: depth, indent: indent) : nil
     }
 
     /// Whether the brackets still do not balance.
@@ -30,7 +32,13 @@ struct RunExpressionJoin {
     }
 
     /// Joins one trimmed continuation line, with a space between pieces but none after an opening bracket or before a closing one, so the text reads as the one-line spelling.
+    ///
+    /// An empty `piece` is a blank line Swift Testing printed inside the expression: nothing is joined, and it counts toward the cap like a joined line.
     mutating func join(_ piece: String) {
+        guard !piece.isEmpty else {
+            lines += 1
+            return
+        }
         if let last = text.last, let first = piece.first, !"([{".contains(last), !")]}".contains(first) {
             text += " "
         }
@@ -65,5 +73,21 @@ struct RunExpressionJoin {
             }
         }
         return depth
+    }
+
+    /// `text` read as one line: the stream keeps an `#expect` written over several lines with the source's line breaks and indentation, while the console's reading joins them, and both must read alike.
+    static func oneLine(_ text: String) -> String {
+        guard text.contains(where: \.isNewline) else {
+            return text
+        }
+        let pieces = text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard let first = pieces.first else {
+            return ""
+        }
+        var joined = RunExpressionJoin(index: 0, inNote: false, text: first, depth: 0)
+        pieces.dropFirst().forEach { joined.join($0) }
+        return joined.text
     }
 }

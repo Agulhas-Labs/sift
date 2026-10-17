@@ -110,22 +110,27 @@ extension RunReportRenderer {
         }
         lines.append(contentsOf: streamNote)
         lines.append(contentsOf: inventory)
+        // The accessibility notes sit *under* the receipt — they are facts about the devices rather than about
+        // the log the tail names — unless the failures read empty trees, where they lead the failures instead.
+        // One per device that owes one, in the order argv named them.
+        let trailing = devices.leadFailures ? [] : devices.lines
         // An answer with no totals line ends on its headline said again: a `| tail -3` of a build that printed warnings keeps the verdict. Under three lines the headline is already within the last three.
-        if totals == nil, lines.count >= 3 {
+        // Trailing device notes push whatever closed the content out of that tail, so with any the verdict moves
+        // below them and closes every answer shape, totals line or not; it is printed once, never also above the receipt.
+        if trailing.isEmpty, totals == nil, lines.count >= 3 {
             lines.append("verdict: \(opening)")
         }
         // The receipt counts itself along with everything above it: the line being appended is the last. That is the whole of the arithmetic — the answer is the
         // only thing that knows its own size, and asking it here is what keeps the receipt from being a
         // second opinion about what was printed.
         //
-        // The accessibility notes sit *under* the receipt — they are facts about the devices rather than about
-        // the log the tail names — unless the failures read empty trees, where they lead the failures instead.
-        // Under the receipt they are counted into its own number before they are appended, since a line of the
-        // answer the answer's size does not count is a receipt that understates itself. One per device that
-        // owes one, in the order argv named them.
-        let trailing = devices.leadFailures ? [] : devices.lines
-        lines.append(receipt(report, answerLines: lines.count + 1 + trailing.count, logURL: logURL))
+        // Under the receipt the notes, and the verdict that follows them, are counted into its own number before
+        // they are appended, since a line of the answer the answer's size does not count is a receipt that
+        // understates itself.
+        let closing = trailing.isEmpty ? [] : ["verdict: \(opening)"]
+        lines.append(receipt(report, answerLines: lines.count + 1 + trailing.count + closing.count, logURL: logURL))
         lines.append(contentsOf: trailing)
+        lines.append(contentsOf: closing)
         // Last, over every line whichever section composed it: no line of an answer is ever the size of a line
         // a log can carry. See ``lineCap``.
         return lines.map { RunFailureCensus.clipped($0, to: Self.lineCap) }.joined(separator: "\n")

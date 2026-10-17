@@ -22,7 +22,7 @@ struct RunWithoutSinceAndLineTests {
 
         #expect(result.status == 0, "\(result.stdout)\(result.stderr)")
         #expect(result.stdout.hasPrefix("✔ 1 of 1 fails without Sources/feature.txt and passes with it\n"), "\(result.stdout)")
-        #expect(result.stdout.contains("  ✔ shoutingWorks() — fails without Sources/feature.txt, passes with it"))
+        #expect(result.stdout.contains("  ✔ shoutingWorks() — fails without the change, passes with it"))
         #expect(try fixture.snapshot() == before)
         #expect(!fixture.recordExists)
     }

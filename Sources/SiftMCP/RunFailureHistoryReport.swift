@@ -3,6 +3,7 @@
 //
 
 import Foundation
+import SiftCore
 
 /// Renders ``RunFailureHistory`` as the answer `sift flakes` prints — the counts, the population they are over, and the runs that could not contribute to either.
 ///
@@ -13,17 +14,29 @@ public struct RunFailureHistoryReport {
     /// The rendered report for the run log at `fileURL`, or an honest empty-state line.
     ///
     /// `since` (an inclusive `YYYY-MM-DD`) and `root` narrow it, and are stated in the header when set, because a count read against the wrong population is the misreading this whole report is arranged to prevent.
+    ///
+    /// The default-root flag says the root was filled in from the directory the command ran in rather than asked for, and the header then says so and names `--root /` for the machine-wide view; a defaulted root the log holds no run for is answered as an empty state, where an asked-for one that matches nothing is refused.
     public static func render(
         fileURL: URL,
         since: String? = nil,
         root: String? = nil,
+        rootIsDefault: Bool = false,
         redactor: Redactor? = nil
     ) -> String {
         let logPath = redactor == nil ? fileURL.path : Redactor.tilded(fileURL.path)
-        let scope: LogScope?
-        switch LogScope.resolve(root, inLogsAt: [fileURL]) {
+        // The root of the whole filesystem is every repository, and also the runs that recorded no root at all, which no path holds: so it is no scope, and the answer is the unscoped one.
+        let asked = root == "/" ? nil : root
+        var scope: LogScope?
+        switch LogScope.resolve(asked, inLogsAt: [fileURL]) {
         case let .success(resolved):
             scope = resolved
+        case let .failure(.rootUnmatched(argument, _)) where rootIsDefault:
+            let logged = RunScan.load(fileURL: fileURL, since: nil, scope: nil, acrossWorktrees: true).logged
+            // An empty log has no repository to be missing from, so it answers as the unscoped report does.
+            if logged > 0 {
+                let named = redactor?.root(argument) ?? argument
+                return "no runs recorded in \(named)\(defaultRootNote) — \(counted(logged, "run")) in the log overall\nlog: \(logPath)"
+            }
         case let .failure(problem):
             return message(for: problem, redactor: redactor)
         }
@@ -34,7 +47,7 @@ public struct RunFailureHistoryReport {
             suffix.append("since \(since)")
         }
         if let scope {
-            suffix.append("in \(redactor?.root(scope.path) ?? scope.path)")
+            suffix.append("in \(redactor?.root(scope.path) ?? scope.path)\(rootIsDefault ? defaultRootNote : "")")
         }
         let scoped = suffix.isEmpty ? "" : " (\(suffix.joined(separator: ", ")))"
         return (body(history, scan: scan, scoped: scoped, redactor: redactor)
@@ -44,7 +57,21 @@ public struct RunFailureHistoryReport {
     }
 }
 
+public extension RunFailureHistoryReport {
+    /// The top-level directory of the git work tree `workingDirectory` is inside, or `nil` outside one.
+    ///
+    /// It is what `flakes` reads as `--root` when none is given.
+    static func defaultRoot(workingDirectory: URL) -> String? {
+        GitContext.discoverRoot(from: workingDirectory)?.path
+    }
+}
+
 private extension RunFailureHistoryReport {
+    /// What the header adds after a root nobody asked for, so the reader knows why the counts are one repository's and how to widen them.
+    static var defaultRootNote: String {
+        " — the repository this was run in; --root / for every repository"
+    }
+
     /// The listing, or the empty state that says which of the three kinds of nothing this is.
     ///
     /// They are three different facts and a reader acts on each differently: no runs at all in the window asked for, runs that all predate the field or could not name their failures, and runs that measured cleanly and found no test with both outcomes in them. One shared "nothing to report" would collapse a log that cannot answer the question into a log that answered it "no".

@@ -227,15 +227,16 @@ struct SimulatorAccessibilityTests {
 
     /// The note goes under the receipt, and the receipt counts it: a line of the answer the answer's own size does not count is a receipt that understates itself.
     @Test
-    func theNoteSitsUnderTheReceiptAndIsCountedByIt() throws {
+    func theNoteSitsUnderTheReceiptAndIsCountedByIt() {
         let answer = Self.answer(for: [SimulatorAccessibility.Restoration(udid: Self.udid, state: .restored)])
         let lines = answer.split(separator: "\n", omittingEmptySubsequences: false)
 
-        let note = try #require(lines.last)
+        let note = lines[lines.count - 2]
 
         #expect(note == "accessibility: read off on \(Self.udid) after the run; sift switched it back on")
-        #expect(lines[lines.count - 2].hasPrefix("raw: "))
-        #expect(lines[lines.count - 2].contains("lines in, \(lines.count) out"))
+        #expect(lines.last?.hasPrefix("verdict: ") == true)
+        #expect(lines[lines.count - 3].hasPrefix("raw: "))
+        #expect(lines[lines.count - 3].contains("lines in, \(lines.count) out"))
     }
 
     /// A device whose preference read on says nothing, on a green run and on a red one whose failures are not an empty tree's — the line every simulator run used to print, and every reader learned to filter out.
@@ -257,7 +258,7 @@ struct SimulatorAccessibilityTests {
     func aPreferenceReadOffIsOneShortLine() throws {
         let answer = Self.answer(for: [SimulatorAccessibility.Restoration(udid: Self.udid, state: .restored)])
 
-        let note = try #require(answer.split(separator: "\n").last)
+        let note = try #require(answer.split(separator: "\n").dropLast().last)
 
         #expect(note.hasPrefix("accessibility: read off on \(Self.udid)"))
         #expect(note.count < 120)
@@ -357,7 +358,7 @@ struct SimulatorAccessibilityTests {
         let restorations = Self.restoreAll(arguments, on: simulator)
 
         #expect(restorations.map(\.udid) == [Self.udid, second])
-        let notes = Self.answer(for: restorations).split(separator: "\n").suffix(2)
+        let notes = Self.answer(for: restorations).split(separator: "\n").dropLast().suffix(2)
         #expect(notes.first?.contains("not checked on \(Self.udid)") == true)
         #expect(notes.last?.contains("not checked on \(second)") == true)
     }

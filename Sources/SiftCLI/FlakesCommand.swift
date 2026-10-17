@@ -36,7 +36,7 @@ struct FlakesCommand: ParsableCommand {
     @Option(name: .customLong("since"), help: "Only runs on or after this day: today, yesterday, <N>d, or YYYY-MM-DD (UTC, as the log files them).")
     var since: String?
 
-    @Option(name: .customLong("root"), help: "Only runs in this directory and the repositories beneath it, and in every worktree of those repositories wherever it was cut — an absolute path, or a unique trailing part of one such as Orchard or Orchard/app.")
+    @Option(name: .customLong("root"), help: "Only runs in this directory and the repositories beneath it, and in every worktree of those repositories wherever it was cut — an absolute path, or a unique trailing part of one such as Orchard or Orchard/app. Without it, inside a git work tree, the repository you are in; outside one, every repository. Pass / for every repository.")
     var root: String?
 
     @Flag(name: .customLong("unredact"), help: "Print the real test and root names. The report is pseudonymised by default, so sharing one is safe unless you say otherwise.")
@@ -50,10 +50,14 @@ struct FlakesCommand: ParsableCommand {
             }
             firstDay = resolved
         }
+        let defaulted = root == nil
+            ? RunFailureHistoryReport.defaultRoot(workingDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+            : nil
         StandardStreams.emit(RunFailureHistoryReport.render(
             fileURL: file.map { URL(fileURLWithPath: $0) } ?? RunUsageLog.standardFileURL,
             since: firstDay,
-            root: root,
+            root: root ?? defaulted,
+            rootIsDefault: defaulted != nil,
             redactor: unredact ? nil : .standard()
         ))
     }

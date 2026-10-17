@@ -189,7 +189,7 @@ struct WhereRenderer {
                     lines.insert(absence, at: bannerSlot)
                 }
                 lines.append("no declarations found")
-                try lines.append(contentsOf: WhereBasenamePointer.lines(for: baseComponent(of: query), in: store, at: basenameRevision))
+                try lines.append(contentsOf: WhereBasenamePointer.lines(for: baseComponent(of: query), in: store, at: basenameRevision, spelling: options.spelling))
                 lines.append(contentsOf: storePointer)
                 lines.append(contentsOf: siblingPointerLines(for: query))
                 return Output(body: lines.joined(separator: "\n"), axis: axis)
@@ -200,7 +200,7 @@ struct WhereRenderer {
             if let absence {
                 lines.insert(absence, at: bannerSlot)
             }
-            try lines.append(contentsOf: WhereBasenamePointer.lines(for: baseComponent(of: query), in: store, at: basenameRevision) + ["no exact match; nearest symbols:"])
+            try lines.append(contentsOf: WhereBasenamePointer.lines(for: baseComponent(of: query), in: store, at: basenameRevision, spelling: options.spelling) + ["no exact match; nearest symbols:"])
             for row in candidates {
                 lines.append("  \(row.name) — \(row.kind.rawValue) — \(row.module) — \(row.path):\(row.line)")
             }
@@ -886,7 +886,9 @@ extension WhereRenderer {
             lines += ["", StandingCaveats.sentences]
         }
         // The store records nothing in a file it holds no unit for, a new one above all, nor what a file it holds has written since the build, so a lower bound names the lines there that write the name, which a rename trusting the answer would otherwise miss, and the header counts each file no store holds that it names.
-        let mentions = try WhereChangedFileMentions(names: ScannedNames(rows: targets.filter { row in row.kind != .extensionKind && row.kind != .operatorKind && !refusedRows.contains { $0.id == row.id } }, in: store), unbuilt: verdicts.filesOutsideTheBuild, refused: Set(refusals.map(\.path)), in: store, context: primary, judge: declaringFiles, listsEveryLine: options.includeReferences, offset: options.offset)
+        var scannedNames = try ScannedNames(rows: targets.filter { row in row.kind != .extensionKind && row.kind != .operatorKind && !refusedRows.contains { $0.id == row.id } }, in: store)
+        scannedNames.countsCallsOnly = !options.includeReferences
+        let mentions = try WhereChangedFileMentions(names: scannedNames, unbuilt: verdicts.filesOutsideTheBuild, refused: Set(refusals.map(\.path)), in: store, context: primary, judge: declaringFiles, listsEveryLine: options.includeReferences, offset: options.offset)
         lines = mentions.placed(in: lines)
         filesCollector.map(mentions.record(into:))
         if let note = try SemanticTargets.capNote(for: declarations, includeReferences: options.includeReferences, in: store) {

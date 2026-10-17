@@ -31,7 +31,7 @@ struct AffectedNestedFixtureRouteTests {
         }
         try TestSources.commitAll(in: root, message: "fixture")
         try TestSources.write(
-            "public protocol Shiny {}\n\npublic struct Widget {\n    public init() {}\n    public func shine() {}\n}\n",
+            "public protocol Shiny: Sendable {}\n\npublic struct Widget: Sendable {\n    public init() {}\n    public func shine() {}\n}\n",
             to: "Sources/Lib/Core.swift",
             in: root
         )

@@ -36,7 +36,7 @@ struct SyntacticTypeUsage {
         let byName = Dictionary(grouping: rows) { $0.kind == .extensionKind ? DeclaredTypeName.last(ofPath: $0.name) : $0.name }
         let typealiases = try store.everyTypealias()
         let guessedModules = try GuessedModuleNotice.reasons(for: store.filesWithGuessedModule(), isUnreadablyRenamed: isUnreadablyRenamed)
-        let chains = try byName.mapValues { try AliasChain(of: $0, among: typealiases, store: store, guessedModules: guessedModules) }
+        let chains = try byName.mapValues { try AliasChain(of: $0, among: typealiases, store: store, guessedModules: guessedModules, source: fileSource) }
         var shapes = byName.mapValues { _ in CallSiteScanner.SiteShape.typeUse }
         for alias in chains.values.flatMap(\.aliases) {
             shapes[alias.row.name] = .typeUse
@@ -46,7 +46,7 @@ struct SyntacticTypeUsage {
         // Per asked name, what each of its aliases' names means where it is written: a scope nearer the site declaring its own of the name hides the alias.
         var aliasScopes = try chains.mapValues { chain in
             try Dictionary(uniqueKeysWithValues: Set(chain.aliases.map(\.row.name)).map { aliasName in
-                try (aliasName, AliasNameScope(store: store, name: aliasName, aliases: chain.aliases.filter { $0.row.name == aliasName }.map(\.row), reachedCap: chain.reachedCap))
+                try (aliasName, AliasNameScope(store: store, name: aliasName, aliases: chain.aliases.filter { $0.row.name == aliasName }.map(\.row), reachedCap: chain.reachedCap, source: fileSource))
             })
         }
         // A function-local typealias is no row of the index, so it is found by the type use its right-hand side writes, and its uses by a second scan, kept to the block declaring it.
@@ -197,9 +197,10 @@ struct SyntacticTypeUsage {
         let anotherLines = Tally.count(tally.another, less: [used, tally.own])
         let localLines = Tally.count(tally.local, less: [used, tally.own, tally.another])
         // An alias's name a scope around the line declares its own of, counted by the name written.
-        let anotherOfAlias = tally.anotherOfAlias.mapValues { Tally.count($0, less: [used, tally.own, tally.another, tally.local]) }
+        // A line writing two such names is counted under the first in name order alone.
+        let anotherOfAlias = Tally.countsInNameOrder(tally.anotherOfAlias, less: [used, tally.own, tally.another, tally.local])
         let shadowedAnother = Tally.merged(tally.anotherOfAlias.values)
-        let localOfAlias = tally.localOfAlias.mapValues { Tally.count($0, less: [used, tally.own, tally.another, tally.local, shadowedAnother]) }
+        let localOfAlias = Tally.countsInNameOrder(tally.localOfAlias, less: [used, tally.own, tally.another, tally.local, shadowedAnother])
         let shadowed = Tally.merged([shadowedAnother] + tally.localOfAlias.values)
         let outsideLines = Tally.count(tally.outside, less: [used, tally.own, tally.another, tally.local, shadowed])
         let aliasLines = Tally.count(tally.aliasDeclarations, less: [used, tally.own, tally.another, tally.local, shadowed, tally.outside])
@@ -657,6 +658,18 @@ private extension SyntacticTypeUsage {
         /// Per file, the lines any of `buckets` holds.
         static func merged(_ buckets: some Sequence<[String: Set<Int>]>) -> [String: Set<Int>] {
             buckets.reduce(into: [:]) { $0.merge($1) { $0.union($1) } }
+        }
+
+        /// Per name, how many of its lines none of `others` holds and no earlier name in name order holds.
+        static func countsInNameOrder(_ byName: [String: [String: Set<Int>]], less others: [[String: Set<Int>]]) -> [String: Int] {
+            var earlier: [[String: Set<Int>]] = []
+            var counts: [String: Int] = [:]
+            for name in byName.keys.sorted() {
+                guard let lines = byName[name] else { continue }
+                counts[name] = count(lines, less: others + earlier)
+                earlier.append(lines)
+            }
+            return counts
         }
 
         /// How many lines of `lines` none of `others` holds.

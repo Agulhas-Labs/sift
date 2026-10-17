@@ -29,6 +29,10 @@ struct AffectedRenderer {
     ///
     /// A checkout, a pull or a reset since the build brings in edits no commit time newer than the build dates. `nil` for a range.
     var headMoveTime: (() -> Double?)?
+    /// The named changed files whose working-tree text, which the index describes, differs from the range's end the comparison reads.
+    ///
+    /// `nil` against the working tree.
+    var driftedPastRange: ((Set<String>) throws -> Set<String>)?
 }
 
 extension AffectedRenderer {
@@ -40,6 +44,7 @@ extension AffectedRenderer {
         callSites = { await callScanner.callSites(named: $0) }
         lastCommitTime = range == nil ? { git.lastCommitTime(of: $0) } : nil
         headMoveTime = range == nil ? { HeadReflog.lastMoveTime(in: git) } : nil
+        driftedPastRange = range.map { range in { [repositoryRoot] in try AffectedTouchedRoots.drifted($0, from: range.to, git: git, repositoryRoot: repositoryRoot) } }
         fileDiffs = { [repositoryRoot] paths in
             try AffectedAfterEditSeeds.fileDiffs(of: changes.filter { paths.contains($0.path) }, range: range, git: git, repositoryRoot: repositoryRoot)
         }
@@ -117,7 +122,19 @@ extension AffectedRenderer {
         options: AffectedOptions
     ) async throws -> Output {
         let reader = TestSymbolReader(store: store)
-        let resolution = try resolveChangedDeclarations(changes, excludedByConfig: excludedByConfig)
+        var judges: (occurrences: OccurrenceFreshness, declaringFiles: OccurrenceFreshness)?
+        var touched = AffectedTouchedRoots()
+        var noStoreSeeds = AffectedAfterEditSeeds()
+        if let context = semantic.context {
+            let pair = (OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories, citedBy: context.store), OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories))
+            judges = pair
+            // A file the store answers for is rooted at the declarations the diff touched in it and what in the same file reaches them.
+            touched = try touchedRoots(changes, context: context, reader: reader, occurrences: pair.0, declaringFiles: pair.1)
+        } else {
+            // With no store every changed file is compared the same way, and walked to its call sites from the declarations the diff touched.
+            (noStoreSeeds, touched) = try self.noStoreSeeds(changes)
+        }
+        let resolution = try resolveChangedDeclarations(changes, excludedByConfig: excludedByConfig, touched: touched)
         var lines = preamble(semantic: semantic, options: options)
         lines.append("")
         lines.append(contentsOf: resolution.summary)
@@ -136,21 +153,27 @@ extension AffectedRenderer {
         if case .openFailed = semantic {
             axis = .openFailed
         }
-        if case let .active(context) = semantic {
-            let occurrences = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories, citedBy: context.store)
-            let judge = OccurrenceFreshness(store: store, context: context, projectDirectories: projectDirectories)
+        if case let .active(context) = semantic, let judges {
+            let (occurrences, judge) = judges
             declaringFiles = judge
             semanticWalk = try self.semanticWalk(from: resolution.declarations, context: context, reader: reader, occurrences: occurrences, declaringFiles: judge, depth: options.depth)
+            for row in touched.touchedRows {
+                if let test = try reader.testSymbol(enclosing: row) {
+                    record(test, resolved: true, depth: 1, state: .live, into: &semanticWalk.reached)
+                }
+            }
             let withoutUnit = try context.testFilesWithoutUnit(in: store, projectDirectories: projectDirectories)
             unbuiltTests = UnbuiltTestFiles(paths: withoutUnit.unbuilt, outsideTargets: withoutUnit.outsideTargets, provenance: context.store.provenance, package: context.store.package)
             axis = .of(refusals: semanticWalk.refusals, occurrences: occurrences, testFilesWithoutUnit: unbuiltTests.paths.count)
             newerFiles = Set(semanticWalk.refusals.filter(\.reason.isStale).map(\.path)).union(occurrences.modifiedFiles).union(occurrences.newFiles)
         }
         // A file changed since the build is seeded from the declarations the diff touched in it and walked to their call sites, where both its sides could be compared; every other unanswered declaration keeps the written-name walk.
-        let afterEdit = try afterEditSeeds(refusals: semanticWalk.refusals, declaringFiles: declaringFiles)
-        let mentionInput = semanticWalk.unanswered.filter { !afterEdit.files.contains($0.path) }
+        let afterEdit = semantic.context == nil ? noStoreSeeds : try afterEditSeeds(refusals: semanticWalk.refusals, declaringFiles: declaringFiles)
+        let mentionInput = semanticWalk.unanswered.filter { !afterEdit.files.contains($0.path) && !afterEdit.commentOnly.contains($0.path) }
         let nameWalk = try await nameWalk(from: Self.mentionSeeds(mentionInput), reader: reader, depth: options.depth, excluding: Set(unbuiltTests.outsideTargets))
-        var callWalk = try await self.nameWalk(from: afterEdit.seeds, reader: reader, depth: options.depth, excluding: Set(unbuiltTests.outsideTargets), byCallSites: true, fallbacks: afterEdit.fallbacks)
+        // A removed or renamed declaration of a file the store answers for, or one whose signature changed, is seeded by its old name too: a call left unedited can now resolve to an overload the diff did not touch.
+        let callSeeds = afterEdit.seeds + touched.comparison.seededByName.filter { !afterEdit.seeds.contains($0) }
+        var callWalk = try await self.nameWalk(from: callSeeds, reader: reader, depth: options.depth, excluding: Set(unbuiltTests.outsideTargets), byCallSites: true, fallbacks: afterEdit.fallbacks)
         for row in afterEdit.rows {
             if let test = try reader.testSymbol(enclosing: row) {
                 record(test, resolved: false, depth: 1, state: .live, into: &callWalk.reached)
@@ -187,7 +210,7 @@ extension AffectedRenderer {
 
         let answeredBy = afterEdit.files.isEmpty
             ? (reached.isEmpty ? "nothing reached" : reached.values.allSatisfy { !$0.resolved } ? "a name match" : "resolved references")
-            : "the after-edit walk (syntactic, from the declarations the diff touched)"
+            : semantic.context == nil ? "a call-site walk from the declarations the diff touched (syntactic, lower bound)" : "the after-edit walk (syntactic, from the declarations the diff touched)"
         let provenance: DiscoveredStore.Provenance? = if case let .active(context) = semantic {
             context.store.provenance
         } else {
@@ -214,7 +237,8 @@ extension AffectedRenderer {
             lines.append("  the name match used \(mentionInput.count) declaration\(mentionInput.count == 1 ? "" : "s") from the files above, not listed here")
         }
         lines.append(contentsOf: nameWalk.notes(cap: Self.nameEvidenceFileCap))
-        lines.append(contentsOf: callWalk.afterEditNotes(afterEdit, cap: Self.nameEvidenceFileCap))
+        lines.append(contentsOf: touched.notes())
+        lines.append(contentsOf: callWalk.afterEditNotes(afterEdit, cap: Self.nameEvidenceFileCap, noStore: semantic.context == nil))
         lines.append(contentsOf: unbuiltTests.notes(walk: testSideWalk, cap: Self.nameEvidenceFileCap))
         // Counted, not written by hand: the standing list plus this answer's own entries.
         lines.append(contentsOf: AffectedTestSections(reached: reached, inventory: inventory, options: options, ways: ways, package: package, runners: runners, provenance: provenance, afterEdit: afterEdit.files.isEmpty ? nil : (afterEdit, callWalk.scannedNames)).lines())
@@ -305,19 +329,20 @@ extension AffectedRenderer {
         var capped: Bool
     }
 
-    /// Every declaration in every changed file — **the whole file, not the changed lines**.
+    /// The declarations of every changed file the walk starts from: the `touched` roots of a file the comparison accounted for, and **every declaration of any other file, not its changed lines**.
     ///
-    /// The alternative, resolving only declarations overlapping a diff hunk, is under-inclusive in three ways that all fail dangerously. A hunk's line numbers refer to the *old* file for deletions and the new one for additions, while the index holds current-tree ranges, so a deletion has no extent to intersect at all — and a deleted method is precisely the change whose references break. A one-line edit to a stored property changes the meaning of every member that reads it. And an added file is entirely new, so every declaration in it is changed by definition. Erring wide costs a longer list; erring narrow costs a test that should have run and did not, and the second is the failure this command exists to prevent.
+    /// The touched roots are read by comparing both sides' parses (``AffectedTouchedRoots``). The alternative, resolving only declarations overlapping a diff hunk, is under-inclusive in three ways that all fail dangerously. A hunk's line numbers refer to the *old* file for deletions and the new one for additions, while the index holds current-tree ranges, so a deletion has no extent to intersect at all — and a deleted method is precisely the change whose references break. A one-line edit to a stored property changes the meaning of every member that reads it. And an added file is entirely new, so every declaration in it is changed by definition. Erring wide costs a longer list; erring narrow costs a test that should have run and did not, and the second is the failure this command exists to prevent.
     ///
     /// Extensions are dropped for the same reason `where` drops them: an extension carries no USR of its own, so it can only ever refuse against something no build will resolve. Its *members* are separate rows and are kept.
-    private func resolveChangedDeclarations(_ changes: [GitContext.Change], excludedByConfig: [String]) throws -> Resolution {
+    private func resolveChangedDeclarations(_ changes: [GitContext.Change], excludedByConfig: [String], touched: AffectedTouchedRoots) throws -> Resolution {
         var declarations: [SymbolRow] = []
         var unreadable: [String] = []
         var fileLines: [String] = []
         var saidOperators = false
         for change in changes.sorted(by: { $0.path < $1.path }) {
             let rows = try store.symbols(inFile: change.path).filter { $0.kind != .extensionKind }
-            declarations.append(contentsOf: rows)
+            let roots = touched.roots[change.path] ?? rows
+            declarations.append(contentsOf: roots)
             // Split on whether the index has a *file* row, not on whether it has declarations. They are two
             // different facts and the answer says two different things about them: a file the index has
             // never heard of has left the working tree, while a file it holds that declares nothing — a
@@ -330,10 +355,10 @@ extension AffectedRenderer {
             var detail = if rows.isEmpty, try store.fileRow(path: change.path) == nil {
                 "no longer in the working tree (renamed or deleted since), so nothing was resolved"
             } else {
-                rows.isEmpty ? "no declarations in the index" : "\(rows.count) declarations"
+                rows.isEmpty ? "no declarations in the index" : touched.touched[change.path].flatMap { $0 < rows.count ? "\($0) of \(rows.count) declarations touched" : nil } ?? "\(rows.count) declarations"
             }
             // Said in full on the first file holding one, then counted: no build records an operator declaration, so it is neither followed nor refused.
-            let operators = rows.count { $0.kind == .operatorKind }
+            let operators = roots.count { $0.kind == .operatorKind }
             if operators > 0 {
                 let noun = operators == 1 ? "operator declaration" : "operator declarations"
                 detail += saidOperators ? " (\(operators) \(noun))" : " (\(operators) \(noun), which the index store does not record, so no build answers for \(operators == 1 ? "it" : "them"))"
@@ -366,6 +391,19 @@ extension AffectedRenderer {
         case .addedOrModified: "added or modified"
         case .deleted: "deleted"
         case let .renamed(from): "renamed from \(from)"
+        }
+    }
+
+    /// The references the store recorded to one USR, each as the declaration it landed in, the test that is or encloses it, and whether the walk follows it on.
+    func hits(ofUSR usr: String, context: SemanticContext, reader: TestSymbolReader, occurrences: OccurrenceFreshness) throws -> [ResolvedWalkOn.Hit] {
+        try context.store.references(ofUSR: usr).compactMap { hit in
+            // Every cited path is judged, so the header's axis sees the deleted and drifted files this answer drew on (Docs/Design.md §2).
+            let state = occurrences.state(of: hit.path)
+            guard state != .deleted else { return nil }
+            let path = context.relativePath(hit.path)
+            guard let enclosing = try reader.enclosingSymbol(path: path, line: hit.line) else { return nil }
+            let test = try reader.testSymbol(enclosing: enclosing)
+            return ResolvedWalkOn.Hit(enclosing: enclosing, test: test, state: state, leadsOn: Self.leadsOn(enclosing, from: test))
         }
     }
 }
@@ -496,19 +534,6 @@ private extension AffectedRenderer {
         return walk
     }
 
-    /// The references the store recorded to one USR, each as the declaration it landed in, the test that is or encloses it, and whether the walk follows it on.
-    func hits(ofUSR usr: String, context: SemanticContext, reader: TestSymbolReader, occurrences: OccurrenceFreshness) throws -> [ResolvedWalkOn.Hit] {
-        try context.store.references(ofUSR: usr).compactMap { hit in
-            // Every cited path is judged, so the header's axis sees the deleted and drifted files this answer drew on (Docs/Design.md §2).
-            let state = occurrences.state(of: hit.path)
-            guard state != .deleted else { return nil }
-            let path = context.relativePath(hit.path)
-            guard let enclosing = try reader.enclosingSymbol(path: path, line: hit.line) else { return nil }
-            let test = try reader.testSymbol(enclosing: enclosing)
-            return ResolvedWalkOn.Hit(enclosing: enclosing, test: test, state: state, leadsOn: Self.leadsOn(enclosing, from: test))
-        }
-    }
-
     /// The after-edit walk's seeds: the declarations the diff touched in each file the store refused as changed since the build.
     ///
     /// A file committed since its own build is seeded whole, the diff against `HEAD` showing only the edits after that commit; so is one whose last commit time cannot be read, and so is every refused file built before `HEAD` last moved, or every one when that cannot be read.
@@ -566,14 +591,18 @@ private extension AffectedRenderer {
             return lines
         }
 
-        /// What the after-edit walk says of itself: what it was seeded from, and that a call site found by its written name is not a resolved reference.
-        func afterEditNotes(_ seeds: AffectedAfterEditSeeds, cap: Int) -> [String] {
+        /// What the after-edit walk (or, with no store, the call-site walk of every changed file) says of itself: what it was seeded from, and that a call site found by its written name is not a resolved reference.
+        func afterEditNotes(_ seeds: AffectedAfterEditSeeds, cap: Int, noStore: Bool = false) -> [String] {
+            let label = noStore ? "call-site walk" : "after-edit walk"
             let reason = seeds.headMovedSinceBuild ? "HEAD moved since the build" : "committed since the build"
-            let committed = seeds.committedSinceBuild.isEmpty ? [] : ["", "after-edit walk — seeded whole: \(reason): \(seeds.committedSinceBuild.sorted().joined(separator: ", "))"]
+            let sinceBuild = seeds.committedSinceBuild.isEmpty ? [] : ["", "\(label) — seeded whole: \(reason): \(seeds.committedSinceBuild.sorted().joined(separator: ", "))"]
+            let refused = seeds.seededWhole.keys.sorted().map { "\(label) — seeded whole: \($0): \(seeds.seededWhole[$0, default: []].sorted().joined(separator: ", "))" }
+            let commentOnly = seeds.commentOnly.isEmpty ? [] : ["", "\(label) — only comments changed, so nothing was walked from: \(seeds.commentOnly.sorted().joined(separator: ", "))"]
+            let committed = sinceBuild + refused.flatMap { ["", $0] } + commentOnly
             guard !seeds.files.isEmpty else { return committed }
             let files = seeds.files.count
             let names = "\(seeds.nameCount) name\(seeds.nameCount == 1 ? "" : "s")"
-            let note = "after-edit walk — syntactic, lower bound: the \(files) file\(files == 1 ? "" : "s") changed since the build \(files == 1 ? "was" : "were") seeded from the \(names) the diff touched there (\(seeds.namesListed)), not every declaration in \(files == 1 ? "it" : "them"), and followed to the call sites `where` finds by written name, \(scannedNames) name\(scannedNames == 1 ? "" : "s") over every hop. **A call site found by name is not a resolved reference** — same-named members of unrelated types are included, and dynamically dispatched uses are missed. Those tests are marked `name match` below, and a test the diff touched is listed itself."
+            let note = "\(label) — syntactic, lower bound: the \(files) file\(files == 1 ? "" : "s") changed\(noStore ? "" : " since the build") \(files == 1 ? "was" : "were") seeded from the \(names) the diff touched there (\(seeds.namesListed)), not every declaration in \(files == 1 ? "it" : "them"), and followed to the call sites `where` finds by written name, \(scannedNames) name\(scannedNames == 1 ? "" : "s") over every hop. **A call site found by name is not a resolved reference** — same-named members of unrelated types are included, and dynamically dispatched uses are missed. Those tests are marked `name match` below, and a test the diff touched is listed itself."
             return ["", note] + committed + [tooCommonNote(cap: cap), setAsideNote()].compactMap(\.self)
         }
 

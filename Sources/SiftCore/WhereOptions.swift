@@ -26,8 +26,11 @@ public struct WhereOptions: Sendable {
     public var filesOnly: Bool
     /// Only the declarations block, for a question that is only where the symbol is defined; the other sections are left out.
     public var declarationsOnly: Bool
+    /// How the answer writes a call it suggests — set by the face that will serve it.
+    public var spelling: CallSpelling
 
-    public init(includeSemantic: Bool = true, includeReferences: Bool = false, offset: Int = 0, collapsesSeveralOwners: Bool = true, nameMatchedSiteCap: Int? = nil, standsInForSearch: Bool = false, filesOnly: Bool = false, declarationsOnly: Bool = false) {
+    public init(includeSemantic: Bool = true, includeReferences: Bool = false, offset: Int = 0, collapsesSeveralOwners: Bool = true, nameMatchedSiteCap: Int? = nil, standsInForSearch: Bool = false, filesOnly: Bool = false, declarationsOnly: Bool = false, spelling: CallSpelling = .commandLine) {
+        self.spelling = spelling
         self.declarationsOnly = declarationsOnly
         self.filesOnly = filesOnly
         self.standsInForSearch = standsInForSearch
